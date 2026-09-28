@@ -38,6 +38,7 @@ async function firebaseApiHeaders(headers={}){
   if(!user) throw new Error('Sign in to continue.');
   return {...headers,Authorization:'Bearer ' + await user.getIdToken()};
 }
+const API_BASE = 'https://daily-funded-api.onrender.com';
 </script>
 <style>
   :root{
@@ -1844,7 +1845,7 @@ payoutTrack.addEventListener('keydown',event=>{
 
 async function loadPayoutFeed(){
   try{
-    const response = await fetch('/api/payouts?limit=8',{credentials:'same-origin',headers:{Accept:'application/json'}});
+    const response = await fetch(API_BASE + '/api/payouts?limit=8',{credentials:'same-origin',headers:{Accept:'application/json'}});
     if(!response.ok) throw new Error('Payout feed unavailable');
     const payload = await response.json();
     const entries = Array.isArray(payload) ? payload : payload.payouts;
@@ -2443,7 +2444,7 @@ registrationForm.addEventListener('submit',async event=>{
     const credential = await requireFirebaseAuth().createUserWithEmailAndPassword(email,password);
     const displayName = [firstName,lastName].filter(Boolean).join(' ');
     if(displayName) await credential.user.updateProfile({displayName});
-    const profileResponse = await fetch('/api/auth/register',{method:'POST',credentials:'same-origin',headers:await firebaseApiHeaders({'Content-Type':'application/json',Accept:'application/json'}),body:JSON.stringify({firstName,lastName,dateOfBirth,country,phone})});
+    const profileResponse = await fetch(API_BASE + '/api/auth/register',{method:'POST',credentials:'same-origin',headers:await firebaseApiHeaders({'Content-Type':'application/json',Accept:'application/json'}),body:JSON.stringify({firstName,lastName,dateOfBirth,country,phone})});
     const profileResult = await profileResponse.json();
     if(!profileResponse.ok) throw new Error(profileResult.error || 'Could not save your profile.');
     status.className = 'registration-status';
@@ -2469,7 +2470,7 @@ const dashCloseBtn = document.getElementById('dashClose');
 if(dashCloseBtn) dashCloseBtn.addEventListener('click', closeDashboard);
 
 async function loadDashboardAccounts(){
-  const response = await fetch('/api/accounts',{credentials:'same-origin',headers:await firebaseApiHeaders({Accept:'application/json'})});
+  const response = await fetch(API_BASE + '/api/accounts',{credentials:'same-origin',headers:await firebaseApiHeaders({Accept:'application/json'})});
   if(!response.ok) throw new Error('Account service unavailable');
   const accounts = await response.json();
   if(!Array.isArray(accounts)) throw new Error('Invalid account response');
@@ -2484,7 +2485,7 @@ async function createPurchase(purchase){
   form.set('currency',currentCurrency);
   form.set('network',document.querySelector('#netTabs .net-tab.active')?.dataset.net || '');
   form.set('proof',proof);
-  const response = await fetch('/api/purchases',{method:'POST',credentials:'same-origin',headers:await firebaseApiHeaders({Accept:'application/json'}),body:form});
+  const response = await fetch(API_BASE + '/api/purchases',{method:'POST',credentials:'same-origin',headers:await firebaseApiHeaders({Accept:'application/json'}),body:form});
   const result = await response.json();
   if(!response.ok) throw new Error(result.error || 'Purchase could not be submitted');
   return result;
@@ -2893,7 +2894,7 @@ async function renderMt5Account(accountId){
   positionsPanel.classList.remove('visible');
 
   try{
-    const response = await fetch('/api/mt5/accounts/' + encodeURIComponent(accountId), {
+    const response = await fetch(API_BASE + '/api/mt5/accounts/' + encodeURIComponent(accountId), {
       credentials:'same-origin',
       headers:await firebaseApiHeaders({Accept:'application/json'})
     });
@@ -3152,7 +3153,7 @@ if(payoutRequestForm){
     payoutRequestStatus.className = 'withdraw-status';
     payoutRequestStatus.textContent = 'Submitting your request…';
     try{
-      const response = await fetch('/api/payouts/requests',{method:'POST',credentials:'same-origin',headers:await firebaseApiHeaders({'Content-Type':'application/json',Accept:'application/json'}),body:JSON.stringify({accountId,method:selectedPayoutMethod,amountUsd:amount,feeUsd:rules.fee,netAmountUsd:Math.max(0,amount-rules.fee),network:selectedPayoutMethod==='crypto'?document.getElementById('withdrawNetwork').value:null,destination,estimatedProcessing:selectedPayoutMethod==='bank'?'2-3 business days':'Per payout provider'})});
+      const response = await fetch(API_BASE + '/api/payouts/requests',{method:'POST',credentials:'same-origin',headers:await firebaseApiHeaders({'Content-Type':'application/json',Accept:'application/json'}),body:JSON.stringify({accountId,method:selectedPayoutMethod,amountUsd:amount,feeUsd:rules.fee,netAmountUsd:Math.max(0,amount-rules.fee),network:selectedPayoutMethod==='crypto'?document.getElementById('withdrawNetwork').value:null,destination,estimatedProcessing:selectedPayoutMethod==='bank'?'2-3 business days':'Per payout provider'})});
       if(!response.ok) throw new Error('Payout service unavailable');
       const result = await response.json();
       payoutRequestStatus.className = 'withdraw-status success';
