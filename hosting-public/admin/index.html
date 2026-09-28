@@ -107,6 +107,34 @@
     }
     .message.error { color: var(--red); }
     .message.success { color: var(--green); }
+    .sign-in-panel {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+      align-items: end;
+      gap: 10px;
+      margin-bottom: 18px;
+      padding: 14px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .sign-in-field {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .sign-in-field input {
+      width: 100%;
+      min-height: 40px;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+    }
+    .sign-in-panel button { min-height: 40px; }
     .card {
       background: linear-gradient(180deg, var(--panel), var(--panel-alt));
       border: 1px solid var(--border);
@@ -224,6 +252,9 @@
         width: 100%;
         justify-content: space-between;
       }
+      .sign-in-panel {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -236,6 +267,18 @@
         <button id="signOutBtn" class="secondary" type="button" style="display:none;">Sign out</button>
       </div>
     </div>
+
+    <form id="signInForm" class="sign-in-panel" style="display:none;">
+      <label class="sign-in-field" for="signInEmail">
+        Email address
+        <input id="signInEmail" name="email" type="email" autocomplete="username" required />
+      </label>
+      <label class="sign-in-field" for="signInPassword">
+        Password
+        <input id="signInPassword" name="password" type="password" autocomplete="current-password" required />
+      </label>
+      <button id="signInButton" type="submit">Sign in</button>
+    </form>
 
     <div class="header">
       <h1>Payment review</h1>
@@ -316,6 +359,8 @@
     const authStatePill = document.getElementById('authStatePill');
     const authStateText = document.getElementById('authStateText');
     const signOutBtn = document.getElementById('signOutBtn');
+    const signInForm = document.getElementById('signInForm');
+    const signInButton = document.getElementById('signInButton');
     const pageMessage = document.getElementById('pageMessage');
     const pendingTableBody = document.getElementById('pendingTableBody');
     const proofModal = document.getElementById('proofModal');
@@ -408,13 +453,16 @@
         renderEmptyState('Please sign in with a Daily Funded account.');
         authStateText.textContent = 'Not signed in';
         authStatePill.querySelector('.status-dot').classList.remove('authenticated');
+        signInForm.style.display = 'grid';
         signOutBtn.style.display = 'none';
         return;
       }
 
       authStateText.textContent = 'Signed in';
       authStatePill.querySelector('.status-dot').classList.add('authenticated');
+      signInForm.style.display = 'none';
       signOutBtn.style.display = 'inline-flex';
+      renderEmptyState('Checking administrator access…');
 
       try {
         const headers = await firebaseApiHeaders({ Accept: 'application/json' });
@@ -425,8 +473,8 @@
         });
 
         if (response.status === 403) {
-          const payload = await response.json().catch(() => ({}));
-          setPageMessage(payload.error || 'Administrator access required.', 'error');
+          await response.json().catch(() => ({}));
+          setPageMessage('Administrator access required.', 'error');
           renderEmptyState('Administrator access required.');
           return;
         }
@@ -445,6 +493,25 @@
         renderEmptyState('Unable to load the pending review queue.');
       }
     }
+
+    signInForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const email = document.getElementById('signInEmail').value.trim();
+      const password = document.getElementById('signInPassword').value;
+      signInButton.disabled = true;
+      signInButton.textContent = 'Signing in…';
+      setPageMessage('Signing in…');
+      try {
+        await firebaseAuthPersistenceReady;
+        await requireFirebaseAuth().signInWithEmailAndPassword(email, password);
+        signInForm.reset();
+      } catch (error) {
+        setPageMessage(error.message || 'Sign in failed.', 'error');
+      } finally {
+        signInButton.disabled = false;
+        signInButton.textContent = 'Sign in';
+      }
+    });
 
     async function apiRequest(path, options = {}) {
       const headers = await firebaseApiHeaders({ Accept: 'application/json', ...(options.headers || {}) });
@@ -551,6 +618,7 @@
         if (!user) {
           authStateText.textContent = 'Not signed in';
           authStatePill.querySelector('.status-dot').classList.remove('authenticated');
+          signInForm.style.display = 'grid';
           signOutBtn.style.display = 'none';
           setPageMessage('Please sign in with a Daily Funded Firebase account.', 'error');
           renderEmptyState('Please sign in to review payments.');
@@ -560,6 +628,7 @@
       });
     } else {
       authStateText.textContent = 'Not configured';
+      signInForm.style.display = 'none';
       setPageMessage('Firebase is not configured for this page.', 'error');
       renderEmptyState('Firebase is not configured for this page.');
     }
