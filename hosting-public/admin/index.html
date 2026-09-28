@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Daily Funded Admin</title>
+  <style>
+    :root {
+      --bg: #0a0d0c;
+      --panel: #121614;
+      --panel-alt: #171d1a;
+      --border: #1e2521;
+      --text: #eef1ef;
+      --muted: #93a19a;
+      --green: #3ecf7e;
+      --red: #ff6b6b;
+      --gold: #e6c34d;
+      --shadow: rgba(0,0,0,.35);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      padding: 32px 20px 60px;
+    }
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .brand-mark {
+      width: 28px; height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--green), #0ea86c);
+      color: #06140c;
+      font-size: 15px;
+      font-weight: 800;
+    }
+    .auth-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 999px;
+      padding: 8px 10px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+    }
+    .status-dot.authenticated {
+      background: var(--green);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 40px);
+      letter-spacing: -0.03em;
+    }
+    .muted {
+      color: var(--muted);
+    }
+    .message {
+      min-height: 22px;
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .message.error { color: var(--red); }
+    .message.success { color: var(--green); }
+    .card {
+      background: linear-gradient(180deg, var(--panel), var(--panel-alt));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 12px 26px var(--shadow);
+      overflow: hidden;
+    }
+    .table-wrap {
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1000px;
+    }
+    th, td {
+      text-align: left;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      font-size: 14px;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 700;
+      background: rgba(255,255,255,0.01);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+    td {
+      color: var(--text);
+    }
+    .cell-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    button {
+      appearance: none;
+      border: 1px solid transparent;
+      background: var(--green);
+      color: #06140c;
+      font-weight: 700;
+      border-radius: 8px;
+      padding: 9px 12px;
+      cursor: pointer;
+      transition: transform 0.12s ease, opacity 0.12s ease;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .secondary {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--text);
+    }
+    .danger {
+      background: var(--red);
+      color: #fff;
+    }
+    .proof-modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 13, 12, 0.72);
+      padding: 20px;
+      z-index: 99;
+    }
+    .proof-modal.show { display: flex; }
+    .proof-dialog {
+      width: min(900px, 100%);
+      max-height: 90vh;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 18px 45px rgba(0,0,0,.45);
+    }
+    .proof-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .proof-dialog img {
+      display: block;
+      width: 100%;
+      max-height: 70vh;
+      object-fit: contain;
+      background: #0b120f;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .proof-error {
+      display: none;
+      color: var(--red);
+      margin-top: 12px;
+      font-size: 14px;
+    }
+    .empty {
+      padding: 20px;
+      text-align: center;
+      color: var(--muted);
+    }
+    @media (max-width: 780px) {
+      .topbar, .header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .auth-bar {
+        width: 100%;
+        justify-content: space-between;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand"><span class="brand-mark">DF</span> Daily Funded Admin</div>
+      <div class="auth-bar">
+        <span id="authStatePill" class="status-pill"><span class="status-dot"></span><span id="authStateText">Checking sign-in…</span></span>
+        <button id="signOutBtn" class="secondary" type="button" style="display:none;">Sign out</button>
+      </div>
+    </div>
+
+    <div class="header">
+      <h1>Payment review</h1>
+      <div class="muted" id="refreshLabel">Pending submissions</div>
+    </div>
+
+    <div id="pageMessage" class="message" aria-live="polite"></div>
+
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Purchase ID</th>
+              <th>User UID</th>
+              <th>Plan</th>
+              <th>Size</th>
+              <th>Amount</th>
+              <th>Currency</th>
+              <th>Network</th>
+              <th>Submitted</th>
+              <th>Proof</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="pendingTableBody">
+            <tr>
+              <td colspan="10" class="empty">Waiting for sign-in…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="proofModal" class="proof-modal" aria-modal="true" role="dialog">
+    <div class="proof-dialog">
+      <div class="proof-header">
+        <h2 style="margin:0;">Payment proof</h2>
+        <button class="secondary" type="button" id="closeProofBtn">Close</button>
+      </div>
+      <img id="proofImage" alt="Payment proof" />
+      <div id="proofError" class="proof-error"></div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: 'AIzaSyArsv-HojE9hn_3BAcJVFh5zp4XS9Dw480',
+      authDomain: 'daily-funded.firebaseapp.com',
+      projectId: 'daily-funded',
+      storageBucket: 'daily-funded.firebasestorage.app',
+      messagingSenderId: '1080360028653',
+      appId: '1:1080360028653:web:9afa42197ba011c1613fe4',
+      measurementId: 'G-Y7SP58FQ6H'
+    };
+    const firebaseConfigReady = Object.values(firebaseConfig).every(value => value && !value.startsWith('REPLACE_'));
+    if (firebaseConfigReady && !firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const firebaseAuth = firebaseConfigReady ? firebase.auth() : null;
+    const firebaseAuthPersistenceReady = firebaseAuth ? firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL) : Promise.resolve();
+    const API_BASE = 'https://daily-funded-api.onrender.com';
+
+    function requireFirebaseAuth() {
+      if (!firebaseAuth) throw new Error('Firebase is not configured for this page.');
+      return firebaseAuth;
+    }
+
+    async function firebaseApiHeaders(headers = {}) {
+      const auth = requireFirebaseAuth();
+      await firebaseAuthPersistenceReady;
+      const user = auth.currentUser;
+      if (!user) throw new Error('Sign in to continue.');
+      return { ...headers, Authorization: 'Bearer ' + await user.getIdToken() };
+    }
+
+    const authStatePill = document.getElementById('authStatePill');
+    const authStateText = document.getElementById('authStateText');
+    const signOutBtn = document.getElementById('signOutBtn');
+    const pageMessage = document.getElementById('pageMessage');
+    const pendingTableBody = document.getElementById('pendingTableBody');
+    const proofModal = document.getElementById('proofModal');
+    const proofImage = document.getElementById('proofImage');
+    const proofError = document.getElementById('proofError');
+
+    function setPageMessage(text, type = '') {
+      pageMessage.textContent = text || '';
+      pageMessage.className = 'message' + (type ? ' ' + type : '');
+    }
+
+    function formatCurrencyCents(cents) {
+      if (cents === null || cents === undefined || cents === '') return '—';
+      const value = Number(cents) / 100;
+      if (!Number.isFinite(value)) return '—';
+      return '$' + value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatDate(value) {
+      if (!value) return '—';
+      let date = value;
+      if (typeof value === 'object' && value !== null) {
+        if (typeof value._seconds === 'number') date = new Date(value._seconds * 1000);
+        else if (value.toDate) date = value.toDate();
+        else if (value.$date) date = new Date(value.$date);
+      }
+      const normalized = new Date(date);
+      if (Number.isNaN(normalized.getTime())) return String(value);
+      return normalized.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+    }
+
+    function formatPurchaseAmount(purchase) {
+      if (purchase.amountCents !== undefined && purchase.amountCents !== null) return formatCurrencyCents(purchase.amountCents);
+      if (purchase.totalCents !== undefined && purchase.totalCents !== null) return formatCurrencyCents(purchase.totalCents);
+      return '—';
+    }
+
+    function renderEmptyState(message) {
+      pendingTableBody.innerHTML = '<tr><td colspan="10" class="empty">' + message + '</td></tr>';
+    }
+
+    function renderPendingRows(rows) {
+      if (!rows.length) {
+        renderEmptyState('No pending payment submissions.');
+        return;
+      }
+      pendingTableBody.innerHTML = rows.map((purchase) => {
+        const proof = purchase.paymentProof || {};
+        const proofPath = proof.storagePath || '';
+        const plan = purchase.plan || '—';
+        const size = purchase.size ?? '—';
+        const amount = formatPurchaseAmount(purchase);
+        const currency = purchase.paymentCurrency || '—';
+        const network = purchase.paymentNetwork || '—';
+        const submitted = formatDate(purchase.createdAt);
+        return `
+          <tr>
+            <td>${(purchase.purchaseId || '—').slice(0, 20)}${(purchase.purchaseId || '').length > 20 ? '…' : ''}</td>
+            <td>${(purchase.uid || '—').slice(0, 20)}${(purchase.uid || '').length > 20 ? '…' : ''}</td>
+            <td>${plan}</td>
+            <td>${size}</td>
+            <td>${amount}</td>
+            <td>${currency}</td>
+            <td>${network}</td>
+            <td>${submitted}</td>
+            <td>${proofPath ? `<button type="button" class="secondary" data-proof="${proofPath}" data-format="${proof.format || ''}">View Payment Proof</button>` : 'No proof'}</td>
+            <td>
+              <div class="cell-actions">
+                <button type="button" data-action="approve" data-id="${purchase.purchaseId || ''}">APPROVE</button>
+                <button type="button" class="danger" data-action="reject" data-id="${purchase.purchaseId || ''}">REJECT</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      pendingTableBody.querySelectorAll('[data-action="approve"]').forEach((button) => {
+        button.addEventListener('click', () => handleApprove(button.dataset.id));
+      });
+      pendingTableBody.querySelectorAll('[data-action="reject"]').forEach((button) => {
+        button.addEventListener('click', () => handleReject(button.dataset.id));
+      });
+      pendingTableBody.querySelectorAll('[data-proof]').forEach((button) => {
+        button.addEventListener('click', () => openProof(button.dataset.proof, button.dataset.format));
+      });
+    }
+
+    async function loadPendingPurchases() {
+      if (!firebaseAuth || !firebaseAuth.currentUser) {
+        renderEmptyState('Please sign in with a Daily Funded account.');
+        authStateText.textContent = 'Not signed in';
+        authStatePill.querySelector('.status-dot').classList.remove('authenticated');
+        signOutBtn.style.display = 'none';
+        return;
+      }
+
+      authStateText.textContent = 'Signed in';
+      authStatePill.querySelector('.status-dot').classList.add('authenticated');
+      signOutBtn.style.display = 'inline-flex';
+
+      try {
+        const headers = await firebaseApiHeaders({ Accept: 'application/json' });
+        const response = await fetch(API_BASE + '/api/admin/purchases/pending', {
+          method: 'GET',
+          credentials: 'same-origin',
+          headers
+        });
+
+        if (response.status === 403) {
+          const payload = await response.json().catch(() => ({}));
+          setPageMessage(payload.error || 'Administrator access required.', 'error');
+          renderEmptyState('Administrator access required.');
+          return;
+        }
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error || 'Failed to load pending purchases.');
+        }
+
+        const payload = await response.json();
+        const rows = Array.isArray(payload.purchases) ? payload.purchases : [];
+        setPageMessage(rows.length ? 'Reviewing pending payment submissions.' : 'No pending payment submissions.', rows.length ? '' : 'muted');
+        renderPendingRows(rows);
+      } catch (error) {
+        setPageMessage(error.message || 'Could not load pending payments.', 'error');
+        renderEmptyState('Unable to load the pending review queue.');
+      }
+    }
+
+    async function apiRequest(path, options = {}) {
+      const headers = await firebaseApiHeaders({ Accept: 'application/json', ...(options.headers || {}) });
+      const response = await fetch(API_BASE + path, {
+        credentials: 'same-origin',
+        ...options,
+        headers
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || 'Request failed.');
+      }
+      return payload;
+    }
+
+    async function handleApprove(purchaseId) {
+      if (!purchaseId) return;
+      const confirmed = window.confirm('Approve this payment verification request?');
+      if (!confirmed) return;
+      try {
+        setPageMessage('Approving payment…');
+        await apiRequest('/api/admin/purchases/' + encodeURIComponent(purchaseId) + '/approve', { method: 'POST' });
+        setPageMessage('Payment approved successfully.', 'success');
+        await loadPendingPurchases();
+      } catch (error) {
+        setPageMessage(error.message || 'Approval failed.', 'error');
+      }
+    }
+
+    async function handleReject(purchaseId) {
+      if (!purchaseId) return;
+      const reason = window.prompt('Optional rejection reason (leave blank if none):', '');
+      const confirmed = window.confirm('Reject this payment verification request?');
+      if (!confirmed) return;
+      try {
+        setPageMessage('Rejecting payment…');
+        const body = reason && reason.trim() ? { reason: reason.trim() } : {};
+        await apiRequest('/api/admin/purchases/' + encodeURIComponent(purchaseId) + '/reject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        setPageMessage('Payment rejected successfully.', 'success');
+        await loadPendingPurchases();
+      } catch (error) {
+        setPageMessage(error.message || 'Rejection failed.', 'error');
+      }
+    }
+
+    function showProofError(message) {
+      proofError.textContent = message;
+      proofError.style.display = 'block';
+      proofImage.style.display = 'none';
+    }
+
+    function hideProofError() {
+      proofError.textContent = '';
+      proofError.style.display = 'none';
+      proofImage.style.display = 'block';
+    }
+
+    function openProof(storagePath, format) {
+      const safePath = (storagePath || '').trim();
+      if (!safePath) {
+        showProofError('Payment proof is unavailable for this purchase.');
+        proofModal.classList.add('show');
+        return;
+      }
+      const encoded = encodeURIComponent(safePath).replace(/%2F/g, '%2F');
+      const url = 'https://firebasestorage.googleapis.com/v0/b/' + 'daily-funded.firebasestorage.app' + '/o/' + encoded + '?alt=media';
+      hideProofError();
+      proofImage.src = url;
+      proofImage.alt = 'Payment proof for ' + safePath;
+      proofModal.classList.add('show');
+      proofImage.onerror = () => {
+        showProofError('This payment proof could not be displayed. It may not be publicly accessible or may be missing.');
+      };
+    }
+
+    document.getElementById('closeProofBtn').addEventListener('click', () => {
+      proofModal.classList.remove('show');
+      proofImage.removeAttribute('src');
+      hideProofError();
+    });
+
+    proofModal.addEventListener('click', (event) => {
+      if (event.target === proofModal) {
+        proofModal.classList.remove('show');
+        proofImage.removeAttribute('src');
+        hideProofError();
+      }
+    });
+
+    signOutBtn.addEventListener('click', async () => {
+      try {
+        await requireFirebaseAuth().signOut();
+      } catch (error) {
+        setPageMessage('Could not sign out.', 'error');
+      }
+    });
+
+    if (firebaseAuth) {
+      firebaseAuth.onAuthStateChanged(async (user) => {
+        if (!user) {
+          authStateText.textContent = 'Not signed in';
+          authStatePill.querySelector('.status-dot').classList.remove('authenticated');
+          signOutBtn.style.display = 'none';
+          setPageMessage('Please sign in with a Daily Funded Firebase account.', 'error');
+          renderEmptyState('Please sign in to review payments.');
+          return;
+        }
+        await loadPendingPurchases();
+      });
+    } else {
+      authStateText.textContent = 'Not configured';
+      setPageMessage('Firebase is not configured for this page.', 'error');
+      renderEmptyState('Firebase is not configured for this page.');
+    }
+  </script>
+</body>
+</html>

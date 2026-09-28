@@ -139,6 +139,16 @@ def read_json_object():
     return payload if isinstance(payload, dict) else {}
 
 
+def find_purchase_document(purchase_id):
+    purchase_id = str(purchase_id or "").strip()
+    if not purchase_id:
+        return None
+    for document in get_firestore().collection_group("purchases").stream():
+        if document.id == purchase_id:
+            return document
+    return None
+
+
 @app.errorhandler(413)
 def request_too_large(_error):
     return jsonify(error="Payment proof must be no larger than 5 MB."), 413
@@ -355,6 +365,130 @@ def mt5_account(account_id):
     if not account.exists:
         return jsonify(error="Account not found."), 404
     return jsonify(error="MT5 demo integration is not configured."), 503
+
+
+@app.get("/api/admin/purchases/pending")
+@firebase_auth_required
+def admin_pending_purchases():
+    admin_error = require_admin()
+    if admin_error is not None:
+        return admin_error
+
+    purchases = []
+    for document in get_firestore().collection_group("purchases").where("status", "==", "pending_payment_verification").stream():
+        data = document.to_dict() or {}
+        proof = data.get("paymentProof")
+        if not isinstance(proof, dict):
+            proof = {}
+        purchases.append({
+            "purchaseId": document.id,
+            "uid": data.get("ownerUid"),
+            "plan": data.get("planKey"),
+            "size": data.get("accountSize"),
+            "amountCents": data.get("totalCents", data.get("listPriceCents")),
+            "paymentCurrency": data.get("paymentCurrency"),
+            "paymentNetwork": data.get("paymentNetwork"),
+            "createdAt": data.get("createdAt"),
+            "paymentProof": {
+                "storagePath": proof.get("storagePath"),
+                "format": proof.get("format"),
+                "sizeBytes": proof.get("sizeBytes"),
+                "contentType": proof.get("contentType"),
+            },
+        })
+    return jsonify(purchases=firestore_json(purchases))
+
+
+@app.post("/api/admin/purchases/<purchase_id>/approve")
+@firebase_auth_required
+def admin_approve_purchase(purchase_id):
+    admin_error = require_admin()
+    if admin_error is not None:
+        return admin_error
+
+    purchase = find_purchase_document(purchase_id)
+    if purchase is None:
+        return jsonify(error="Purchase not found."), 404
+
+    data = purchase.to_dict() or {}
+    if data.get("status") != "pending_payment_verification":
+        return jsonify(error="Purchase is not currently awaiting payment verification."), 409
+
+    owner_uid = data.get("ownerUid")
+    account_id = data.get("accountId")
+    if not isinstance(owner_uid, str) or not owner_uid.strip():
+        return jsonify(error="Purchase is missing an owner UID."), 400
+
+    audit = {"approvedBy": g.firebase_uid, "approvedAt": firestore.SERVER_TIMESTAMP}
+    purchase.reference.update({
+        "status": "paid",
+        "reviewedBy": g.firebase_uid,
+        "reviewedAt": firestore.SERVER_TIMESTAMP,
+        "audit": audit,
+    })
+
+    if isinstance(account_id, str) and account_id.strip():
+        account_ref = user_document(owner_uid).collection("accounts").document(account_id)
+        account = account_ref.get()
+        if account.exists:
+            account_ref.update({
+                "status": "paid",
+                "reviewedBy": g.firebase_uid,
+                "reviewedAt": firestore.SERVER_TIMESTAMP,
+                "audit": audit,
+            })
+
+    return jsonify(purchaseId=purchase_id, status="paid", reviewedBy=g.firebase_uid), 200
+
+
+@app.post("/api/admin/purchases/<purchase_id>/reject")
+@firebase_auth_required
+def admin_reject_purchase(purchase_id):
+    admin_error = require_admin()
+    if admin_error is not None:
+        return admin_error
+
+    purchase = find_purchase_document(purchase_id)
+    if purchase is None:
+        return jsonify(error="Purchase not found."), 404
+
+    data = purchase.to_dict() or {}
+    if data.get("status") != "pending_payment_verification":
+        return jsonify(error="Purchase is not currently awaiting payment verification."), 409
+
+    payload = read_json_object()
+    reason = payload.get("reason")
+    if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+        return jsonify(error="Reason must be a non-empty string when provided."), 400
+    reason = reason.strip() if isinstance(reason, str) else None
+
+    owner_uid = data.get("ownerUid")
+    account_id = data.get("accountId")
+    if not isinstance(owner_uid, str) or not owner_uid.strip():
+        return jsonify(error="Purchase is missing an owner UID."), 400
+
+    audit = {"rejectedBy": g.firebase_uid, "rejectedAt": firestore.SERVER_TIMESTAMP}
+    if reason is not None:
+        audit["reason"] = reason
+    purchase.reference.update({
+        "status": "payment_rejected",
+        "reviewedBy": g.firebase_uid,
+        "reviewedAt": firestore.SERVER_TIMESTAMP,
+        "audit": audit,
+    })
+
+    if isinstance(account_id, str) and account_id.strip():
+        account_ref = user_document(owner_uid).collection("accounts").document(account_id)
+        account = account_ref.get()
+        if account.exists:
+            account_ref.update({
+                "status": "payment_rejected",
+                "reviewedBy": g.firebase_uid,
+                "reviewedAt": firestore.SERVER_TIMESTAMP,
+                "audit": audit,
+            })
+
+    return jsonify(purchaseId=purchase_id, status="payment_rejected", reviewedBy=g.firebase_uid), 200
 
 
 @app.get("/api/payouts")
