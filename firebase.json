@@ -6,15 +6,6 @@
       "**/.*",
       "**/node_modules/**"
     ],
-    "rewrites": [
-      {
-        "source": "/api/**",
-        "run": {
-          "serviceId": "daily-funded-api",
-          "region": "us-central1"
-        }
-      }
-    ],
     "cleanUrls": false,
     "trailingSlash": false
   },
