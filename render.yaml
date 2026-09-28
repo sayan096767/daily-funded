@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: daily-funded-api
+    runtime: python
+    plan: starter
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    disk:
+      name: daily-funded-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DAILYFUNDED_SECRET_KEY
+        generateValue: true
+      - key: DAILYFUNDED_DATABASE_PATH
+        value: /var/data/database.db
+      - key: DAILYFUNDED_SESSION_COOKIE_SAMESITE
+        value: None
+      - key: DAILYFUNDED_COOKIE_SECURE
+        value: "1"
+      - key: DAILYFUNDED_FRONTEND_ORIGINS
+        value: https://daily-funded.web.app

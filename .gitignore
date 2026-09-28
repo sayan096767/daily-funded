@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+*.pyo
+*.db
+.firebase/
+backups/
+.DS_Store
+service-account*.json
+*service-account*.json
+*firebase-adminsdk*.json
