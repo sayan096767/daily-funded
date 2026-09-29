@@ -7,6 +7,68 @@ from flask import g
 from app import app, require_admin
 
 
+class RegistrationProfileApiTests(unittest.TestCase):
+    def setUp(self):
+        self.client = app.test_client()
+
+    def submit_registration(self, profile_exists):
+        claims = {"uid": "authenticated-user", "email": "verified@example.com"}
+        fake_firestore = MagicMock()
+        profile_ref = fake_firestore.collection.return_value.document.return_value
+        profile_ref.get.return_value.exists = profile_exists
+        payload = {
+            "uid": "browser-selected-user",
+            "email": "unverified@example.com",
+            "password": "must-not-be-stored",
+            "firstName": "Ada",
+            "lastName": "Lovelace",
+            "dateOfBirth": "1815-12-10",
+            "country": "GB",
+            "phone": "+441234567890",
+        }
+
+        with patch("app.firebase_auth.verify_id_token", return_value=claims):
+            with patch("app.get_firebase_app"):
+                with patch("app.get_firestore", return_value=fake_firestore):
+                    response = self.client.post(
+                        "/api/auth/register",
+                        json=payload,
+                        headers={"Authorization": "Bearer fake-token"},
+                    )
+
+        return response, fake_firestore, profile_ref
+
+    def test_registration_creates_profile_for_authenticated_uid(self):
+        response, fake_firestore, profile_ref = self.submit_registration(profile_exists=False)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.get_json()["uid"], "authenticated-user")
+        fake_firestore.collection.assert_called_once_with("users")
+        fake_firestore.collection.return_value.document.assert_called_once_with("authenticated-user")
+        profile_ref.set.assert_called_once()
+        stored_profile = profile_ref.set.call_args.args[0]
+        self.assertEqual(stored_profile["firstName"], "Ada")
+        self.assertEqual(stored_profile["lastName"], "Lovelace")
+        self.assertEqual(stored_profile["email"], "verified@example.com")
+        self.assertEqual(stored_profile["phone"], "+441234567890")
+        self.assertEqual(stored_profile["dateOfBirth"], "1815-12-10")
+        self.assertEqual(stored_profile["country"], "GB")
+        self.assertIn("createdAt", stored_profile)
+        self.assertIn("updatedAt", stored_profile)
+        self.assertNotIn("password", stored_profile)
+        self.assertNotIn("uid", stored_profile)
+        self.assertTrue(profile_ref.set.call_args.kwargs["merge"])
+
+    def test_registration_update_preserves_existing_created_at(self):
+        response, _fake_firestore, profile_ref = self.submit_registration(profile_exists=True)
+
+        self.assertEqual(response.status_code, 201)
+        stored_profile = profile_ref.set.call_args.args[0]
+        self.assertNotIn("createdAt", stored_profile)
+        self.assertIn("updatedAt", stored_profile)
+        self.assertTrue(profile_ref.set.call_args.kwargs["merge"])
+
+
 class RequireAdminTests(unittest.TestCase):
     def check_admin(self, claims):
         with app.test_request_context():
