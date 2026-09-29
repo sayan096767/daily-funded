@@ -201,7 +201,6 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .dashboard-side-nav a:hover .dashboard-nav-mark{transform:translateY(-1px); border-color:rgba(255,255,255,.2); box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 4px 9px rgba(0,0,0,.3);}
   .dashboard-side-nav a.active .dashboard-nav-mark{border-color:rgba(62,207,126,.4); background:linear-gradient(145deg,#23412e,#122319); box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 0 12px rgba(62,207,126,.12);}
   .dashboard-nav-desk{--icon-color:#68d99b;}
-  .dashboard-nav-accounts{--icon-color:#81c7e5;}
   .dashboard-nav-rewards{--icon-color:#e8c65d;}
   .dashboard-nav-competitions{--icon-color:#f29b61;}
   .dashboard-nav-calendar{--icon-color:#81c7e5;}
@@ -1100,7 +1099,6 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
     <div class="dashboard-sidebar-label">TRADER WORKSPACE</div>
     <nav class="dashboard-side-nav" aria-label="Trader workspace">
       <a class="active" href="#dashTop" data-dashboard-view="desk" aria-current="page"><span class="dashboard-nav-mark dashboard-nav-desk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9M9 20v-6h6v6"/></svg></span>Trader Desk</a>
-      <a href="#accountOverview" data-dashboard-view="desk"><span class="dashboard-nav-mark dashboard-nav-accounts" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg></span>Accounts</a>
       <a href="#rewardsView" data-dashboard-view="rewards"><span class="dashboard-nav-mark dashboard-nav-rewards" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="m8.5 12-1 9 4.5-2.5 4.5 2.5-1-9"/></svg></span>Rewards</a>
       <a href="#competitionsView" data-dashboard-view="competitions"><span class="dashboard-nav-mark dashboard-nav-competitions" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M7 6H4v2a4 4 0 0 0 4 4M17 6h3v2a4 4 0 0 1-4 4M12 13v5M8 21h8M9 18h6"/></svg></span>Competitions</a>
       <a href="#economicCalendarView" data-dashboard-view="calendar"><span class="dashboard-nav-mark dashboard-nav-calendar" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h2M14 14h2M8 17h2"/></svg></span>Economic Calendar</a>
