@@ -38,7 +38,11 @@ async function firebaseApiHeaders(headers={}){
   if(!user) throw new Error('Sign in to continue.');
   return {...headers,Authorization:'Bearer ' + await user.getIdToken()};
 }
-const API_BASE = 'https://daily-funded-api.onrender.com';
+const PRODUCTION_API_BASE = 'https://daily-funded-api.onrender.com';
+const LOCAL_API_BASE = 'http://127.0.0.1:8080';
+const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
+  ? LOCAL_API_BASE
+  : PRODUCTION_API_BASE;
 </script>
 <style>
   :root{
@@ -1952,7 +1956,7 @@ function getAccounts(){
   return dashboardAccounts;
 }
 
-function openDashboard(){
+function openDashboard(preferredAccountId){
   closeRegistration();
   document.body.classList.add('dashboard-open');
   setDashboardView('desk',document.querySelector('.dashboard-side-nav a[data-dashboard-view="desk"]'));
@@ -1960,7 +1964,7 @@ function openDashboard(){
   document.querySelector('footer').style.display = 'none';
   dashboard.classList.add('active');
   window.scrollTo({top:0, behavior:'instant'});
-  refreshDashboard();
+  refreshDashboard(preferredAccountId);
 }
 function closeDashboard(){
   document.body.classList.remove('dashboard-open');
@@ -2002,6 +2006,7 @@ document.querySelectorAll('.open-dash').forEach(a=>{
     e.preventDefault();
     if(firebaseAuth) await firebaseAuthStateReady;
     if(a === firebaseHeaderAccountLink && firebaseCurrentUser){ signOutFirebase(); return; }
+    if(firebaseCurrentUser){ openDashboard(); return; }
     openRegistration();
   });
 });
@@ -2477,22 +2482,61 @@ async function loadDashboardAccounts(){
   dashboardAccounts = accounts;
 }
 async function createPurchase(purchase){
-  const proof = document.getElementById('proofInput').files[0];
+  const proofInput = document.getElementById('proofInput');
+  const proof = proofInput && proofInput.files[0];
+  if(!proof) throw new Error('Attach a payment screenshot before submitting.');
   const form = new FormData();
   form.set('plan',purchase.planKey);
   form.set('size',String(purchase.size));
   form.set('coupon',document.getElementById('couponCodeInput').value.trim());
+  form.set('submissionId',pendingSubmissionId);
   form.set('currency',currentCurrency);
   form.set('network',document.querySelector('#netTabs .net-tab.active')?.dataset.net || '');
   form.set('proof',proof);
-  const response = await fetch(API_BASE + '/api/purchases',{method:'POST',credentials:'same-origin',headers:await firebaseApiHeaders({Accept:'application/json'}),body:form});
-  const result = await response.json();
-  if(!response.ok) throw new Error(result.error || 'Purchase could not be submitted');
+  let headers;
+  try{ headers = await firebaseApiHeaders({Accept:'application/json'}); }
+  catch(error){ throw new Error('Payment sign-in required. ' + error.message); }
+  let response;
+  try{
+    response = await fetch(API_BASE + '/api/purchases',{method:'POST',credentials:'same-origin',headers,body:form});
+  }catch(error){
+    throw new Error('Could not connect to payment API at ' + API_BASE + ' from ' + window.location.origin + '. Check the backend and CORS. ' + error.message);
+  }
+  const responseText = await response.text();
+  let result = {};
+  try{ result = responseText ? JSON.parse(responseText) : {}; }
+  catch(error){ result.error = 'Payment API returned HTTP ' + response.status + ' with a non-JSON response.'; }
+  if(!response.ok){
+    if(response.status === 409){
+      clearPendingSubmissionId();
+      pendingSubmissionId = getPendingSubmissionId(pendingPurchase);
+    }
+    throw new Error(result.error || 'Purchase could not be submitted (HTTP ' + response.status + ').');
+  }
   return result;
 }
 
-function purchaseAccount(){
-  openDashboard();
+function getPendingSubmissionId(purchase){
+  const key = 'dailyFundedPendingPurchase';
+  try{
+    const saved = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if(saved && saved.planKey === purchase.planKey && Number(saved.size) === purchase.size && saved.id) return saved.id;
+  }catch(error){}
+  const id = crypto.randomUUID();
+  try{ sessionStorage.setItem(key,JSON.stringify({id,planKey:purchase.planKey,size:purchase.size})); }catch(error){}
+  return id;
+}
+
+function clearPendingSubmissionId(){
+  try{
+    const saved = JSON.parse(sessionStorage.getItem('dailyFundedPendingPurchase') || 'null');
+    if(saved && saved.id === pendingSubmissionId) sessionStorage.removeItem('dailyFundedPendingPurchase');
+  }catch(error){}
+  pendingSubmissionId = '';
+}
+
+function purchaseAccount(accountId){
+  openDashboard(accountId);
 }
 
 /* Checkout: shows the selected challenge + size, and a crypto payment UI grouped by currency. */
@@ -2513,6 +2557,7 @@ const cryptoGroups = {
 };
 let currentCurrency = 'usdt';
 let pendingPurchase = null;
+let pendingSubmissionId = '';
 let qrInstance = null;
 const activeCouponCode = 'DAILYFUNDED30';
 let checkoutBasePrice = 0;
@@ -2574,6 +2619,7 @@ document.getElementById('heroCouponCheckoutBtn').addEventListener('click',async(
 
 function openCheckout(size, label, price, split, planKey){
   pendingPurchase = { size, label, planKey };
+  pendingSubmissionId = getPendingSubmissionId(pendingPurchase);
   checkoutBasePrice = price;
   const couponForCheckout = pendingHomepageCoupon;
   pendingHomepageCoupon = '';
@@ -2765,24 +2811,39 @@ const coPayBtnEl = document.getElementById('coPayBtn');
 if(coPayBtnEl){
   coPayBtnEl.addEventListener('click', async e=>{
     e.preventDefault();
-    if(!pendingPurchase) return;
+    if(!pendingPurchase || coPayBtnEl.dataset.submitting === 'true') return;
+    const couponCode = document.getElementById('couponCodeInput').value.trim();
+    if(couponCode && couponCode.toUpperCase() !== activeCouponCode){
+      const couponStatus = document.getElementById('couponStatus');
+      couponStatus.className = 'coupon-status error';
+      couponStatus.textContent = 'Invalid coupon code. Correct or remove it before submitting payment.';
+      return;
+    }
+    if(couponCode && !couponApplied) applyCheckoutCoupon();
+    if(!couponCode && couponApplied){
+      couponApplied = false;
+      updateCheckoutPrice();
+    }
     const proofInput = document.getElementById('proofInput');
     if(!proofInput || proofInput.files.length === 0){
       const popup = document.getElementById('attachPopup');
       if(popup) popup.classList.add('show');
       return;
     }
+    coPayBtnEl.dataset.submitting = 'true';
     coPayBtnEl.setAttribute('aria-disabled','true');
     try{
-      await createPurchase(pendingPurchase);
+      const purchase = await createPurchase(pendingPurchase);
+      clearPendingSubmissionId();
       closeCheckout();
-      purchaseAccount();
+      purchaseAccount(purchase.accountId);
       pendingPurchase = null;
     }catch(error){
       const status = document.getElementById('couponStatus');
       status.className = 'coupon-status error';
       status.textContent = error.message;
     }finally{
+      delete coPayBtnEl.dataset.submitting;
       coPayBtnEl.removeAttribute('aria-disabled');
     }
   });
@@ -2800,7 +2861,7 @@ if(attachPopupEl){
   });
 }
 
-async function refreshDashboard(){
+async function refreshDashboard(preferredAccountId){
   try{
     await loadDashboardAccounts();
     document.querySelector('#dashEmpty h4').textContent = 'No Daily Funded challenge account yet';
@@ -2832,7 +2893,8 @@ async function refreshDashboard(){
   if(payoutBtn){ payoutBtn.style.display = ''; payoutBtn.disabled = !accounts.some(account=>account.status === 'active' && Number(account.withdrawableProfit) > 0); }
 
   sel.innerHTML = accounts.map(a=>`<option value="${a.id}">$${a.size.toLocaleString()} · ${a.label}</option>`).join('');
-  if(!accounts.find(a=>a.id===sel.value) && accounts.length) sel.value = accounts[0].id;
+  if(preferredAccountId && accounts.some(account=>account.id===preferredAccountId)) sel.value = preferredAccountId;
+  else if(!accounts.find(a=>a.id===sel.value) && accounts.length) sel.value = accounts[0].id;
 
   renderAccount();
   renderRewardsCertificate();
@@ -2845,12 +2907,16 @@ function renderAccount(){
   if(!data) return;
 
   document.getElementById('accountTitle').textContent = '$' + data.size.toLocaleString() + ' challenge';
-  document.getElementById('accountSummary').textContent = data.status === 'pending_payment_verification'
-    ? 'Payment proof received · awaiting verification'
-    : data.label + ' challenge · MT5 demo data loads after broker connection';
+  document.getElementById('accountSummary').textContent = ['pending','pending_payment_verification'].includes(data.status)
+    ? 'Payment submitted. Awaiting admin approval.'
+    : ['rejected','payment_rejected'].includes(data.status)
+      ? 'Payment was rejected. Contact support for assistance.'
+      : data.label + ' challenge · MT5 demo data loads after broker connection';
   document.getElementById('accountPlan').textContent = data.label.toUpperCase();
   const statusBadge = document.querySelector('#accountOverview .account-badge.active');
-  statusBadge.textContent = data.status === 'pending_payment_verification' ? 'PAYMENT PENDING' : data.status.replaceAll('_',' ').toUpperCase();
+  statusBadge.textContent = ['pending','pending_payment_verification'].includes(data.status)
+    ? 'PAYMENT PENDING'
+    : data.status.replaceAll('_',' ').toUpperCase();
   renderMt5Account(data.id);
 
   const money = value => value != null && Number.isFinite(Number(value)) ? '$' + Number(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';

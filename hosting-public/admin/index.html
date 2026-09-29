@@ -91,6 +91,11 @@
       gap: 16px;
       margin-bottom: 18px;
     }
+    .review-section-heading {
+      margin: 0 0 12px;
+      font-size: 18px;
+      font-weight: 700;
+    }
     h1 {
       margin: 0;
       font-size: clamp(28px, 4vw, 40px);
@@ -282,21 +287,24 @@
 
     <div class="header">
       <h1>Payment review</h1>
-      <div class="muted" id="refreshLabel">Pending submissions</div>
     </div>
 
     <div id="pageMessage" class="message" aria-live="polite"></div>
 
+    <h2 class="review-section-heading">Pending Requests</h2>
     <div class="card">
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Purchase ID</th>
-              <th>User UID</th>
-              <th>Plan</th>
-              <th>Size</th>
-              <th>Amount</th>
+              <th>User</th>
+              <th>Challenge / size</th>
+              <th>Original price</th>
+              <th>Coupon</th>
+              <th>Discount</th>
+              <th>Final amount</th>
+              <th>Status</th>
               <th>Currency</th>
               <th>Network</th>
               <th>Submitted</th>
@@ -306,7 +314,65 @@
           </thead>
           <tbody id="pendingTableBody">
             <tr>
-              <td colspan="10" class="empty">Waiting for sign-in…</td>
+              <td colspan="13" class="empty">Waiting for sign-in…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2 class="review-section-heading">Active</h2>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Purchase ID</th>
+              <th>User</th>
+              <th>Challenge / size</th>
+              <th>Original price</th>
+              <th>Coupon</th>
+              <th>Discount</th>
+              <th>Final amount</th>
+              <th>Status</th>
+              <th>Currency</th>
+              <th>Network</th>
+              <th>Submitted</th>
+              <th>Proof</th>
+            </tr>
+          </thead>
+          <tbody id="activeTableBody">
+            <tr>
+              <td colspan="12" class="empty">Waiting for sign-in…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2 class="review-section-heading">Rejected</h2>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Purchase ID</th>
+              <th>User</th>
+              <th>Challenge / size</th>
+              <th>Original price</th>
+              <th>Coupon</th>
+              <th>Discount</th>
+              <th>Final amount</th>
+              <th>Status</th>
+              <th>Currency</th>
+              <th>Network</th>
+              <th>Submitted</th>
+              <th>Proof</th>
+            </tr>
+          </thead>
+          <tbody id="rejectedTableBody">
+            <tr>
+              <td colspan="12" class="empty">Waiting for sign-in…</td>
             </tr>
           </tbody>
         </table>
@@ -341,7 +407,11 @@
     if (firebaseConfigReady && !firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const firebaseAuth = firebaseConfigReady ? firebase.auth() : null;
     const firebaseAuthPersistenceReady = firebaseAuth ? firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL) : Promise.resolve();
-    const API_BASE = 'https://daily-funded-api.onrender.com';
+    const PRODUCTION_API_BASE = 'https://daily-funded-api.onrender.com';
+    const LOCAL_API_BASE = 'http://127.0.0.1:8080';
+    const API_BASE = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+      ? LOCAL_API_BASE
+      : PRODUCTION_API_BASE;
 
     function requireFirebaseAuth() {
       if (!firebaseAuth) throw new Error('Firebase is not configured for this page.');
@@ -363,9 +433,12 @@
     const signInButton = document.getElementById('signInButton');
     const pageMessage = document.getElementById('pageMessage');
     const pendingTableBody = document.getElementById('pendingTableBody');
+    const activeTableBody = document.getElementById('activeTableBody');
+    const rejectedTableBody = document.getElementById('rejectedTableBody');
     const proofModal = document.getElementById('proofModal');
     const proofImage = document.getElementById('proofImage');
     const proofError = document.getElementById('proofError');
+    let proofObjectUrl = null;
 
     function setPageMessage(text, type = '') {
       pageMessage.textContent = text || '';
@@ -398,59 +471,86 @@
       return '—';
     }
 
-    function renderEmptyState(message) {
-      pendingTableBody.innerHTML = '<tr><td colspan="10" class="empty">' + message + '</td></tr>';
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[character]);
     }
 
-    function renderPendingRows(rows) {
-      if (!rows.length) {
-        renderEmptyState('No pending payment submissions.');
+    function renderEmptyState(tableBody, message, columnCount) {
+      tableBody.innerHTML = '<tr><td colspan="' + columnCount + '" class="empty">' + message + '</td></tr>';
+    }
+
+    function renderAllEmptyStates(message) {
+      renderEmptyState(pendingTableBody, message, 13);
+      renderEmptyState(activeTableBody, message, 12);
+      renderEmptyState(rejectedTableBody, message, 12);
+    }
+
+    function renderPurchaseRows(tableBody, rows, emptyMessage, includeActions = false) {
+      const uniqueRows = Array.from(new Map(rows.map(purchase => [purchase.purchaseId, purchase])).values());
+      if (!uniqueRows.length) {
+        renderEmptyState(tableBody, emptyMessage, includeActions ? 13 : 12);
         return;
       }
-      pendingTableBody.innerHTML = rows.map((purchase) => {
+      tableBody.innerHTML = uniqueRows.map((purchase) => {
         const proof = purchase.paymentProof || {};
-        const proofPath = proof.storagePath || '';
-        const plan = purchase.plan || '—';
-        const size = purchase.size ?? '—';
+        const purchaseId = escapeHtml(purchase.purchaseId || '');
+        const username = escapeHtml(purchase.username || '');
+        const email = escapeHtml(purchase.userEmail || purchase.uid || '—');
+        const plan = escapeHtml(purchase.planLabel || purchase.plan || '—');
+        const size = escapeHtml(purchase.size ?? '—');
+        const original = formatCurrencyCents(purchase.originalPriceCents);
+        const coupon = purchase.couponCode ? escapeHtml(purchase.couponCode) : 'No coupon';
+        const discount = formatCurrencyCents(purchase.discountCents || 0);
         const amount = formatPurchaseAmount(purchase);
-        const currency = purchase.paymentCurrency || '—';
-        const network = purchase.paymentNetwork || '—';
-        const submitted = formatDate(purchase.createdAt);
+        const status = escapeHtml(purchase.status || 'pending');
+        const accountStatus = purchase.accountStatus
+          ? `<br><span class="muted">Account ${escapeHtml(purchase.accountStatus)}</span>`
+          : '';
+        const currency = escapeHtml(purchase.paymentCurrency || '—');
+        const network = escapeHtml(purchase.paymentNetwork || '—');
+        const submitted = escapeHtml(formatDate(purchase.createdAt));
         return `
           <tr>
-            <td>${(purchase.purchaseId || '—').slice(0, 20)}${(purchase.purchaseId || '').length > 20 ? '…' : ''}</td>
-            <td>${(purchase.uid || '—').slice(0, 20)}${(purchase.uid || '').length > 20 ? '…' : ''}</td>
-            <td>${plan}</td>
-            <td>${size}</td>
+            <td>${purchaseId.slice(0, 20)}${purchaseId.length > 20 ? '…' : ''}</td>
+            <td>${username ? username + '<br>' : ''}${email}</td>
+            <td>${plan} · $${Number(size).toLocaleString('en-US')}</td>
+            <td>${original}</td>
+            <td>${coupon}</td>
+            <td>${discount}</td>
             <td>${amount}</td>
+            <td>${status}${accountStatus}</td>
             <td>${currency}</td>
             <td>${network}</td>
             <td>${submitted}</td>
-            <td>${proofPath ? `<button type="button" class="secondary" data-proof="${proofPath}" data-format="${proof.format || ''}">View Payment Proof</button>` : 'No proof'}</td>
-            <td>
+            <td>${proof.storagePath || proof.publicId ? `<button type="button" class="secondary" data-proof="${purchaseId}">View Payment Proof</button>` : 'No proof'}</td>
+            ${includeActions ? `<td>
               <div class="cell-actions">
-                <button type="button" data-action="approve" data-id="${purchase.purchaseId || ''}">APPROVE</button>
-                <button type="button" class="danger" data-action="reject" data-id="${purchase.purchaseId || ''}">REJECT</button>
+                <button type="button" data-action="approve" data-id="${purchaseId}">APPROVE</button>
+                <button type="button" class="danger" data-action="reject" data-id="${purchaseId}">REJECT</button>
               </div>
-            </td>
+            </td>` : ''}
           </tr>
         `;
       }).join('');
 
-      pendingTableBody.querySelectorAll('[data-action="approve"]').forEach((button) => {
-        button.addEventListener('click', () => handleApprove(button.dataset.id));
-      });
-      pendingTableBody.querySelectorAll('[data-action="reject"]').forEach((button) => {
-        button.addEventListener('click', () => handleReject(button.dataset.id));
-      });
-      pendingTableBody.querySelectorAll('[data-proof]').forEach((button) => {
-        button.addEventListener('click', () => openProof(button.dataset.proof, button.dataset.format));
+      if (includeActions) {
+        tableBody.querySelectorAll('[data-action="approve"]').forEach((button) => {
+          button.addEventListener('click', () => handleApprove(button.dataset.id));
+        });
+        tableBody.querySelectorAll('[data-action="reject"]').forEach((button) => {
+          button.addEventListener('click', () => handleReject(button.dataset.id));
+        });
+      }
+      tableBody.querySelectorAll('[data-proof]').forEach((button) => {
+        button.addEventListener('click', () => openProof(button.dataset.proof));
       });
     }
 
     async function loadPendingPurchases() {
       if (!firebaseAuth || !firebaseAuth.currentUser) {
-        renderEmptyState('Please sign in with a Daily Funded account.');
+        renderAllEmptyStates('Please sign in with a Daily Funded account.');
         authStateText.textContent = 'Not signed in';
         authStatePill.querySelector('.status-dot').classList.remove('authenticated');
         signInForm.style.display = 'grid';
@@ -462,7 +562,7 @@
       authStatePill.querySelector('.status-dot').classList.add('authenticated');
       signInForm.style.display = 'none';
       signOutBtn.style.display = 'inline-flex';
-      renderEmptyState('Checking administrator access…');
+      renderAllEmptyStates('Checking administrator access…');
 
       try {
         const headers = await firebaseApiHeaders({ Accept: 'application/json' });
@@ -475,7 +575,7 @@
         if (response.status === 403) {
           await response.json().catch(() => ({}));
           setPageMessage('Administrator access required.', 'error');
-          renderEmptyState('Administrator access required.');
+          renderAllEmptyStates('Administrator access required.');
           return;
         }
 
@@ -485,12 +585,16 @@
         }
 
         const payload = await response.json();
-        const rows = Array.isArray(payload.purchases) ? payload.purchases : [];
-        setPageMessage(rows.length ? 'Reviewing pending payment submissions.' : 'No pending payment submissions.', rows.length ? '' : 'muted');
-        renderPendingRows(rows);
+        const pendingRows = Array.isArray(payload.purchases) ? payload.purchases : [];
+        const activeRows = Array.isArray(payload.active) ? payload.active : [];
+        const rejectedRows = Array.isArray(payload.rejected) ? payload.rejected : [];
+        setPageMessage('Admin purchase statuses refreshed.', 'muted');
+        renderPurchaseRows(pendingTableBody, pendingRows, 'No pending requests.', true);
+        renderPurchaseRows(activeTableBody, activeRows, 'No active purchases.');
+        renderPurchaseRows(rejectedTableBody, rejectedRows, 'No rejected purchases.');
       } catch (error) {
         setPageMessage(error.message || 'Could not load pending payments.', 'error');
-        renderEmptyState('Unable to load the pending review queue.');
+        renderAllEmptyStates('Unable to load admin purchase statuses.');
       }
     }
 
@@ -573,35 +677,43 @@
       proofImage.style.display = 'block';
     }
 
-    function openProof(storagePath, format) {
-      const safePath = (storagePath || '').trim();
-      if (!safePath) {
-        showProofError('Payment proof is unavailable for this purchase.');
-        proofModal.classList.add('show');
-        return;
-      }
-      const encoded = encodeURIComponent(safePath).replace(/%2F/g, '%2F');
-      const url = 'https://firebasestorage.googleapis.com/v0/b/' + 'daily-funded.firebasestorage.app' + '/o/' + encoded + '?alt=media';
-      hideProofError();
-      proofImage.src = url;
-      proofImage.alt = 'Payment proof for ' + safePath;
+    async function openProof(purchaseId) {
       proofModal.classList.add('show');
-      proofImage.onerror = () => {
-        showProofError('This payment proof could not be displayed. It may not be publicly accessible or may be missing.');
-      };
+      proofImage.style.display = 'none';
+      proofError.style.display = 'none';
+      try {
+        const response = await fetch(API_BASE + '/api/admin/purchases/' + encodeURIComponent(purchaseId) + '/proof', {
+          headers: await firebaseApiHeaders({ Accept: 'image/*' })
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error || `Could not load payment proof (HTTP ${response.status}).`);
+        }
+        if (proofObjectUrl) URL.revokeObjectURL(proofObjectUrl);
+        proofObjectUrl = URL.createObjectURL(await response.blob());
+        proofImage.src = proofObjectUrl;
+        proofImage.alt = 'Payment proof for purchase ' + purchaseId;
+        proofImage.style.display = 'block';
+      } catch (error) {
+        showProofError(error.message || 'Payment proof is unavailable.');
+      }
+    }
+
+    function closeProofModal() {
+      proofModal.classList.remove('show');
+      proofImage.removeAttribute('src');
+      if (proofObjectUrl) URL.revokeObjectURL(proofObjectUrl);
+      proofObjectUrl = null;
+      hideProofError();
     }
 
     document.getElementById('closeProofBtn').addEventListener('click', () => {
-      proofModal.classList.remove('show');
-      proofImage.removeAttribute('src');
-      hideProofError();
+      closeProofModal();
     });
 
     proofModal.addEventListener('click', (event) => {
       if (event.target === proofModal) {
-        proofModal.classList.remove('show');
-        proofImage.removeAttribute('src');
-        hideProofError();
+        closeProofModal();
       }
     });
 
@@ -621,7 +733,7 @@
           signInForm.style.display = 'grid';
           signOutBtn.style.display = 'none';
           setPageMessage('Please sign in with a Daily Funded Firebase account.', 'error');
-          renderEmptyState('Please sign in to review payments.');
+          renderAllEmptyStates('Please sign in to review payments.');
           return;
         }
         await loadPendingPurchases();
@@ -630,7 +742,7 @@
       authStateText.textContent = 'Not configured';
       signInForm.style.display = 'none';
       setPageMessage('Firebase is not configured for this page.', 'error');
-      renderEmptyState('Firebase is not configured for this page.');
+      renderAllEmptyStates('Firebase is not configured for this page.');
     }
   </script>
 </body>

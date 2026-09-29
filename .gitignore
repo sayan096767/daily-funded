@@ -11,3 +11,4 @@ backups/
 service-account*.json
 *service-account*.json
 *firebase-adminsdk*.json
+backend/daily-funded-firebase-adminsdk-fbsvc-f4528eb4b8.json
