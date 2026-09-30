@@ -1,0 +1,40 @@
+/* Transparent hero artwork overlay. Image path is relative to this stylesheet. */
+.hero {
+  isolation: isolate;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .58;
+  background-image: url("hero-assets.png");
+  background-repeat: no-repeat;
+  background-position: center 25%;
+  background-size: min(1400px, 100%) auto;
+  mix-blend-mode: screen;
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
+}
+
+.hero > .wrap {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 1100px) {
+  .hero::before {
+    opacity: .4;
+    background-size: 1100px auto;
+    background-position: center 20%;
+  }
+}
+
+@media (max-width: 768px) {
+  .hero::before {
+    opacity: .22;
+    background-size: 850px auto;
+    background-position: center 15%;
+  }
+}
