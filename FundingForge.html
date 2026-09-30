@@ -556,8 +556,11 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   @media(max-width:760px){.steps{grid-template-columns:1fr;}}
 
   .plans{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:30px;}
-  .plan{border:1px solid var(--panel-b); border-radius:var(--radius); padding:22px; background:var(--panel); display:flex; flex-direction:column;}
-  .plan.pop{border-color:var(--green-dim);}
+  @property --df-plan-light-angle{syntax:"<angle>"; inherits:false; initial-value:0deg;}
+  @keyframes dfPlanLightSweep{to{--df-plan-light-angle:360deg;}}
+  .plan{position:relative; isolation:isolate; overflow:hidden; border:1px solid var(--panel-b); border-radius:var(--radius); padding:22px; background:var(--panel); display:flex; flex-direction:column;}
+  .plan::before{content:""; position:absolute; inset:0; z-index:2; padding:1.5px; border-radius:inherit; pointer-events:none; opacity:.76; background:conic-gradient(from var(--df-plan-light-angle),transparent 0deg 304deg,rgba(62,207,126,.12) 322deg,rgba(99,255,183,.95) 337deg,rgba(230,195,77,.8) 345deg,transparent 360deg); -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0); -webkit-mask-composite:xor; mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0); mask-composite:exclude; animation:dfPlanLightSweep 8s linear infinite;}
+  .plan.pop{border-color:var(--panel-b);}
   .plan-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;}
   .badge{font-size:11px; font-weight:700; padding:3px 9px; border-radius:99px;}
   .badge-pop{background:rgba(62,207,126,.15); color:var(--green);}
@@ -576,6 +579,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .info-ic:hover .tip, .info-ic:focus .tip, .info-ic.tap .tip{opacity:1; visibility:visible; transform:translateX(-50%) translateY(0);}
   .plan .btn{margin-top:16px; text-align:center; justify-content:center; width:100%;}
   @media(max-width:760px){.plans{grid-template-columns:1fr;}}
+  @media(prefers-reduced-motion:reduce){.plan::before{animation:none; opacity:.3;}}
 
   .tabs{display:inline-flex; border:1px solid var(--panel-b); border-radius:99px; padding:4px; margin-top:22px; gap:2px;}
   .tab{padding:8px 18px; border-radius:99px; font-size:13.5px; font-weight:600; color:var(--sub); cursor:pointer; border:none; background:transparent; font-family:inherit;}
@@ -763,7 +767,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
         <div class="plan-top"><div class="picon"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="14" width="16" height="5" rx="1.4" stroke="#06140c" stroke-width="1.6"/><rect x="6.5" y="7" width="11" height="5" rx="1.4" stroke="#06140c" stroke-width="1.6"/></svg></div></div>
         <h3>2-Step Challenge</h3>
         <div class="desc">Two phases. The classic evaluation.</div>
-        <div class="row"><span>Profit target</span><b>Ph 1: 8% / Ph 2: 5%</b></div>
+        <div class="row"><span>Profit target</span><b>Ph 1: 6% / Ph 2: 6%</b></div>
         <div class="row"><span class="row-label">Max daily drawdown<span class="info-ic" tabindex="0">i<span class="tip">Static drawdown</span></span></span><b>5%</b></div>
         <div class="row"><span class="row-label">Max overall drawdown<span class="info-ic" tabindex="0">i<span class="tip">Static drawdown</span></span></span><b>10%</b></div>
         <div class="row"><span>Minimum trading days</span><b>5 days</b></div>
@@ -1444,9 +1448,9 @@ document.querySelectorAll('.brand').forEach(brand=>{
 
 const sizes = [5000,10000,25000,50000,100000,200000];
 const pricing = {
-  '1step': {perK:6.40, min:32, label:'1-Step', target:'10% profit target', extra:['5% daily drawdown','10% max drawdown','3 min trading days','5 day reward cycle','80% profit split']},
-  '2step': {perK:5.20, min:27, label:'2-Step', target:'Ph 1: 8% / Ph 2: 5%', extra:['5% daily drawdown','10% max drawdown','5 min trading days','7 day reward cycle','90% profit split']},
-  'instant': {perK:9.80, min:49, label:'Instant', target:'No profit target', extra:['5% daily drawdown','10% max drawdown','0 min trading days','Daily reward cycle','80% profit split']}
+  '1step': {perK:6.40, min:32, label:'1-Step', target:'10% profit target', extra:['5% daily drawdown','10% max drawdown','3 min trading days','5 day reward cycle','80% profit split','No consistency rules']},
+  '2step': {perK:5.20, min:27, label:'2-Step', target:'Ph 1: 6% / Ph 2: 6%', extra:['5% daily drawdown','10% max drawdown','5 min trading days','7 day reward cycle','90% profit split','No consistency rules']},
+  'instant': {perK:9.80, min:49, label:'Instant', target:'No profit target', extra:['5% daily drawdown','10% max drawdown','0 min trading days','Daily reward cycle','80% profit split','No consistency rules']}
 };
 function renderPlans(tab){
   const p = pricing[tab];
@@ -1528,7 +1532,7 @@ const faqs = [
   {q:'How do payouts work?', a:'Once funded and eligible, you can request a payout after your account reward cycle completes: every 5 days for 1-Step, every 7 days for 2-Step, and daily for Instant Funding. Approved payouts are typically processed within a few business days to your chosen method.'},
   {q:'What are the withdrawal minimums and fees?', a:'Crypto withdrawals have a <strong>$50</strong> minimum and are completely free. Rise withdrawals have a <strong>$100</strong> minimum and are completely free. Bank transfers have a <strong>$100</strong> minimum and a <strong>$12</strong> fee per transaction.'},
   {q:'Do I get my challenge fee back?', a:'Yes. Your challenge fee is refunded automatically alongside your first successful payout from your funded account.'},
-  {q:'What is the difference between the challenge types?', a:'The <strong class="challenge-step-number">1</strong>-Step challenge has a <strong>10%</strong> profit target. The <strong class="challenge-step-number challenge-step-two">2</strong>-Step challenge has targets of <strong>8%</strong> in Phase <strong class="challenge-step-number">1</strong> and <strong>5%</strong> in Phase <strong class="challenge-step-number challenge-step-two">2</strong>. Instant Funding has no profit target. Daily and overall drawdown limits are shown with each plan.'},
+  {q:'What is the difference between the challenge types?', a:'The <strong class="challenge-step-number">1</strong>-Step challenge has a <strong>10%</strong> profit target. The <strong class="challenge-step-number challenge-step-two">2</strong>-Step challenge has targets of <strong>6%</strong> in Phase <strong class="challenge-step-number">1</strong> and <strong>6%</strong> in Phase <strong class="challenge-step-number challenge-step-two">2</strong>. Instant Funding has no profit target. Daily and overall drawdown limits are shown with each plan.'},
   {q:'What account sizes are available?', a:'Evaluation accounts range from <strong>$5,000</strong> to <strong>$200,000</strong>. Instant Funding starts at <strong>$2,500</strong>. Prices are listed under each challenge type.'},
   {q:'Which payment methods can I use?', a:'Crypto checkout supports <span class="faq-token usdt">USDT</span>, <span class="faq-token btc">BTC</span>, and <span class="faq-token eth">ETH</span> on the networks listed at checkout. Attach a payment screenshot with your confirmation. <span class="faq-token upi">UPI</span> is temporarily unavailable; the checkout will show a notice when you select it.'},
 ];
