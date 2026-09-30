@@ -209,7 +209,6 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .dashboard-nav-calendar{--icon-color:#81c7e5;}
   .dashboard-nav-leaderboard{--icon-color:#e8c65d;}
   .dashboard-nav-mt5{--icon-color:#81d2c0;}
-  .dashboard-nav-evaluation{--icon-color:#b9a6ee;}
   .dashboard-sidebar-foot{display:grid; gap:13px; margin-top:auto; padding:14px 10px 4px; border-top:1px solid var(--panel-b); color:var(--sub-dim); font-size:10px;}
   .dashboard-sidebar-foot a{color:var(--sub); font-size:12px;}
   .dashboard-sidebar-foot a:hover{color:var(--text);}
@@ -540,6 +539,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .upi-status-box h3{margin-bottom:9px; color:var(--text); font-size:20px; line-height:1.25;}
   .upi-status-box p{margin-bottom:20px; color:var(--sub); font-size:13px; line-height:1.6;}
   .eyebrow{color:var(--green); font-size:13px; font-weight:600; margin-bottom:10px;}
+  .dashboard-main .dashboard-greeting-name{color:var(--gold);}
   h2{font-size:clamp(24px,3vw,32px); font-weight:800; letter-spacing:-.01em;}
   .lead{color:var(--sub); font-size:15px; max-width:560px; margin-top:12px; line-height:1.6;}
   .center{text-align:center;}
@@ -1111,19 +1111,18 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
       <a href="#competitionsView" data-dashboard-view="competitions"><span class="dashboard-nav-mark dashboard-nav-competitions" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M7 6H4v2a4 4 0 0 0 4 4M17 6h3v2a4 4 0 0 1-4 4M12 13v5M8 21h8M9 18h6"/></svg></span>Competitions</a>
       <a href="#economicCalendarView" data-dashboard-view="calendar"><span class="dashboard-nav-mark dashboard-nav-calendar" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h2M14 14h2M8 17h2"/></svg></span>Economic Calendar</a>
       <a href="#leaderboardView" data-dashboard-view="leaderboard"><span class="dashboard-nav-mark dashboard-nav-leaderboard" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20h16M6 17V9h4v8M14 17V4h4v13M7 6h3M13 8h5"/></svg></span>Leaderboard</a>
-      <a href="#evaluationRules" data-dashboard-view="desk"><span class="dashboard-nav-mark dashboard-nav-evaluation" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 20 6v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-3Z"/><path d="m8.5 12 2.3 2.3 4.8-5"/></svg></span>Evaluation</a>
     </nav>
     <div class="dashboard-sidebar-foot">
       <div class="dashboard-sidebar-status">TRADING WORKSPACE</div>
       <a href="#pricing" class="open-dash-close">← Back to Daily Funded</a>
+      <a href="#pricing" class="open-dash-close" id="dashboardAccountAction">Sign out</a>
     </div>
   </aside>
   <div class="wrap dashboard-main" id="traderDeskView">
     <div class="dash-top" id="dashTop">
       <div>
-        <div class="eyebrow">Account details</div>
+        <div class="eyebrow" id="dashboardGreeting">Account details</div>
         <h2>Trading desk</h2>
-        <a href="#pricing" class="open-dash-close" id="dashboardAccountAction">← Back to Daily Funded</a>
       </div>
       <div class="dash-select" id="dashSelectWrap">
         Account
@@ -1184,22 +1183,6 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
       </div>
 
       <div class="desk-lower">
-        <div class="desk-panel" id="evaluationRules">
-          <div class="panel-top"><div><h4>Evaluation rules</h4><p class="panel-sub">Current progress against challenge limits</p></div></div>
-          <div class="risk-row">
-            <div class="prow-top"><span>Profit target</span><b id="dTargetPct">0% / 10%</b></div>
-            <div class="prog-track"><div class="prog-fill" id="dTargetBar" style="width:0%"></div></div>
-          </div>
-          <div class="risk-row">
-            <div class="prow-top"><span>Daily drawdown used</span><b id="dDailyPct">0% / 5%</b></div>
-            <div class="prog-track"><div class="prog-fill" id="dDailyBar" style="width:0%"></div></div>
-          </div>
-          <div class="risk-row">
-            <div class="prow-top"><span>Overall drawdown used</span><b id="dOverallPct">0% / 10%</b></div>
-            <div class="prog-track"><div class="prog-fill" id="dOverallBar" style="width:0%"></div></div>
-          </div>
-        </div>
-
         <div class="desk-panel mt5-position" id="mt5PositionPanel">
           <div class="panel-top"><div><h4>Open positions</h4><p class="panel-sub">Positions with a realized or floating gain/loss</p></div></div>
           <div class="mt5-table-wrap">
@@ -1997,6 +1980,20 @@ function updateFirebaseAccountControls(user){
   if(firebaseHeaderAccountLink) firebaseHeaderAccountLink.textContent = user ? 'Sign out' : 'Sign in';
   if(dashboardAccountAction) dashboardAccountAction.textContent = user ? 'Sign out' : '← Back to Daily Funded';
 }
+function updateDashboardGreeting(user){
+  const greeting = document.getElementById('dashboardGreeting');
+  if(!greeting) return;
+  const displayName = user && typeof user.displayName === 'string' ? user.displayName.trim() : '';
+  if(!displayName){
+    greeting.textContent = 'Account details';
+    return;
+  }
+  greeting.textContent = 'Hello, ';
+  const name = document.createElement('span');
+  name.className = 'dashboard-greeting-name';
+  name.textContent = displayName;
+  greeting.appendChild(name);
+}
 async function signOutFirebase(){
   try{
     await firebaseAuthPersistenceReady;
@@ -2031,6 +2028,7 @@ if(firebaseAuth){
     firebaseAuth.onAuthStateChanged(user=>{
       firebaseCurrentUser = user;
       updateFirebaseAccountControls(user);
+      updateDashboardGreeting(user);
       if(firebaseAuthStateInitialized) return;
       firebaseAuthStateInitialized = true;
       resolveFirebaseAuthState(user);
@@ -2930,21 +2928,6 @@ function renderAccount(){
   document.getElementById('dWithdraw').textContent = money(data.withdrawableProfit);
   document.getElementById('dDays').textContent = Number.isInteger(data.tradingDays) ? data.tradingDays : '—';
 
-  const targetRule = (data.rules || []).find(rule=>rule.includes('profit target')) || 'Profit target pending';
-  const dailyRule = (data.rules || []).find(rule=>rule.includes('daily drawdown')) || 'Daily drawdown pending';
-  const overallRule = (data.rules || []).find(rule=>rule.includes('max drawdown')) || 'Max drawdown pending';
-  document.getElementById('dTargetPct').textContent = '— / ' + targetRule.replace(' profit target','');
-  document.getElementById('dTargetBar').style.width = '0%';
-
-  document.getElementById('dDailyPct').textContent = '— / ' + dailyRule.replace(' daily drawdown','');
-  const dailyBar = document.getElementById('dDailyBar');
-  dailyBar.style.width = '0%';
-  dailyBar.classList.remove('danger');
-
-  document.getElementById('dOverallPct').textContent = '— / ' + overallRule.replace(' max drawdown','');
-  const overallBar = document.getElementById('dOverallBar');
-  overallBar.style.width = '0%';
-  overallBar.classList.remove('danger');
 }
 let mt5LoadVersion = 0;
 async function renderMt5Account(accountId){
