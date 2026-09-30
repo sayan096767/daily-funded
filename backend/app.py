@@ -611,17 +611,6 @@ def create_purchase():
     return purchase_response(purchase_id, purchase_data)
 
 
-@app.get("/api/mt5/accounts/<account_id>")
-@firebase_auth_required
-def mt5_account(account_id):
-    account = user_document(g.firebase_uid).collection("accounts").document(account_id).get()
-    if not account.exists:
-        return jsonify(error="Account not found."), 404
-    if (account.to_dict() or {}).get("status") != "active":
-        return jsonify(error="MT5 credentials are available only for an approved active account."), 403
-    return jsonify(error="MT5 demo integration is not configured."), 503
-
-
 @app.get("/api/admin/purchases/pending")
 @firebase_auth_required
 def admin_pending_purchases():

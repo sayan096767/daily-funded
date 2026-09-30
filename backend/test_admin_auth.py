@@ -741,36 +741,6 @@ class AccountOwnershipApiTests(unittest.TestCase):
         self.assertEqual(response.get_json()[0]["accountId"], "user-a-account")
         document_for_user.assert_called_once_with("user-a")
 
-    def test_user_cannot_use_another_users_account_id_for_mt5(self):
-        user_ref = MagicMock()
-        account_snapshot = MagicMock()
-        account_snapshot.exists = False
-        user_ref.collection.return_value.document.return_value.get.return_value = account_snapshot
-
-        with patch("app.firebase_auth.verify_id_token", return_value={"uid": "user-a"}):
-            with patch("app.user_document", return_value=user_ref) as document_for_user:
-                response = self.client.get(
-                    "/api/mt5/accounts/user-b-account",
-                    headers={"Authorization": "Bearer user-a-token"},
-                )
-
-        self.assertEqual(response.status_code, 404)
-        document_for_user.assert_called_once_with("user-a")
-
-    def test_pending_account_cannot_retrieve_mt5_credentials(self):
-        user_ref = MagicMock()
-        account_snapshot = MagicMock()
-        account_snapshot.exists = True
-        account_snapshot.to_dict.return_value = {"status": "pending", "ownerUid": "user-a"}
-        user_ref.collection.return_value.document.return_value.get.return_value = account_snapshot
-
-        with patch("app.firebase_auth.verify_id_token", return_value={"uid": "user-a"}):
-            with patch("app.user_document", return_value=user_ref):
-                response = self.client.get("/api/mt5/accounts/user-a-account", headers={"Authorization": "Bearer user-a-token"})
-
-        self.assertEqual(response.status_code, 403)
-
-
 class AdminPurchaseTransitionTests(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()

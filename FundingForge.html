@@ -208,7 +208,6 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .dashboard-nav-competitions{--icon-color:#f29b61;}
   .dashboard-nav-calendar{--icon-color:#81c7e5;}
   .dashboard-nav-leaderboard{--icon-color:#e8c65d;}
-  .dashboard-nav-mt5{--icon-color:#81d2c0;}
   .dashboard-sidebar-foot{display:grid; gap:13px; margin-top:auto; padding:14px 10px 4px; border-top:1px solid var(--panel-b); color:var(--sub-dim); font-size:10px;}
   .dashboard-sidebar-foot a{color:var(--sub); font-size:12px;}
   .dashboard-sidebar-foot a:hover{color:var(--text);}
@@ -285,7 +284,6 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .account-stat span{display:block; font-size:11px; color:var(--sub-dim); margin-bottom:9px;}
   .account-stat b{font-size:20px; font-variant-numeric:tabular-nums;}
   .account-stat b.up{color:var(--green);}
-  .desk-grid,.desk-lower{display:grid; grid-template-columns:minmax(0,1.55fr) minmax(270px,.85fr); gap:14px; align-items:stretch; margin-bottom:14px;}
   .desk-panel{border:1px solid var(--panel-b); border-radius:var(--radius); padding:20px; background:var(--panel); min-width:0;}
   .desk-panel h4{font-size:14px; margin-bottom:4px;}
   .desk-panel .panel-sub{font-size:11.5px; color:var(--sub-dim);}
@@ -293,36 +291,10 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .sample-tag{font-size:9px; font-weight:700; color:var(--gold); border:1px solid rgba(230,195,77,.26); border-radius:4px; padding:5px 7px; white-space:nowrap;}
   .equity-chart{width:100%; display:block; height:auto; overflow:visible; margin:8px 0 10px;}
   .chart-labels{display:flex; justify-content:space-between; color:var(--sub-dim); font-size:10px;}
-  .mt5-cards{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:16px 0;}
-  .mt5-card{border:1px solid var(--panel-b); border-radius:7px; padding:10px; background:var(--bg2); min-width:0;}
-  .mt5-card span{display:block; font-size:10px; color:var(--sub-dim); margin-bottom:6px;}
-  .mt5-card b{font-size:14px; font-variant-numeric:tabular-nums;}
-  .mt5-card b.positive{color:var(--green);}
-  .mt5-card b.negative{color:#e06a5a;}
-  .mt5-state{font-size:9px; font-weight:700; color:var(--gold); border:1px solid rgba(230,195,77,.26); border-radius:4px; padding:5px 7px; white-space:nowrap;}
-  .mt5-state.connected{color:var(--green); border-color:rgba(62,207,126,.3);}
-  .mt5-empty{padding:20px; border:1px dashed var(--panel-b); border-radius:7px; color:var(--sub); font-size:12px; line-height:1.6;}
-  .mt5-empty strong{display:block; color:var(--text); font-size:13px; margin-bottom:5px;}
-  .mt5-refresh{padding:6px 10px; font-size:11px;}
-  .mt5-position{display:none;}
-  .mt5-position.visible{display:block;}
-  .mt5-credential-list{display:grid; gap:0; margin:15px 0 12px;}
-  .mt5-credential{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--panel-b);}
-  .mt5-credential:last-child{border-bottom:0;}
-  .mt5-credential span{font-size:11px; color:var(--sub-dim);}
-  .mt5-credential b{font-size:12px; font-family:'JetBrains Mono',monospace; font-weight:500; text-align:right; overflow-wrap:anywhere;}
-  .mt5-warning{padding:10px; border-left:2px solid var(--gold); background:rgba(230,195,77,.06); color:#d8c984; font-size:10.5px; line-height:1.5;}
   .risk-row{margin-top:18px;}
   .risk-row:first-of-type{margin-top:15px;}
   .risk-row .prow-top{font-size:11px;}
-  .mt5-table-wrap{overflow-x:auto; margin-top:10px;}
-  .mt5-table{width:100%; min-width:360px; border-collapse:collapse; text-align:left; font-size:11px;}
-  .mt5-table th{color:var(--sub-dim); font-weight:500; padding:9px 8px; border-bottom:1px solid var(--panel-b);}
-  .mt5-table td{padding:11px 8px; border-bottom:1px solid var(--panel-b); font-variant-numeric:tabular-nums;}
-  .mt5-table tr:last-child td{border-bottom:0;}
-  .mt5-side{color:var(--green); font-weight:700;}
-  .mt5-loss{color:#e06a5a; font-weight:700;}
-  @media(max-width:760px){.account-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.desk-grid,.desk-lower{grid-template-columns:1fr;}}
+  @media(max-width:760px){.account-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media(max-width:420px){.account-banner{padding:18px;}.account-banner h3{font-size:22px;}.account-stat{padding:13px;}.account-stat b{font-size:17px;}.desk-panel{padding:16px;}}
 
   #checkout{display:none;}
@@ -995,7 +967,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
       </svg>
       <div class="registration-chart-foot"><span>PLAN</span><span>EXECUTION</span><span>PROGRESS</span><span>CONSISTENCY</span></div>
     </div>
-    <div class="registration-promises"><span><i></i>Up to 80% profit split</span><span><i></i>No time limit</span><span><i></i>MT5 support</span></div>
+    <div class="registration-promises"><span><i></i>Up to 80% profit split</span><span><i></i>No time limit</span></div>
   </div>
   <div class="registration-panel">
     <div class="eyebrow">TRADER ACCOUNT / 01</div>
@@ -1111,7 +1083,6 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
       <a href="#competitionsView" data-dashboard-view="competitions"><span class="dashboard-nav-mark dashboard-nav-competitions" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M7 6H4v2a4 4 0 0 0 4 4M17 6h3v2a4 4 0 0 1-4 4M12 13v5M8 21h8M9 18h6"/></svg></span>Competitions</a>
       <a href="#economicCalendarView" data-dashboard-view="calendar"><span class="dashboard-nav-mark dashboard-nav-calendar" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h2M14 14h2M8 17h2"/></svg></span>Economic Calendar</a>
       <a href="#leaderboardView" data-dashboard-view="leaderboard"><span class="dashboard-nav-mark dashboard-nav-leaderboard" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20h16M6 17V9h4v8M14 17V4h4v13M7 6h3M13 8h5"/></svg></span>Leaderboard</a>
-      <a href="#mt5Panel" data-dashboard-view="desk"><span class="dashboard-nav-mark dashboard-nav-mt5" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 20h18M6 17v-5M11 17V7M16 17v-8M21 17v-3"/></svg></span>MT5 Account</a>
     </nav>
     <div class="dashboard-sidebar-foot">
       <div class="dashboard-sidebar-status">TRADING WORKSPACE</div>
@@ -1133,7 +1104,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
 
     <div id="dashEmpty" class="dash-panel" style="text-align:center; display:none;">
       <h4 style="margin-bottom:8px;">No Daily Funded challenge account yet</h4>
-      <p style="color:var(--sub); font-size:13.5px; margin-bottom:18px;">Your purchased challenge, performance view and MT5 demo details will appear here.</p>
+      <p style="color:var(--sub); font-size:13.5px; margin-bottom:18px;">Your purchased challenge and performance details will appear here.</p>
       <a href="#pricing" class="btn btn-primary open-dash-close">See pricing →</a>
     </div>
 
@@ -1142,13 +1113,12 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
         <div>
           <span class="account-kicker">ACCOUNT OVERVIEW</span>
           <h3 id="accountTitle">$10,000 challenge</h3>
-          <p id="accountSummary">Challenge details and real MT5 data when connected.</p>
+          <p id="accountSummary">Challenge details and account status.</p>
         </div>
         <div class="account-badges">
           <span class="account-badge active">EVALUATION ACTIVE</span>
           <span class="account-badge" id="accountPlan">1-STEP</span>
           <span class="account-badge">PHASE 01</span>
-          <span class="account-badge">MT5</span>
         </div>
       </div>
 
@@ -1159,41 +1129,6 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
         <div class="account-stat"><span>Trading days</span><b id="dDays">0</b></div>
       </div>
 
-      <div class="desk-grid">
-        <aside class="desk-panel" id="mt5Panel">
-          <div class="panel-top">
-            <div><h4 id="mt5Title">MetaTrader 5 account</h4><p class="panel-sub" id="mt5Summary">Waiting for secure MT5 connection</p></div>
-            <div style="display:flex; align-items:center; gap:8px;"><span class="mt5-state" id="mt5State">NOT CONNECTED</span><button class="btn btn-outline mt5-refresh" id="mt5Refresh" type="button">Refresh</button></div>
-          </div>
-          <div class="mt5-empty" id="mt5Empty">
-            <strong>No real MT5 account connected</strong>
-            Live balances, credentials, and positions appear here only after the broker-side connector provisions and authenticates an account. No sample values are shown.
-          </div>
-          <div id="mt5Live" style="display:none;">
-            <div class="mt5-cards">
-              <div class="mt5-card"><span>Balance</span><b id="mt5Balance">$0.00</b></div>
-              <div class="mt5-card"><span>Equity</span><b id="mt5Equity">$0.00</b></div>
-              <div class="mt5-card" id="mt5FloatingCard" style="display:none;"><span>Floating P/L</span><b id="mt5Floating">$0.00</b></div>
-            </div>
-            <div class="mt5-credential-list">
-              <div class="mt5-credential"><span>MT5 login</span><b id="mt5Login"></b></div>
-              <div class="mt5-credential"><span>Broker server</span><b id="mt5Server"></b></div>
-            </div>
-          </div>
-        </aside>
-      </div>
-
-      <div class="desk-lower">
-        <div class="desk-panel mt5-position" id="mt5PositionPanel">
-          <div class="panel-top"><div><h4>Open positions</h4><p class="panel-sub">Positions with a realized or floating gain/loss</p></div></div>
-          <div class="mt5-table-wrap">
-            <table class="mt5-table">
-              <thead><tr><th>Symbol</th><th>Side</th><th>Lots</th><th>P/L</th></tr></thead>
-              <tbody id="mt5Positions"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
     </div>
         <div class="dash-foot">
           <button class="dash-close" id="dashClose">Close dashboard</button>
@@ -2869,7 +2804,7 @@ async function refreshDashboard(preferredAccountId){
   try{
     await loadDashboardAccounts();
     document.querySelector('#dashEmpty h4').textContent = 'No Daily Funded challenge account yet';
-    document.querySelector('#dashEmpty p').textContent = 'Your purchased challenge, performance view and MT5 demo details will appear here.';
+    document.querySelector('#dashEmpty p').textContent = 'Your purchased challenge and performance details will appear here.';
   }catch(error){
     dashboardAccounts = [];
     document.querySelector('#dashEmpty h4').textContent = 'Account service unavailable';
@@ -2915,14 +2850,12 @@ function renderAccount(){
     ? 'Payment submitted. Awaiting admin approval.'
     : ['rejected','payment_rejected'].includes(data.status)
       ? 'Payment was rejected. Contact support for assistance.'
-      : data.label + ' challenge · MT5 demo data loads after broker connection';
+      : data.label + ' challenge';
   document.getElementById('accountPlan').textContent = data.label.toUpperCase();
   const statusBadge = document.querySelector('#accountOverview .account-badge.active');
   statusBadge.textContent = ['pending','pending_payment_verification'].includes(data.status)
     ? 'PAYMENT PENDING'
     : data.status.replaceAll('_',' ').toUpperCase();
-  renderMt5Account(data.id);
-
   const money = value => value != null && Number.isFinite(Number(value)) ? '$' + Number(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
   document.getElementById('dBalance').textContent = money(data.balance);
   document.getElementById('dEquity').textContent = money(data.equity);
@@ -2930,94 +2863,8 @@ function renderAccount(){
   document.getElementById('dDays').textContent = Number.isInteger(data.tradingDays) ? data.tradingDays : '—';
 
 }
-let mt5LoadVersion = 0;
-async function renderMt5Account(accountId){
-  const version = ++mt5LoadVersion;
-  const status = document.getElementById('mt5State');
-  const summary = document.getElementById('mt5Summary');
-  const empty = document.getElementById('mt5Empty');
-  const live = document.getElementById('mt5Live');
-  const positionsPanel = document.getElementById('mt5PositionPanel');
-  const floatingCard = document.getElementById('mt5FloatingCard');
-
-  status.textContent = 'CONNECTING';
-  status.classList.remove('connected');
-  summary.textContent = 'Requesting account data from the secure MT5 service';
-  empty.style.display = '';
-  empty.innerHTML = '<strong>Connecting to MT5</strong>Waiting for verified broker account data. No sample values are shown.';
-  live.style.display = 'none';
-  positionsPanel.classList.remove('visible');
-
-  try{
-    const response = await fetch(API_BASE + '/api/mt5/accounts/' + encodeURIComponent(accountId), {
-      credentials:'same-origin',
-      headers:await firebaseApiHeaders({Accept:'application/json'})
-    });
-    if(!response.ok) throw new Error('MT5 service unavailable');
-    const payload = await response.json();
-    const account = payload.account || payload;
-    const balance = Number(account.balance);
-    const equity = Number(account.equity);
-    const floatingPnl = Number(account.floatingPnl);
-    if(!Number.isFinite(balance) || !Number.isFinite(equity) || !Number.isFinite(floatingPnl) || !account.login || !account.server){
-      throw new Error('Invalid MT5 account response');
-    }
-    if(version !== mt5LoadVersion) return;
-
-    const currency = /^[A-Z]{3}$/.test(account.currency || '') ? account.currency : 'USD';
-    const money = value => new Intl.NumberFormat('en-US', {style:'currency', currency, minimumFractionDigits:2}).format(value);
-    const withdrawableProfit = Number(account.withdrawableProfit);
-    if(Number.isFinite(withdrawableProfit) && withdrawableProfit >= 0){
-      document.getElementById('dWithdraw').textContent = money(withdrawableProfit);
-    }
-    status.textContent = 'CONNECTED';
-    status.classList.add('connected');
-    document.getElementById('mt5Title').textContent = 'MT5 account · ' + account.login;
-    summary.textContent = account.server + ' · Live account data';
-    empty.style.display = 'none';
-    live.style.display = '';
-    document.getElementById('mt5Balance').textContent = money(balance);
-    document.getElementById('mt5Equity').textContent = money(equity);
-    document.getElementById('mt5Login').textContent = String(account.login);
-    document.getElementById('mt5Server').textContent = String(account.server);
-    floatingCard.style.display = floatingPnl === 0 ? 'none' : '';
-    const floatingValue = document.getElementById('mt5Floating');
-    floatingValue.textContent = money(floatingPnl);
-    floatingValue.classList.toggle('positive', floatingPnl > 0);
-    floatingValue.classList.toggle('negative', floatingPnl < 0);
-
-    const positions = Array.isArray(payload.positions) ? payload.positions : (Array.isArray(account.positions) ? account.positions : []);
-    const activePositions = positions.filter(position => Number.isFinite(Number(position.profit ?? position.pnl)) && Number(position.profit ?? position.pnl) !== 0);
-    const tbody = document.getElementById('mt5Positions');
-    tbody.replaceChildren();
-    activePositions.forEach(position=>{
-      const pnl = Number(position.profit ?? position.pnl);
-      const row = document.createElement('tr');
-      [position.symbol, position.side, position.volume ?? position.lots, money(pnl)].forEach(value=>{
-        const cell = document.createElement('td');
-        cell.textContent = String(value ?? '');
-        row.appendChild(cell);
-      });
-      row.lastElementChild.classList.add(pnl > 0 ? 'mt5-side' : 'mt5-loss');
-      tbody.appendChild(row);
-    });
-    positionsPanel.classList.toggle('visible', activePositions.length > 0);
-  }catch(error){
-    if(version !== mt5LoadVersion) return;
-    status.textContent = 'NOT CONNECTED';
-    status.classList.remove('connected');
-    document.getElementById('mt5Title').textContent = 'MetaTrader 5 account';
-    summary.textContent = 'No authenticated broker connection';
-    empty.style.display = '';
-    empty.innerHTML = '<strong>Real MT5 account unavailable</strong>Connect an authenticated broker-side MT5 service at <code>/api/mt5/accounts/{accountId}</code>. This page will not display invented balances, trades, or credentials.';
-    live.style.display = 'none';
-    positionsPanel.classList.remove('visible');
-  }
-}
 const accSelectEl = document.getElementById('accSelect');
 if(accSelectEl) accSelectEl.addEventListener('change',()=>{ renderAccount(); renderRewardsCertificate(); });
-const mt5RefreshEl = document.getElementById('mt5Refresh');
-if(mt5RefreshEl) mt5RefreshEl.addEventListener('click', renderAccount);
 
 const payoutRequestPopup = document.getElementById('payoutRequestPopup');
 const payoutRequestButton = document.getElementById('payoutBtn');
