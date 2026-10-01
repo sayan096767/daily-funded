@@ -421,6 +421,7 @@ def provision_cloudflare_account(worker_url, token, provisioning_payload):
         data=json.dumps(provisioning_payload).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
             "Authorization": f"Bearer {token}",
         },
         method="POST",
