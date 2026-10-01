@@ -405,6 +405,15 @@ def cloudflare_worker_configuration():
     return worker_url, token
 
 
+def cloudflare_provisioning_log_body(response_body, token):
+    body_text = response_body.decode("utf-8", errors="replace")
+    if token:
+        body_text = body_text.replace(token, "[REDACTED]")
+    if re.search(r"(?i)\b(?:[\w-]*authorization[\w-]*|[\w-]*cookie[\w-]*|[\w-]*token[\w-]*|[\w-]*secret[\w-]*|bearer)\b", body_text):
+        return "[omitted: token/header-related content]"
+    return body_text[:500]
+
+
 def provision_cloudflare_account(worker_url, token, provisioning_payload):
     endpoint = f"{worker_url.rstrip('/')}/accounts/from-model"
     outbound_request = Request(
@@ -417,11 +426,41 @@ def provision_cloudflare_account(worker_url, token, provisioning_payload):
         method="POST",
     )
 
+    app.logger.info(
+        "Cloudflare provisioning request diagnostics token_present=%s token_length=%d worker_url=%s endpoint=%s",
+        "CLOUDFLARE_PROVISIONING_TOKEN" in os.environ,
+        len(token),
+        worker_url,
+        endpoint,
+    )
+
     try:
         with urlopen(outbound_request, timeout=CLOUDFLARE_PROVISIONING_TIMEOUT_SECONDS) as response:
             worker_status = getattr(response, "status", None) or response.getcode()
             response_body = response.read(MAX_CLOUDFLARE_RESPONSE_BYTES + 1)
+            app.logger.info(
+                "Cloudflare provisioning response diagnostics status=%s content_type=%s body=%s",
+                worker_status,
+                response.headers.get("Content-Type"),
+                cloudflare_provisioning_log_body(response_body, token),
+            )
     except HTTPError as error:
+        try:
+            response_body = error.read(501)
+            content_type = error.headers.get("Content-Type") if error.headers else None
+            app.logger.info(
+                "Cloudflare provisioning response diagnostics status=%s content_type=%s body=%s",
+                error.code,
+                content_type,
+                cloudflare_provisioning_log_body(response_body, token),
+            )
+        except Exception:
+            app.logger.info(
+                "Cloudflare provisioning response diagnostics status=%s content_type=%s body=%s",
+                error.code,
+                None,
+                "[unavailable]",
+            )
         raise CloudflareProvisioningError(
             "worker_http_error",
             "Cloudflare provisioning returned an HTTP error.",
