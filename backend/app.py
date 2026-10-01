@@ -3,6 +3,8 @@ import re
 import uuid
 import hashlib
 import json
+import math
+import socket
 from io import BytesIO
 from pathlib import Path
 from datetime import datetime, timezone
@@ -17,7 +19,8 @@ from firebase_admin import auth as firebase_auth, credentials, firestore, storag
 from flask import Flask, g, jsonify, request, send_file
 from google.api_core.exceptions import AlreadyExists
 from botocore.config import Config
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
@@ -27,6 +30,9 @@ FRONTEND_ORIGINS = {
     if origin.strip()
 }
 MAX_PROOF_BYTES = 5 * 1024 * 1024
+CLOUDFLARE_PROVISIONING_TIMEOUT_SECONDS = 15
+CLOUDFLARE_TRADING_TIMEOUT_SECONDS = 15
+MAX_CLOUDFLARE_RESPONSE_BYTES = 64 * 1024
 
 CATALOG = {
     "1step": {
@@ -38,7 +44,7 @@ CATALOG = {
     "2step": {
         "label": "2-Step",
         "prices": {5000: 27, 10000: 52, 25000: 130, 50000: 260, 100000: 520, 200000: 1040},
-        "rules": ["Ph 1: 8% / Ph 2: 5%", "5% daily drawdown", "10% max drawdown", "5 min trading days", "7 day reward cycle"],
+        "rules": ["Ph 1: 6% / Ph 2: 6%", "5% daily drawdown", "10% max drawdown", "5 min trading days", "7 day reward cycle"],
         "profit_split": "90% profit split",
     },
     "instant": {
@@ -302,6 +308,459 @@ def firebase_service_error(service_name, error):
     return jsonify(error=f"{service_name} unavailable ({error_type}). Configure Firebase Admin credentials and verify project access."), 503
 
 
+class CloudflareProvisioningError(Exception):
+    def __init__(self, code, message, status_code=502, worker_status=None):
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+        self.worker_status = worker_status
+
+
+def purchase_provisioning_values(purchase_id, purchase_data):
+    if not isinstance(purchase_data, dict) or purchase_data.get("purchaseId") != purchase_id:
+        raise CloudflareProvisioningError(
+            "purchase_id_mismatch",
+            "Purchase ID does not match its Firestore document.",
+            409,
+        )
+
+    owner_uid = purchase_data.get("ownerUid")
+    plan_key = purchase_data.get("planKey")
+    account_id = purchase_data.get("accountId")
+    account_size = purchase_data.get("accountSize")
+
+    if not isinstance(owner_uid, str) or not owner_uid.strip():
+        raise CloudflareProvisioningError("purchase_owner_missing", "Purchase owner is invalid.", 400)
+    if not isinstance(plan_key, str) or plan_key not in CATALOG:
+        raise CloudflareProvisioningError("purchase_plan_missing", "Purchase plan is invalid.", 400)
+    if not isinstance(account_id, str) or not account_id.strip():
+        raise CloudflareProvisioningError("purchase_account_missing", "Purchase account ID is invalid.", 400)
+    if (
+        isinstance(account_size, bool)
+        or not isinstance(account_size, (int, float))
+        or not math.isfinite(float(account_size))
+        or float(account_size) <= 0
+        or account_size not in CATALOG[plan_key]["prices"]
+    ):
+        raise CloudflareProvisioningError("purchase_size_invalid", "Purchase account size is invalid.", 400)
+
+    return {
+        "ownerUid": owner_uid,
+        "purchaseId": purchase_id,
+        "accountId": account_id,
+        "planKey": plan_key,
+        "accountSize": account_size,
+    }
+
+
+def firestore_account_matches_purchase(account_data, purchase_values):
+    return isinstance(account_data, dict) and all((
+        account_data.get("ownerUid") == purchase_values["ownerUid"],
+        account_data.get("purchaseId") == purchase_values["purchaseId"],
+        account_data.get("accountId") == purchase_values["accountId"],
+        account_data.get("planKey") == purchase_values["planKey"],
+        account_data.get("accountSize") == purchase_values["accountSize"],
+    ))
+
+
+def is_valid_trading_engine_account_id(account_id):
+    return isinstance(account_id, str) and re.fullmatch(
+        r"ACC_[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}",
+        account_id.strip(),
+    ) is not None
+
+
+def cloudflare_worker_configuration():
+    worker_url = os.environ.get("CLOUDFLARE_TRADING_WORKER_URL", "").strip().rstrip("/")
+    token = os.environ.get("CLOUDFLARE_PROVISIONING_TOKEN", "").strip()
+    if not worker_url or not token:
+        raise CloudflareProvisioningError(
+            "worker_configuration_missing",
+            "Cloudflare provisioning is not configured.",
+            503,
+        )
+
+    try:
+        parsed_url = urlsplit(worker_url)
+        port = parsed_url.port
+    except ValueError:
+        parsed_url = None
+        port = None
+    if (
+        parsed_url is None
+        or parsed_url.scheme.lower() != "https"
+        or not parsed_url.hostname
+        or parsed_url.username is not None
+        or parsed_url.password is not None
+        or parsed_url.query
+        or parsed_url.fragment
+        or (port is not None and not 1 <= port <= 65535)
+    ):
+        raise CloudflareProvisioningError(
+            "worker_configuration_invalid",
+            "Cloudflare provisioning URL configuration is invalid.",
+            503,
+        )
+
+    return worker_url, token
+
+
+def provision_cloudflare_account(worker_url, token, provisioning_payload):
+    endpoint = f"{worker_url.rstrip('/')}/accounts/from-model"
+    outbound_request = Request(
+        endpoint,
+        data=json.dumps(provisioning_payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+        method="POST",
+    )
+
+    try:
+        with urlopen(outbound_request, timeout=CLOUDFLARE_PROVISIONING_TIMEOUT_SECONDS) as response:
+            worker_status = getattr(response, "status", None) or response.getcode()
+            response_body = response.read(MAX_CLOUDFLARE_RESPONSE_BYTES + 1)
+    except HTTPError as error:
+        raise CloudflareProvisioningError(
+            "worker_http_error",
+            "Cloudflare provisioning returned an HTTP error.",
+            502,
+            error.code,
+        ) from None
+    except (TimeoutError, socket.timeout):
+        raise CloudflareProvisioningError(
+            "worker_timeout",
+            "Cloudflare provisioning timed out; retry approval to reconcile.",
+            504,
+        ) from None
+    except URLError as error:
+        if isinstance(error.reason, (TimeoutError, socket.timeout)):
+            raise CloudflareProvisioningError(
+                "worker_timeout",
+                "Cloudflare provisioning timed out; retry approval to reconcile.",
+                504,
+            ) from None
+        raise CloudflareProvisioningError(
+            "worker_network_error",
+            "Cloudflare provisioning could not be reached; retry approval to reconcile.",
+            502,
+        ) from None
+    except Exception:
+        raise CloudflareProvisioningError(
+            "worker_network_error",
+            "Cloudflare provisioning could not be reached; retry approval to reconcile.",
+            502,
+        ) from None
+
+    if worker_status not in (200, 201):
+        raise CloudflareProvisioningError(
+            "worker_http_error",
+            "Cloudflare provisioning returned an unsuccessful HTTP status.",
+            502,
+            worker_status,
+        )
+    if len(response_body) > MAX_CLOUDFLARE_RESPONSE_BYTES:
+        raise CloudflareProvisioningError(
+            "worker_response_invalid",
+            "Cloudflare provisioning returned an invalid response.",
+            502,
+            worker_status,
+        )
+
+    try:
+        worker_payload = json.loads(response_body)
+    except (TypeError, ValueError):
+        raise CloudflareProvisioningError(
+            "worker_response_invalid",
+            "Cloudflare provisioning returned invalid JSON.",
+            502,
+            worker_status,
+        ) from None
+
+    if not isinstance(worker_payload, dict) or worker_payload.get("success") is not True:
+        raise CloudflareProvisioningError(
+            "worker_rejected",
+            "Cloudflare provisioning did not succeed.",
+            502,
+            worker_status,
+        )
+
+    account = worker_payload.get("account")
+    account_id = account.get("id") if isinstance(account, dict) else None
+    if not is_valid_trading_engine_account_id(account_id):
+        raise CloudflareProvisioningError(
+            "worker_account_id_missing",
+            "Cloudflare provisioning response did not include a valid account ID.",
+            502,
+            worker_status,
+        )
+
+    return {**account, "id": account_id.strip()}
+
+
+class CloudflareTradingApiError(Exception):
+    def __init__(self, code, message, status_code=502, worker_status=None):
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+        self.worker_status = worker_status
+
+
+def resolve_trading_engine_account_for_user(firebase_uid, firestore_account_id):
+    if not isinstance(firebase_uid, str) or not firebase_uid.strip():
+        raise CloudflareTradingApiError(
+            "authenticated_uid_missing",
+            "Authenticated user identity is unavailable.",
+            401,
+        )
+    if not isinstance(firestore_account_id, str) or not firestore_account_id.strip():
+        raise CloudflareTradingApiError(
+            "account_id_required",
+            "account_id is required.",
+            400,
+        )
+
+    try:
+        account_ref = user_document(firebase_uid).collection("accounts").document(
+            firestore_account_id.strip()
+        )
+        account_snapshot = account_ref.get()
+        account = account_snapshot.to_dict() or {} if account_snapshot.exists else {}
+    except Exception:
+        raise CloudflareTradingApiError(
+            "account_lookup_failed",
+            "Account service is unavailable.",
+            503,
+        ) from None
+
+    if not account_snapshot.exists:
+        raise CloudflareTradingApiError(
+            "trading_account_not_found",
+            "Trading account not found.",
+            404,
+        )
+    if not isinstance(account, dict) or account.get("ownerUid") != firebase_uid:
+        raise CloudflareTradingApiError(
+            "trading_account_not_found",
+            "Trading account not found.",
+            404,
+        )
+    if account.get("tradingEnabled") is not True:
+        raise CloudflareTradingApiError(
+            "trading_disabled",
+            "Trading is not enabled for this account.",
+            409,
+        )
+
+    trading_engine_account_id = account.get("tradingEngineAccountId")
+    if not is_valid_trading_engine_account_id(trading_engine_account_id):
+        raise CloudflareTradingApiError(
+            "trading_account_unavailable",
+            "Trading account is not available.",
+            409,
+        )
+    return trading_engine_account_id.strip()
+
+
+def cloudflare_trading_worker_configuration():
+    worker_url = os.environ.get("CLOUDFLARE_TRADING_WORKER_URL", "").strip().rstrip("/")
+    token = os.environ.get("CLOUDFLARE_TRADING_API_TOKEN", "").strip()
+    if not worker_url or not token:
+        raise CloudflareTradingApiError(
+            "worker_configuration_missing",
+            "Cloudflare trading API is not configured.",
+            503,
+        )
+
+    try:
+        parsed_url = urlsplit(worker_url)
+        port = parsed_url.port
+    except ValueError:
+        parsed_url = None
+        port = None
+    if (
+        parsed_url is None
+        or parsed_url.scheme.lower() != "https"
+        or not parsed_url.hostname
+        or parsed_url.username is not None
+        or parsed_url.password is not None
+        or parsed_url.query
+        or parsed_url.fragment
+        or (port is not None and not 1 <= port <= 65535)
+    ):
+        raise CloudflareTradingApiError(
+            "worker_configuration_invalid",
+            "Cloudflare trading API URL configuration is invalid.",
+            503,
+        )
+
+    return worker_url, token
+
+
+def call_cloudflare_trading_worker(worker_path, payload=None, method="POST", query=None):
+    if not isinstance(worker_path, str) or not worker_path.startswith("/"):
+        raise CloudflareTradingApiError(
+            "worker_path_invalid",
+            "Cloudflare trading API path is invalid.",
+            500,
+        )
+    method = str(method).upper()
+    if method not in {"GET", "POST"}:
+        raise CloudflareTradingApiError(
+            "worker_method_invalid",
+            "Cloudflare trading API method is invalid.",
+            500,
+        )
+
+    try:
+        user_uid = g.firebase_uid
+    except (AttributeError, RuntimeError):
+        user_uid = None
+    if not isinstance(user_uid, str) or not user_uid.strip():
+        raise CloudflareTradingApiError(
+            "authenticated_uid_missing",
+            "Authenticated user identity is unavailable.",
+            401,
+        )
+
+    worker_url, token = cloudflare_trading_worker_configuration()
+    worker_payload = dict(payload) if isinstance(payload, dict) else {}
+    for identity_field in ("user_id", "uid", "ownerUid", "owner_uid"):
+        worker_payload.pop(identity_field, None)
+
+    endpoint = f"{worker_url}/{worker_path.lstrip('/')}"
+    query_values = {
+        key: value
+        for key, value in (query or {}).items()
+        if key == "account_id" and value is not None
+    }
+    if query_values:
+        endpoint = f"{endpoint}?{urlencode(query_values)}"
+
+    outbound_request = Request(
+        endpoint,
+        data=json.dumps(worker_payload).encode("utf-8") if method == "POST" else None,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Authenticated-User-Uid": user_uid.strip(),
+            "Content-Type": "application/json",
+        },
+        method=method,
+    )
+
+    try:
+        with urlopen(outbound_request, timeout=CLOUDFLARE_TRADING_TIMEOUT_SECONDS) as response:
+            worker_status = getattr(response, "status", None) or response.getcode()
+            response_body = response.read(MAX_CLOUDFLARE_RESPONSE_BYTES + 1)
+    except HTTPError as error:
+        public_status = error.code if error.code in {400, 404, 409, 422} else 502
+        raise CloudflareTradingApiError(
+            "worker_http_error",
+            "Cloudflare trading API could not process the request.",
+            public_status,
+            error.code,
+        ) from None
+    except (TimeoutError, socket.timeout):
+        raise CloudflareTradingApiError(
+            "worker_timeout",
+            "Cloudflare trading API timed out.",
+            504,
+        ) from None
+    except URLError as error:
+        if isinstance(error.reason, (TimeoutError, socket.timeout)):
+            raise CloudflareTradingApiError(
+                "worker_timeout",
+                "Cloudflare trading API timed out.",
+                504,
+            ) from None
+        raise CloudflareTradingApiError(
+            "worker_network_error",
+            "Cloudflare trading API could not be reached.",
+            502,
+        ) from None
+    except Exception:
+        raise CloudflareTradingApiError(
+            "worker_network_error",
+            "Cloudflare trading API could not be reached.",
+            502,
+        ) from None
+
+    if worker_status < 200 or worker_status >= 300:
+        public_status = worker_status if worker_status in {400, 404, 409, 422} else 502
+        raise CloudflareTradingApiError(
+            "worker_http_error",
+            "Cloudflare trading API could not process the request.",
+            public_status,
+            worker_status,
+        )
+    if len(response_body) > MAX_CLOUDFLARE_RESPONSE_BYTES:
+        raise CloudflareTradingApiError(
+            "worker_response_invalid",
+            "Cloudflare trading API returned an invalid response.",
+            502,
+            worker_status,
+        )
+
+    try:
+        worker_payload = json.loads(response_body)
+    except (TypeError, ValueError):
+        raise CloudflareTradingApiError(
+            "worker_response_invalid",
+            "Cloudflare trading API returned invalid JSON.",
+            502,
+            worker_status,
+        ) from None
+
+    if not isinstance(worker_payload, dict) or worker_payload.get("success") is not True:
+        raise CloudflareTradingApiError(
+            "worker_rejected",
+            "Cloudflare trading API did not succeed.",
+            502,
+            worker_status,
+        )
+
+    return worker_payload, worker_status
+
+
+def cloudflare_trading_proxy_response(worker_path, method="GET", payload=None, query=None):
+    try:
+        firebase_uid = getattr(g, "firebase_uid", None)
+        if isinstance(payload, dict) and "account_id" in payload:
+            payload = {
+                **payload,
+                "account_id": resolve_trading_engine_account_for_user(
+                    firebase_uid,
+                    payload["account_id"],
+                ),
+            }
+        if isinstance(query, dict) and "account_id" in query:
+            query = {
+                **query,
+                "account_id": resolve_trading_engine_account_for_user(
+                    firebase_uid,
+                    query["account_id"],
+                ),
+            }
+        worker_payload, worker_status = call_cloudflare_trading_worker(
+            worker_path,
+            payload=payload,
+            method=method,
+            query=query,
+        )
+    except CloudflareTradingApiError as error:
+        return jsonify(success=False, error=str(error), code=error.code), error.status_code
+
+    return jsonify(worker_payload), worker_status
+
+
+def filtered_trading_request_payload(allowed_fields):
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return None
+    return {field: body[field] for field in allowed_fields if field in body}
+
+
 @app.errorhandler(413)
 def request_too_large(_error):
     return jsonify(error="Payment proof must be no larger than 5 MB."), 413
@@ -408,6 +867,86 @@ def list_accounts():
             "profitSplit": plan["profit_split"],
         })
     return jsonify(firestore_json(accounts))
+
+
+@app.get("/api/trading/accounts")
+@firebase_auth_required
+def trading_account_proxy():
+    account_id = request.args.get("account_id", "").strip()
+    if not account_id:
+        return jsonify(error="account_id is required."), 400
+    return cloudflare_trading_proxy_response(
+        "/accounts",
+        method="GET",
+        query={"account_id": account_id},
+    )
+
+
+@app.post("/api/trading/positions")
+@firebase_auth_required
+def trading_open_position_proxy():
+    payload = filtered_trading_request_payload(
+        ("account_id", "symbol", "side", "volume", "open_price")
+    )
+    if payload is None:
+        return jsonify(error="Request body must be a JSON object."), 400
+    return cloudflare_trading_proxy_response(
+        "/positions",
+        method="POST",
+        payload=payload,
+    )
+
+
+@app.post("/api/trading/positions/price")
+@firebase_auth_required
+def trading_mark_position_proxy():
+    payload = filtered_trading_request_payload(("position_id", "current_price"))
+    if payload is None:
+        return jsonify(error="Request body must be a JSON object."), 400
+    return cloudflare_trading_proxy_response(
+        "/positions/price",
+        method="POST",
+        payload=payload,
+    )
+
+
+@app.post("/api/trading/positions/close")
+@firebase_auth_required
+def trading_close_position_proxy():
+    payload = filtered_trading_request_payload(("position_id", "close_price"))
+    if payload is None:
+        return jsonify(error="Request body must be a JSON object."), 400
+    return cloudflare_trading_proxy_response(
+        "/positions/close",
+        method="POST",
+        payload=payload,
+    )
+
+
+@app.get("/api/trading/trades")
+@firebase_auth_required
+def trading_trades_proxy():
+    account_id = request.args.get("account_id", "").strip()
+    if not account_id:
+        return jsonify(error="account_id is required."), 400
+    return cloudflare_trading_proxy_response(
+        "/trades",
+        method="GET",
+        query={"account_id": account_id},
+    )
+
+
+@app.get("/api/trading/account-rules")
+@firebase_auth_required
+def trading_account_rules_proxy():
+    account_id = request.args.get("account_id", "").strip()
+    if not account_id:
+        return jsonify(error="account_id is required."), 400
+    return cloudflare_trading_proxy_response(
+        "/account-rules",
+        method="GET",
+        query={"account_id": account_id},
+    )
 
 
 @app.post("/api/purchases")
@@ -564,6 +1103,7 @@ def create_purchase():
         "planKey": plan_key,
         "accountSize": size,
         "status": "pending",
+        "tradingEnabled": False,
         "balance": None,
         "equity": None,
         "profit": None,
@@ -767,61 +1307,201 @@ def admin_approve_purchase(purchase_id):
         return jsonify(error="Purchase not found."), 404
 
     database = get_firestore()
-    transaction = database.transaction()
 
     @firestore.transactional
-    def approve_in_transaction(transaction):
+    def prepare_approval(transaction):
         snapshot = purchase.reference.get(transaction=transaction)
         data = snapshot.to_dict() or {}
-        if data.get("status") == "approved":
-            return "approved", True
-        if not purchase_status_is_pending(data.get("status")):
-            return None, False
+        status = data.get("status")
+        if status != "approved" and not purchase_status_is_pending(status):
+            return None
 
-        owner_uid = data.get("ownerUid")
-        account_id = data.get("accountId")
-        if not isinstance(owner_uid, str) or not owner_uid.strip() or not isinstance(account_id, str) or not account_id.strip():
-            return "invalid", False
-
-        account_ref = user_document(owner_uid).collection("accounts").document(account_id)
+        values = purchase_provisioning_values(purchase_id, data)
+        account_ref = user_document(values["ownerUid"]).collection("accounts").document(
+            values["accountId"]
+        )
         account_snapshot = account_ref.get(transaction=transaction)
-        reviewed_at = firestore.SERVER_TIMESTAMP
-        transaction.update(purchase.reference, {
-            "status": "approved",
-            "reviewedBy": g.firebase_uid,
-            "reviewedAt": reviewed_at,
-            "audit": {"approvedBy": g.firebase_uid, "approvedAt": reviewed_at},
-        })
-        account_update = {
-            "ownerUid": owner_uid,
-            "purchaseId": purchase_id,
-            "accountId": account_id,
-            "planKey": data.get("planKey"),
-            "accountSize": data.get("accountSize"),
-            "status": "active",
-            "reviewedBy": g.firebase_uid,
-            "reviewedAt": reviewed_at,
-            "audit": {"approvedBy": g.firebase_uid, "approvedAt": reviewed_at},
-        }
-        if account_snapshot.exists:
-            transaction.update(account_ref, account_update)
-        else:
-            account_update.update({
-                "balance": None, "equity": None, "profit": None,
-                "dailyDrawdown": None, "overallDrawdown": None,
-                "tradingDays": None, "createdAt": reviewed_at,
-            })
-            transaction.set(account_ref, account_update)
-        return "approved", False
+        account = account_snapshot.to_dict() or {}
+        if account_snapshot.exists and not firestore_account_matches_purchase(account, values):
+            raise CloudflareProvisioningError(
+                "firestore_account_mismatch",
+                "Firestore account does not match its purchase.",
+                409,
+            )
 
-    status, already_approved = approve_in_transaction(transaction)
-    if status == "invalid":
-        return jsonify(error="Purchase is missing account ownership information."), 400
-    if status is None:
+        engine_account_id = account.get("tradingEngineAccountId")
+        if not is_valid_trading_engine_account_id(engine_account_id):
+            engine_account_id = None
+        else:
+            engine_account_id = engine_account_id.strip()
+
+        reviewed_at = data.get("reviewedAt") or firestore.SERVER_TIMESTAMP
+        reviewed_by = data.get("reviewedBy") or g.firebase_uid
+        account_fields = {
+            "ownerUid": values["ownerUid"],
+            "purchaseId": values["purchaseId"],
+            "accountId": values["accountId"],
+            "planKey": values["planKey"],
+            "accountSize": values["accountSize"],
+            "userUid": values["ownerUid"],
+            "phase": "instant" if values["planKey"] == "instant" else "phase_1",
+        }
+
+        if status != "approved":
+            transaction.update(purchase.reference, {
+                "status": "approved",
+                "reviewedBy": reviewed_by,
+                "reviewedAt": reviewed_at,
+                "audit": {"approvedBy": reviewed_by, "approvedAt": reviewed_at},
+            })
+
+        if account_snapshot.exists:
+            if engine_account_id is None:
+                transaction.update(account_ref, {**account_fields, "tradingEnabled": False})
+        else:
+            transaction.set(account_ref, {
+                **account_fields,
+                "status": "pending",
+                "tradingEnabled": False,
+                "balance": None,
+                "equity": None,
+                "profit": None,
+                "dailyDrawdown": None,
+                "overallDrawdown": None,
+                "tradingDays": None,
+                "createdAt": reviewed_at,
+            })
+
+        return {
+            "purchaseValues": values,
+            "engineAccountId": engine_account_id,
+            "alreadyApproved": status == "approved",
+        }
+
+    try:
+        prepared = prepare_approval(database.transaction())
+    except CloudflareProvisioningError as error:
+        return jsonify(error=str(error), code=error.code), error.status_code
+    except Exception as error:
+        app.logger.exception("Could not prepare approval for purchase %s", purchase_id)
+        return firebase_service_error("Firestore", error)
+
+    if prepared is None:
         return jsonify(error="Purchase is not currently awaiting payment verification."), 409
+
+    purchase_values = prepared["purchaseValues"]
+    engine_account_id = prepared["engineAccountId"]
+    if engine_account_id is None:
+        try:
+            worker_url, provisioning_token = cloudflare_worker_configuration()
+            worker_payload = {
+                "user_id": purchase_values["ownerUid"],
+                "purchase_id": purchase_values["purchaseId"],
+                "plan_key": purchase_values["planKey"],
+                "account_size": purchase_values["accountSize"],
+            }
+            provisioned_account = provision_cloudflare_account(
+                worker_url, provisioning_token, worker_payload
+            )
+            engine_account_id = provisioned_account["id"].strip()
+        except CloudflareProvisioningError as error:
+            return jsonify(
+                error=str(error),
+                code=error.code,
+                workerStatus=error.worker_status,
+            ), error.status_code
+
+        @firestore.transactional
+        def save_engine_account_id(transaction):
+            current_purchase = purchase.reference.get(transaction=transaction).to_dict() or {}
+            if current_purchase.get("status") != "approved":
+                return "purchase_not_approved"
+            current_values = purchase_provisioning_values(purchase_id, current_purchase)
+            if current_values != purchase_values:
+                return "purchase_changed"
+
+            account_ref = user_document(purchase_values["ownerUid"]).collection(
+                "accounts"
+            ).document(purchase_values["accountId"])
+            account_snapshot = account_ref.get(transaction=transaction)
+            account = account_snapshot.to_dict() or {}
+            if not account_snapshot.exists or not firestore_account_matches_purchase(account, purchase_values):
+                return "account_mismatch"
+
+            saved_id = account.get("tradingEngineAccountId")
+            if not is_valid_trading_engine_account_id(saved_id):
+                saved_id = None
+            else:
+                saved_id = saved_id.strip()
+            if saved_id and saved_id != engine_account_id:
+                return "engine_account_mismatch"
+            if not saved_id:
+                transaction.update(account_ref, {
+                    "tradingEngineAccountId": engine_account_id,
+                    "tradingEnabled": False,
+                })
+            return "saved"
+
+        try:
+            saved_status = save_engine_account_id(database.transaction())
+        except CloudflareProvisioningError as error:
+            return jsonify(error=str(error), code=error.code), error.status_code
+        except Exception as error:
+            app.logger.exception("Could not save trading account ID for purchase %s", purchase_id)
+            return firebase_service_error("Firestore", error)
+        if saved_status != "saved":
+            return jsonify(error="Purchase or account changed during provisioning."), 409
+
+    @firestore.transactional
+    def enable_trading(transaction):
+        current_purchase = purchase.reference.get(transaction=transaction).to_dict() or {}
+        if current_purchase.get("status") != "approved":
+            return False
+        current_values = purchase_provisioning_values(purchase_id, current_purchase)
+        if current_values != purchase_values:
+            return False
+
+        account_ref = user_document(purchase_values["ownerUid"]).collection(
+            "accounts"
+        ).document(purchase_values["accountId"])
+        account_snapshot = account_ref.get(transaction=transaction)
+        account = account_snapshot.to_dict() or {}
+        if (
+            not account_snapshot.exists
+            or not firestore_account_matches_purchase(account, purchase_values)
+            or account.get("tradingEngineAccountId") != engine_account_id
+        ):
+            return False
+
+        reviewed_at = current_purchase.get("reviewedAt") or firestore.SERVER_TIMESTAMP
+        reviewed_by = current_purchase.get("reviewedBy") or g.firebase_uid
+        transaction.update(account_ref, {
+            "userUid": purchase_values["ownerUid"],
+            "phase": "instant" if purchase_values["planKey"] == "instant" else "phase_1",
+            "balance": purchase_values["accountSize"],
+            "equity": purchase_values["accountSize"],
+            "status": "active",
+            "tradingEnabled": True,
+            "reviewedBy": reviewed_by,
+            "reviewedAt": reviewed_at,
+            "audit": {"approvedBy": reviewed_by, "approvedAt": reviewed_at},
+        })
+        return True
+
+    try:
+        enabled = enable_trading(database.transaction())
+    except Exception as error:
+        app.logger.exception("Could not enable trading for purchase %s", purchase_id)
+        return firebase_service_error("Firestore", error)
+    if not enabled:
+        return jsonify(error="Trading account could not be safely activated."), 409
+
     return jsonify(
-        purchaseId=purchase_id, status=status, reviewedBy=g.firebase_uid,
-        alreadyApproved=already_approved,
+        purchaseId=purchase_id,
+        status="approved",
+        reviewedBy=g.firebase_uid,
+        alreadyApproved=prepared["alreadyApproved"],
+        tradingEngineAccountId=engine_account_id,
     ), 200
 
 
@@ -879,6 +1559,7 @@ def admin_reject_purchase(purchase_id):
         if account_snapshot is not None and account_snapshot.exists:
             transaction.update(account_ref, {
                 "status": "rejected",
+                "tradingEnabled": False,
                 "reviewedBy": g.firebase_uid,
                 "reviewedAt": reviewed_at,
                 "audit": audit,
