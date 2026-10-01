@@ -487,7 +487,7 @@
       renderEmptyState(rejectedTableBody, message, 12);
     }
 
-    function renderPurchaseRows(tableBody, rows, emptyMessage, includeActions = false) {
+    function renderPurchaseRows(tableBody, rows, emptyMessage, includeActions = false, includeReconcile = false) {
       const uniqueRows = Array.from(new Map(rows.map(purchase => [purchase.purchaseId, purchase])).values());
       if (!uniqueRows.length) {
         renderEmptyState(tableBody, emptyMessage, includeActions ? 13 : 12);
@@ -524,7 +524,7 @@
             <td>${currency}</td>
             <td>${network}</td>
             <td>${submitted}</td>
-            <td>${proof.storagePath || proof.publicId ? `<button type="button" class="secondary" data-proof="${purchaseId}">View Payment Proof</button>` : 'No proof'}</td>
+            <td>${proof.storagePath || proof.publicId ? `<button type="button" class="secondary" data-proof="${purchaseId}">View Payment Proof</button>` : 'No proof'}${includeReconcile ? `<br><button type="button" class="secondary" data-action="reconcile" data-id="${purchaseId}">Reconcile Trading</button>` : ''}</td>
             ${includeActions ? `<td>
               <div class="cell-actions">
                 <button type="button" data-action="approve" data-id="${purchaseId}">APPROVE</button>
@@ -541,6 +541,11 @@
         });
         tableBody.querySelectorAll('[data-action="reject"]').forEach((button) => {
           button.addEventListener('click', () => handleReject(button.dataset.id));
+        });
+      }
+      if (includeReconcile) {
+        tableBody.querySelectorAll('[data-action="reconcile"]').forEach((button) => {
+          button.addEventListener('click', () => handleReconcile(button.dataset.id));
         });
       }
       tableBody.querySelectorAll('[data-proof]').forEach((button) => {
@@ -590,7 +595,7 @@
         const rejectedRows = Array.isArray(payload.rejected) ? payload.rejected : [];
         setPageMessage('Admin purchase statuses refreshed.', 'muted');
         renderPurchaseRows(pendingTableBody, pendingRows, 'No pending requests.', true);
-        renderPurchaseRows(activeTableBody, activeRows, 'No active purchases.');
+        renderPurchaseRows(activeTableBody, activeRows, 'No active purchases.', false, true);
         renderPurchaseRows(rejectedTableBody, rejectedRows, 'No rejected purchases.');
       } catch (error) {
         setPageMessage(error.message || 'Could not load pending payments.', 'error');
@@ -642,6 +647,20 @@
         await loadPendingPurchases();
       } catch (error) {
         setPageMessage(error.message || 'Approval failed.', 'error');
+      }
+    }
+
+    async function handleReconcile(purchaseId) {
+      if (!purchaseId) return;
+      const confirmed = window.confirm('Reconcile trading for this approved purchase?');
+      if (!confirmed) return;
+      try {
+        setPageMessage('Reconciling trading account…');
+        await apiRequest('/api/admin/purchases/' + encodeURIComponent(purchaseId) + '/approve', { method: 'POST' });
+        setPageMessage('Trading account reconciled successfully.', 'success');
+        await loadPendingPurchases();
+      } catch (error) {
+        setPageMessage(error.message || 'Trading account reconciliation failed.', 'error');
       }
     }
 
