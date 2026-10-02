@@ -901,6 +901,7 @@ def list_accounts():
             "dailyDrawdown": row.get("dailyDrawdown"),
             "overallDrawdown": row.get("overallDrawdown"),
             "tradingDays": row.get("tradingDays"),
+            "tradingEnabled": row.get("tradingEnabled") is True,
             "withdrawableProfit": row.get("withdrawableProfit"),
             "createdAt": row.get("createdAt"),
             "rules": plan["rules"],

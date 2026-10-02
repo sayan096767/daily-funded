@@ -729,21 +729,89 @@ class AccountOwnershipApiTests(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
 
-    def test_my_accounts_uses_verified_uid_and_returns_only_its_subcollection(self):
+    @patch("app.get_firebase_app", return_value=object())
+    def test_my_accounts_uses_verified_uid_and_returns_only_its_subcollection(self, _get_firebase_app):
         account = MagicMock()
         account.id = "user-a-account"
-        account.to_dict.return_value = {"planKey": "1step", "accountSize": 5000, "status": "active"}
+        account.to_dict.return_value = {
+            "planKey": "1step",
+            "accountSize": 5000,
+            "status": "active",
+            "tradingEnabled": True,
+        }
         user_ref = MagicMock()
         user_ref.collection.return_value.order_by.return_value.stream.return_value = [account]
 
         with patch("app.firebase_auth.verify_id_token", return_value={"uid": "user-a"}):
             with patch("app.user_document", return_value=user_ref) as document_for_user:
-                response = self.client.get("/api/my/accounts?ownerUid=user-b", headers={"Authorization": "Bearer user-a-token"})
+                response = self.client.get("/api/my/accounts?ownerUid=user-b", headers={"Authorization": "Bearer test-token"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual([row["id"] for row in response.get_json()], ["user-a-account"])
         self.assertEqual(response.get_json()[0]["accountId"], "user-a-account")
+        self.assertTrue(response.get_json()[0]["tradingEnabled"])
         document_for_user.assert_called_once_with("user-a")
+
+    @patch("app.get_firebase_app", return_value=object())
+    def test_my_accounts_returns_false_when_own_account_is_not_trading_enabled(self, _get_firebase_app):
+        account = MagicMock()
+        account.id = "user-a-account"
+        account.to_dict.return_value = {
+            "planKey": "1step",
+            "accountSize": 5000,
+            "status": "active",
+            "tradingEnabled": False,
+        }
+        user_ref = MagicMock()
+        user_ref.collection.return_value.order_by.return_value.stream.return_value = [account]
+
+        with patch("app.firebase_auth.verify_id_token", return_value={"uid": "user-a"}):
+            with patch("app.user_document", return_value=user_ref) as document_for_user:
+                response = self.client.get(
+                    "/api/my/accounts",
+                    headers={"Authorization": "Bearer test-token"},
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIs(response.get_json()[0]["tradingEnabled"], False)
+        document_for_user.assert_called_once_with("user-a")
+
+    @patch("app.get_firebase_app", return_value=object())
+    def test_my_accounts_does_not_read_another_users_account(self, _get_firebase_app):
+        own_account = MagicMock()
+        own_account.id = "user-a-account"
+        own_account.to_dict.return_value = {
+            "planKey": "1step",
+            "accountSize": 5000,
+            "status": "active",
+            "tradingEnabled": True,
+        }
+        other_account = MagicMock()
+        other_account.id = "user-b-account"
+        other_account.to_dict.return_value = {
+            "planKey": "1step",
+            "accountSize": 200000,
+            "status": "active",
+            "tradingEnabled": False,
+        }
+        own_user_ref = MagicMock()
+        own_user_ref.collection.return_value.order_by.return_value.stream.return_value = [own_account]
+        other_user_ref = MagicMock()
+        other_user_ref.collection.return_value.order_by.return_value.stream.return_value = [other_account]
+
+        with patch("app.firebase_auth.verify_id_token", return_value={"uid": "user-a"}):
+            with patch(
+                "app.user_document",
+                side_effect=lambda uid: {"user-a": own_user_ref, "user-b": other_user_ref}[uid],
+            ) as document_for_user:
+                response = self.client.get("/api/my/accounts?ownerUid=user-b", headers={"Authorization": "Bearer test-token"})
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()
+        self.assertEqual([row["id"] for row in rows], ["user-a-account"])
+        self.assertTrue(rows[0]["tradingEnabled"])
+        document_for_user.assert_called_once_with("user-a")
+        other_user_ref.collection.assert_not_called()
 
 class AdminPurchaseTransitionTests(unittest.TestCase):
     def setUp(self):
