@@ -638,7 +638,13 @@ def cloudflare_trading_worker_configuration():
     return worker_url, token
 
 
-def log_cloudflare_trading_diagnostic(worker_path, upstream_status=None, response_body=None, exception=None):
+def log_cloudflare_trading_diagnostic(
+    worker_path,
+    upstream_status=None,
+    response_body=None,
+    exception=None,
+    response_headers=None,
+):
     route_name = (
         worker_path
         if isinstance(worker_path, str) and re.fullmatch(r"/[A-Za-z0-9/_-]{1,100}", worker_path)
@@ -660,14 +666,30 @@ def log_cloudflare_trading_diagnostic(worker_path, upstream_status=None, respons
         and not re.search(r"(?i)token|secret|authorization|cookie|bearer", upstream_code)
         else "unavailable"
     )
+    safe_header_names = (
+        "Server",
+        "Content-Type",
+        "CF-Ray",
+        "CF-Cache-Status",
+        "CF-Mitigated",
+        "CF-Mitigated-Reason",
+        "Allow",
+    )
+    safe_headers = {}
+    for name in safe_header_names:
+        value = response_headers.get(name) if response_headers is not None else None
+        if isinstance(value, str):
+            safe_headers[name] = re.sub(r"[\x00-\x1f\x7f]", " ", value)[:200]
     app.logger.warning(
         "Cloudflare trading Worker diagnostic: route=%s upstream_status=%s "
-        "upstream_json_parsed=%s worker_code=%s exception_class=%s",
+        "upstream_json_parsed=%s worker_code=%s exception_class=%s "
+        "safe_response_headers=%s",
         route_name,
         upstream_status if isinstance(upstream_status, int) else "unavailable",
         upstream_json_parsed,
         safe_worker_code,
         type(exception).__name__ if exception is not None else "none",
+        json.dumps(safe_headers, sort_keys=True),
     )
 
 
@@ -732,7 +754,11 @@ def call_cloudflare_trading_worker(worker_path, payload=None, method="POST", que
         except OSError:
             upstream_body = None
         log_cloudflare_trading_diagnostic(
-            worker_path, error.code, upstream_body, error
+            worker_path,
+            error.code,
+            upstream_body,
+            error,
+            error.headers,
         )
         public_status = error.code if error.code in {400, 404, 409, 422} else 502
         raise CloudflareTradingApiError(

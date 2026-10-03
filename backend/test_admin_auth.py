@@ -1243,6 +1243,53 @@ class CloudflareTradingApiClientTests(unittest.TestCase):
                             with self.assertRaises(app_module.CloudflareTradingApiError):
                                 app_module.call_cloudflare_trading_worker("/accounts", {})
 
+    def test_worker_http_error_logs_only_allowlisted_response_headers(self):
+        upstream_error = HTTPError(
+            "https://worker.example/account-rules",
+            403,
+            "forbidden",
+            {
+                "Server": "cloudflare",
+                "Content-Type": "text/html",
+                "CF-Ray": "abc123-LAX",
+                "CF-Cache-Status": "DYNAMIC",
+                "CF-Mitigated": "challenge",
+                "CF-Mitigated-Reason": "managed_rule",
+                "Allow": "GET",
+                "Set-Cookie": "private-cookie",
+                "Authorization": "private-token",
+            },
+            None,
+        )
+        upstream_error.read = MagicMock(return_value=b"forbidden")
+        with app.test_request_context("/"):
+            g.firebase_uid = "verified-firebase-uid"
+            with patch.dict("os.environ", self.worker_environment, clear=True):
+                with patch("app.urlopen", side_effect=upstream_error):
+                    with patch.object(app_module.app.logger, "warning") as warning:
+                        with self.assertRaises(app_module.CloudflareTradingApiError):
+                            app_module.call_cloudflare_trading_worker(
+                                "/account-rules",
+                                method="GET",
+                                query={"account_id": "ACC_TEST"},
+                            )
+
+        diagnostic = warning.call_args.args[-1]
+        self.assertEqual(
+            json.loads(diagnostic),
+            {
+                "Allow": "GET",
+                "CF-Cache-Status": "DYNAMIC",
+                "CF-Mitigated": "challenge",
+                "CF-Mitigated-Reason": "managed_rule",
+                "CF-Ray": "abc123-LAX",
+                "Content-Type": "text/html",
+                "Server": "cloudflare",
+            },
+        )
+        self.assertNotIn("private-cookie", diagnostic)
+        self.assertNotIn("private-token", diagnostic)
+
     def test_worker_network_error_is_sanitized(self):
         with app.test_request_context("/"):
             g.firebase_uid = "verified-firebase-uid"
