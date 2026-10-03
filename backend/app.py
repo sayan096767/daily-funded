@@ -638,6 +638,39 @@ def cloudflare_trading_worker_configuration():
     return worker_url, token
 
 
+def log_cloudflare_trading_diagnostic(worker_path, upstream_status=None, response_body=None, exception=None):
+    route_name = (
+        worker_path
+        if isinstance(worker_path, str) and re.fullmatch(r"/[A-Za-z0-9/_-]{1,100}", worker_path)
+        else "unknown"
+    )
+    upstream_payload = {}
+    upstream_json_parsed = False
+    if isinstance(response_body, bytes) and len(response_body) <= MAX_CLOUDFLARE_RESPONSE_BYTES:
+        try:
+            upstream_payload = json.loads(response_body)
+            upstream_json_parsed = True
+        except (TypeError, ValueError):
+            pass
+    upstream_code = upstream_payload.get("code") if isinstance(upstream_payload, dict) else None
+    safe_worker_code = (
+        upstream_code
+        if isinstance(upstream_code, str)
+        and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", upstream_code)
+        and not re.search(r"(?i)token|secret|authorization|cookie|bearer", upstream_code)
+        else "unavailable"
+    )
+    app.logger.warning(
+        "Cloudflare trading Worker diagnostic: route=%s upstream_status=%s "
+        "upstream_json_parsed=%s worker_code=%s exception_class=%s",
+        route_name,
+        upstream_status if isinstance(upstream_status, int) else "unavailable",
+        upstream_json_parsed,
+        safe_worker_code,
+        type(exception).__name__ if exception is not None else "none",
+    )
+
+
 def call_cloudflare_trading_worker(worker_path, payload=None, method="POST", query=None):
     if not isinstance(worker_path, str) or not worker_path.startswith("/"):
         raise CloudflareTradingApiError(
@@ -694,6 +727,13 @@ def call_cloudflare_trading_worker(worker_path, payload=None, method="POST", que
             worker_status = getattr(response, "status", None) or response.getcode()
             response_body = response.read(MAX_CLOUDFLARE_RESPONSE_BYTES + 1)
     except HTTPError as error:
+        try:
+            upstream_body = error.read(MAX_CLOUDFLARE_RESPONSE_BYTES + 1)
+        except OSError:
+            upstream_body = None
+        log_cloudflare_trading_diagnostic(
+            worker_path, error.code, upstream_body, error
+        )
         public_status = error.code if error.code in {400, 404, 409, 422} else 502
         raise CloudflareTradingApiError(
             "worker_http_error",
@@ -701,7 +741,8 @@ def call_cloudflare_trading_worker(worker_path, payload=None, method="POST", que
             public_status,
             error.code,
         ) from None
-    except (TimeoutError, socket.timeout):
+    except (TimeoutError, socket.timeout) as error:
+        log_cloudflare_trading_diagnostic(worker_path, exception=error)
         raise CloudflareTradingApiError(
             "worker_timeout",
             "Cloudflare trading API timed out.",
@@ -709,17 +750,20 @@ def call_cloudflare_trading_worker(worker_path, payload=None, method="POST", que
         ) from None
     except URLError as error:
         if isinstance(error.reason, (TimeoutError, socket.timeout)):
+            log_cloudflare_trading_diagnostic(worker_path, exception=error)
             raise CloudflareTradingApiError(
                 "worker_timeout",
                 "Cloudflare trading API timed out.",
                 504,
             ) from None
+        log_cloudflare_trading_diagnostic(worker_path, exception=error)
         raise CloudflareTradingApiError(
             "worker_network_error",
             "Cloudflare trading API could not be reached.",
             502,
         ) from None
-    except Exception:
+    except Exception as error:
+        log_cloudflare_trading_diagnostic(worker_path, exception=error)
         raise CloudflareTradingApiError(
             "worker_network_error",
             "Cloudflare trading API could not be reached.",
@@ -727,6 +771,9 @@ def call_cloudflare_trading_worker(worker_path, payload=None, method="POST", que
         ) from None
 
     if worker_status < 200 or worker_status >= 300:
+        log_cloudflare_trading_diagnostic(
+            worker_path, worker_status, response_body
+        )
         public_status = worker_status if worker_status in {400, 404, 409, 422} else 502
         raise CloudflareTradingApiError(
             "worker_http_error",
