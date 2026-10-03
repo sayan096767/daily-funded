@@ -11,7 +11,6 @@ import {
   ChevronRight,
   ChevronUp,
   CircleHelp,
-  Clock3,
   Menu,
   Minus,
   PanelBottomClose,
@@ -562,8 +561,8 @@ function priceForWatchlist(quote, digits) {
 function getMarketState(quote, error) {
   if (error) return { label: "Unavailable", tone: "unavailable" };
   if (!quote) return { label: "Waiting", tone: "waiting" };
+  if (quote.market_state?.toLowerCase() === "closed") return { label: "Market Closed", tone: "closed" };
   if (quote.stale) return { label: "Stale", tone: "stale" };
-  if (quote.market_state?.toLowerCase() === "closed") return { label: "Closed", tone: "closed" };
   return { label: "Live", tone: "live" };
 }
 
@@ -632,11 +631,17 @@ function useMarketData(liveTickHandler, onAcceptedTick) {
       ])));
     };
 
-    const applyQuote = (quote, timestamp) => {
+    const applyQuote = (quote, timestamp, preserveMarketState = false) => {
       const previousTimestamp = quoteTimes.current[quote.symbol];
       if (previousTimestamp !== undefined && (timestamp === null || timestamp < previousTimestamp)) return false;
       if (timestamp !== null) quoteTimes.current[quote.symbol] = timestamp;
-      setQuotes((current) => ({ ...current, [quote.symbol]: quote }));
+      setQuotes((current) => {
+        const previous = current[quote.symbol];
+        const nextQuote = preserveMarketState && quote.market_state == null && previous?.market_state
+          ? { ...quote, market_state: previous.market_state }
+          : quote;
+        return { ...current, [quote.symbol]: nextQuote };
+      });
       return true;
     };
 
@@ -767,11 +772,12 @@ function useMarketData(liveTickHandler, onAcceptedTick) {
           timestamp: rawTick.timestamp ?? null,
           timestampMs: timestamp,
           stale: false,
+          ...(typeof rawTick.marketState === "string" ? { market_state: rawTick.marketState } : {}),
         };
         const previousTimestamp = quoteTimes.current[symbol];
         if (previousTimestamp !== undefined && timestamp < previousTimestamp) return;
         flushSync(() => {
-          if (!applyQuote(tick, timestamp)) return;
+          if (!applyQuote(tick, timestamp, true)) return;
           onAcceptedTick?.(tick);
           liveTickHandler.current?.(tick);
           setQuoteErrors((current) => {
@@ -880,8 +886,14 @@ function useCandles(symbol, interval) {
 function BrandMark() {
   return (
     <div className="brand-lockup" aria-label="Daily Funded">
-      <span className="brand-mark"><span /></span>
-      <span className="brand-name">daily<span>funded</span></span>
+      <span className="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M7 18V7.5c0-.8.7-1.5 1.5-1.5H18" />
+          <path d="M9 15.5 12 12l2.2 1.8L18 9" />
+          <path d="M15 9h3v3" />
+        </svg>
+      </span>
+      <span className="brand-name">Daily <span>Funded</span></span>
     </div>
   );
 }
@@ -1113,7 +1125,6 @@ function ChartView({
   candleDataKey,
   state,
   error,
-  source,
   interval,
   onIntervalChange,
   onOpenWatchlist,
@@ -1151,14 +1162,14 @@ function ChartView({
     const chart = createChart(chartHost.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: "#15191a" },
+        background: { type: ColorType.Solid, color: "#141b1f" },
         textColor: "#828c8c",
         fontFamily: "'IBM Plex Mono', monospace",
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: "#252b2c" },
-        horzLines: { color: "#252b2c" },
+        vertLines: { color: "#303a3f" },
+        horzLines: { color: "#303a3f" },
       },
       rightPriceScale: { borderColor: "#303737", minimumWidth: 72, autoScale: true },
       timeScale: { borderColor: "#303737", timeVisible: true, secondsVisible: false, rightOffset: 5, barSpacing: 9 },
@@ -1168,12 +1179,12 @@ function ChartView({
       localization: { priceFormatter: (price) => formatPrice(price, digits) },
     });
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#72d6ae",
-      downColor: "#ee7c72",
-      borderUpColor: "#72d6ae",
-      borderDownColor: "#ee7c72",
-      wickUpColor: "#72d6ae",
-      wickDownColor: "#ee7c72",
+      upColor: "#1685f5",
+      downColor: "#f0443e",
+      borderUpColor: "#1685f5",
+      borderDownColor: "#f0443e",
+      wickUpColor: "#1685f5",
+      wickDownColor: "#f0443e",
       borderVisible: true,
       wickVisible: true,
       priceLineVisible: false,
@@ -1555,13 +1566,6 @@ function ChartView({
           <button className="icon-button chart-tool" type="button" title="Chart style" aria-label="Chart style"><CandlestickChart size={17} /></button>
         </div>
       </div>
-      <div className="chart-quote-strip">
-        <QuoteChip label="BID" value={quote?.bid == null ? "--" : formatPrice(quote.bid, digits)} tone="sell" />
-        <QuoteChip label="ASK" value={quote?.ask == null ? "--" : formatPrice(quote.ask, digits)} tone="buy" />
-        <QuoteChip label="MID" value={quote?.mid == null ? "--" : formatPrice(quote.mid, digits)} />
-        {quote?.stale && <span className="stale-flag">STALE QUOTE</span>}
-        {source && <span className="source-label">{source === "provider_historical" ? "PROVIDER HISTORY" : "WORKER GENERATED"}</span>}
-      </div>
       <div className="chart-canvas-wrap" data-layout-version={layoutVersion} onWheelCapture={() => setLayoutVersion((version) => version + 1)}>
         <div className="chart-canvas" ref={chartHost} aria-label={`${symbol} candlestick chart`} />
         <div className="chart-position-controls" aria-label="Open position chart controls">
@@ -1858,20 +1862,32 @@ function TradingPanel({ open, onToggle, positions, trades, loading, error, canTr
       {open && <div className="trading-content">
         {error && <div className="trading-alert" role="alert">{error}</div>}
         {tab === "Positions" && <>
-          <div className="table-header position-grid"><span>SYMBOL</span><span>DIRECTION</span><span>VOLUME</span><span>OPEN PRICE</span><span>CURRENT PRICE</span><span>FLOATING P&amp;L</span><span>TAKE PROFIT</span><span>STOP LOSS</span><span>STATUS</span><span>ACTION</span></div>
+          <div className="table-header position-grid">
+            <span>SYMBOL</span><span>TYPE</span><span>VOLUME (LOTS)</span><span>OPEN PRICE</span>
+            <span>CURRENT PRICE</span><span>T/P</span><span>S/L</span><span>P/L · USD</span><span>ACTION</span>
+          </div>
           {positions.map((position) => <div className="position-row position-grid" key={position.id}>
-            <strong>{position.symbol}</strong>
-            <span className={position.side === "BUY" ? "direction-buy" : "direction-sell"}>{position.side === "BUY" ? "BUY / LONG" : "SELL / SHORT"}</span>
+            <strong className="position-symbol"><InstrumentMark symbol={position.symbol} />{position.symbol}</strong>
+            <span className={`position-type ${position.side === "BUY" ? "direction-buy" : "direction-sell"}`}>
+              <span aria-hidden="true" />{position.side === "BUY" ? "Buy" : "Sell"}
+            </span>
             <span>{position.volume ?? "--"}</span>
             <span>{formatPrice(position.open_price, getPriceDigits(position.symbol))}</span>
             <span>{formatPrice(position.current_price, getPriceDigits(position.symbol))}</span>
-            <span>{formatMoney(position.floating_pnl)}</span>
-            <span>{formatPrice(position.take_profit, getPriceDigits(position.symbol))}</span>
-            <span>{formatPrice(position.stop_loss, getPriceDigits(position.symbol))}</span>
-            <span>{position.status || "open"}</span>
-            <button type="button" className="close-position-button" onClick={() => closePosition(position)} disabled={!canTrade || closingId === position.id}>
-              {closingId === position.id ? "Closing…" : "Close"}
-            </button>
+            <span className={position.take_profit == null ? "protection-add" : "protection-value"} title={position.take_profit == null ? "Drag the TP chip on the chart to add take profit." : undefined}>
+              {position.take_profit == null ? "Add" : formatPrice(position.take_profit, getPriceDigits(position.symbol))}
+            </span>
+            <span className={position.stop_loss == null ? "protection-add" : "protection-value"} title={position.stop_loss == null ? "Drag the SL chip on the chart to add stop loss." : undefined}>
+              {position.stop_loss == null ? "Add" : formatPrice(position.stop_loss, getPriceDigits(position.symbol))}
+            </span>
+            <span className={`position-pnl ${Number(position.floating_pnl) >= 0 ? "position-pnl-positive" : "position-pnl-negative"}`}>
+              {formatMoney(position.floating_pnl)}
+            </span>
+            <div className="position-actions">
+              <button type="button" className="close-position-button" aria-label={`Close ${position.side} ${position.symbol} position`} onClick={() => closePosition(position)} disabled={!canTrade || closingId === position.id}>
+                {closingId === position.id ? "Closing…" : "Close"}
+              </button>
+            </div>
           </div>)}
           {!loading && !positions.length && <div className="trading-empty"><span className="empty-table-icon"><PanelBottomClose size={18} /></span><strong>No open positions</strong><span>Positions will appear here after a server-accepted market order.</span></div>}
           {loading && !positions.length && <div className="trading-empty"><strong>Loading positions…</strong></div>}
@@ -1903,18 +1919,6 @@ function formatDate(value) {
   return Number.isFinite(date.getTime()) ? date.toLocaleString() : "--";
 }
 
-function StatusBar({ quoteRefresh, quote, source }) {
-  const state = getMarketState(quote, null);
-  const statusLabel = quoteRefresh === "error" ? "Quote feed unavailable" : quoteRefresh === "loading" ? "Connecting to market data" : quoteRefresh === "refreshing" ? "Refreshing quotes" : state.label === "Stale" ? "Last quote is stale" : "Market data connected";
-  return (
-    <footer className="statusbar">
-      <span className={`connection-indicator ${quoteRefresh === "error" ? "connection-error" : ""}`}><span />{statusLabel}</span>
-      <span>{source === "provider_historical" ? "Provider candle history" : "Quote snapshots via Daily Funded Worker"}</span>
-      <span className="statusbar-right"><Clock3 size={12} /> Live quotes via Biquote SignalR</span>
-    </footer>
-  );
-}
-
 function App() {
   const trading = useTradingSession();
   const liveTickHandler = useRef(null);
@@ -1922,7 +1926,7 @@ function App() {
     (tick) => trading.applyLiveTickToPositions(tick),
     [trading.applyLiveTickToPositions]
   );
-  const { symbols, symbolState, symbolError, quotes, quoteErrors, quoteRefresh } = useMarketData(liveTickHandler, onAcceptedTick);
+  const { symbols, symbolState, symbolError, quotes, quoteErrors } = useMarketData(liveTickHandler, onAcceptedTick);
   const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
   const [interval, setInterval] = useState("1m");
   const [watchCollapsed, setWatchCollapsed] = useState(false);
@@ -1940,7 +1944,7 @@ function App() {
   const selected = symbols.find((item) => item.symbol === selectedSymbol) || null;
   const quote = quotes[selectedSymbol] || null;
   const quoteError = quoteErrors[selectedSymbol] || null;
-  const { candles, state: candleState, error: candleError, source, dataKey: candleDataKey } = useCandles(selected ? selectedSymbol : "", interval);
+  const { candles, state: candleState, error: candleError, dataKey: candleDataKey } = useCandles(selected ? selectedSymbol : "", interval);
   const liveOpenPnl = trading.positions
     .filter((position) => position.status === "open")
     .reduce((total, position) => {
@@ -2092,7 +2096,6 @@ function App() {
             candleDataKey={candleDataKey}
             state={selected ? candleState : symbolState === "loading" ? "loading" : "empty"}
             error={candleError || symbolError}
-            source={source}
             interval={interval}
             onIntervalChange={setInterval}
             onOpenWatchlist={() => setWatchOpen(true)}
@@ -2125,7 +2128,6 @@ function App() {
           onExecute={executeOrder}
         />
       </div>
-      <StatusBar quoteRefresh={quoteRefresh} quote={quote} source={source} />
       <nav className="mobile-bottom-nav" aria-label="Terminal panels">
         <button type="button" onClick={() => setWatchOpen(true)}><Menu size={17} /><span>Markets</span></button>
         <button type="button" onClick={() => setActivityOpen((current) => !current)}><BarChart3 size={17} /><span>Activity</span></button>
