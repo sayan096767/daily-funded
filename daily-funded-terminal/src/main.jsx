@@ -771,9 +771,9 @@ function useMarketData(liveTickHandler, onAcceptedTick) {
         const previousTimestamp = quoteTimes.current[symbol];
         if (previousTimestamp !== undefined && timestamp < previousTimestamp) return;
         flushSync(() => {
-          if (liveTickHandler.current?.(tick) === false) return;
           if (!applyQuote(tick, timestamp)) return;
           onAcceptedTick?.(tick);
+          liveTickHandler.current?.(tick);
           setQuoteErrors((current) => {
             if (!current[symbol]) return current;
             const next = { ...current };
@@ -923,6 +923,9 @@ function TopBar({
   onToggleWatch,
   onToggleOrder,
   account,
+  equity,
+  freeMargin,
+  openPnl,
   accounts,
   accountsLoading,
   selectedAccountId,
@@ -995,9 +998,9 @@ function TopBar({
 
       <div className="topbar-right">
         <div className="account-metric"><span>Balance</span><strong>{formatMoney(account?.balance)}</strong></div>
-        <div className="account-metric"><span>Equity</span><strong>{formatMoney(account?.equity)}</strong></div>
-        <div className="account-metric account-metric-wide"><span>Free margin</span><strong>{formatMoney(account?.free_margin ?? account?.available_margin)}</strong></div>
-        <div className="account-metric account-metric-wide"><span>Open P/L</span><strong>{formatMoney(account?.open_pnl)}</strong></div>
+        <div className="account-metric"><span>Equity</span><strong>{formatMoney(equity)}</strong></div>
+        <div className="account-metric account-metric-wide"><span>Free margin</span><strong>{formatMoney(freeMargin)}</strong></div>
+        <div className="account-metric account-metric-wide"><span>Open P/L</span><strong>{formatMoney(openPnl)}</strong></div>
         <span className="topbar-divider" />
         <button className="icon-button settings-button" type="button" title="Terminal settings" aria-label="Terminal settings"><Settings2 size={18} /></button>
         <button className="mobile-order-trigger" type="button" onClick={onToggleOrder}>Order</button>
@@ -1270,15 +1273,14 @@ function ChartView({
   useLayoutEffect(() => {
     const series = candleSeries.current;
     if (!series) return;
-    series.applyOptions({ priceLineVisible: quote?.mid != null });
+    series.applyOptions({ priceLineVisible: false, lastValueVisible: false });
     if (quote?.mid != null && Number.isFinite(Number(quote.mid))) {
       const line = series.createPriceLine({
         price: Number(quote.mid),
-        color: quote.stale ? "#a5a88f" : "#c7eb77",
+        color: quote.stale ? "#a5a88f" : "#ee4f4f",
         lineWidth: 1,
         lineStyle: 2,
-        axisLabelVisible: true,
-        title: "MID",
+        axisLabelVisible: false,
       });
       return () => series.removePriceLine(line);
     }
@@ -1301,7 +1303,6 @@ function ChartView({
           price: entryPrice,
           color: position.side === "BUY" ? "#62c99d" : "#ef8279",
           lineStyle: 0,
-          title: `${position.side} ${Number(position.volume).toFixed(2)}`,
         });
       }
       for (const [field, color, title] of [
@@ -1348,10 +1349,9 @@ function ChartView({
   }, [draftPrices, positions, symbol]);
 
   useEffect(() => {
-    if (candleBucketTime === null) return undefined;
     const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [candleBucketTime]);
+  }, []);
 
   const tickAgeMs = latestTickTimestampMs === null ? Infinity : clockNow - latestTickTimestampMs;
   const countdownLive = Boolean(
@@ -1361,15 +1361,11 @@ function ChartView({
     tickAgeMs >= 0 &&
     tickAgeMs <= QUOTE_FALLBACK_MS
   );
-  const candleEndMs = candleBucketTime === null
-    ? null
-    : (candleBucketTime + INTERVAL_SECONDS[interval]) * 1000;
-  const remainingSeconds = candleEndMs === null
-    ? null
-    : Math.max(0, Math.ceil((candleEndMs - clockNow) / 1000));
-  const countdownText = remainingSeconds === null
-    ? "--:--"
-    : remainingSeconds >= 3600
+  const intervalSeconds = INTERVAL_SECONDS[interval];
+  const currentCandleStart = Math.floor(clockNow / (intervalSeconds * 1000)) * intervalSeconds;
+  const candleEndMs = (currentCandleStart + intervalSeconds) * 1000;
+  const remainingSeconds = Math.max(0, Math.ceil((candleEndMs - clockNow) / 1000));
+  const countdownText = remainingSeconds >= 3600
       ? `${String(Math.floor(remainingSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((remainingSeconds % 3600) / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`
       : `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
 
@@ -1408,13 +1404,17 @@ function ChartView({
     ) return;
     event.preventDefault();
     event.stopPropagation();
-    const price = Number(position[field]);
-    if (!Number.isFinite(price)) return;
+    const currentPrice = Number(position[field]);
+    const price = Number.isFinite(currentPrice) && currentPrice > 0
+      ? currentPrice
+      : Number(position.open_price);
+    if (!Number.isFinite(price) || price <= 0) return;
     dragRef.current = {
       id: position.id,
       field,
       pointerId: event.pointerId,
       price,
+      moved: false,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     setControlError("");
@@ -1432,6 +1432,7 @@ function ChartView({
       : null;
     if (price === null) return;
     drag.price = price;
+    drag.moved = true;
     setDraftPrices((current) => new Map(current).set(`${drag.id}:${drag.field}`, price));
     setLayoutVersion((version) => version + 1);
   }
@@ -1441,6 +1442,15 @@ function ChartView({
     if (!drag || drag.pointerId !== event.pointerId) return;
     event.preventDefault();
     event.stopPropagation();
+    if (!drag.moved) {
+      dragRef.current = null;
+      setDraftPrices((current) => {
+        const next = new Map(current);
+        next.delete(`${drag.id}:${drag.field}`);
+        return next;
+      });
+      return;
+    }
     const finalRawPrice = priceFromPointer(event);
     const position = positions.find((item) => item.id === drag.id);
     const finalPrice = position && finalRawPrice !== null
@@ -1508,6 +1518,25 @@ function ChartView({
   const visiblePositions = positions.filter((position) =>
     position.status === "open" && position.symbol?.toUpperCase() === symbol
   );
+  const latestCandle = candleDataRef.current[candleDataRef.current.length - 1]
+    || candles[candles.length - 1];
+  const hasLivePrice = quote?.mid !== null
+    && quote?.mid !== undefined
+    && Number.isFinite(Number(quote.mid));
+  const livePrice = hasLivePrice ? Number(quote.mid) : null;
+  const displayedPrice = livePrice ?? (Number.isFinite(Number(latestCandle?.close))
+    ? Number(latestCandle.close)
+    : null);
+  const priceCoordinate = displayedPrice === null
+    ? null
+    : candleSeries.current?.priceToCoordinate(displayedPrice);
+  const chartHeight = chartHost.current?.clientHeight ?? 0;
+  const livePriceY = Number.isFinite(priceCoordinate)
+    ? Math.max(16, Math.min(priceCoordinate, chartHeight - 16))
+    : chartHeight > 0 ? chartHeight / 2 : null;
+  const priceDirection = latestCandle && latestCandle.close >= latestCandle.open
+    ? "price-up"
+    : "price-down";
 
   return (
     <section className="chart-panel">
@@ -1530,16 +1559,20 @@ function ChartView({
         <QuoteChip label="BID" value={quote?.bid == null ? "--" : formatPrice(quote.bid, digits)} tone="sell" />
         <QuoteChip label="ASK" value={quote?.ask == null ? "--" : formatPrice(quote.ask, digits)} tone="buy" />
         <QuoteChip label="MID" value={quote?.mid == null ? "--" : formatPrice(quote.mid, digits)} />
-        <span className={`candle-countdown ${countdownLive ? "countdown-live" : "countdown-stale"}`}>
-          <span>{countdownLive ? "CANDLE CLOSE" : candleBucketTime === null ? "WAITING FOR LIVE TICK" : quote?.stale ? "MARKET DATA STALE" : "COUNTDOWN NOT LIVE"}</span>
-          <strong>{countdownLive ? countdownText : "--:--"}</strong>
-        </span>
         {quote?.stale && <span className="stale-flag">STALE QUOTE</span>}
         {source && <span className="source-label">{source === "provider_historical" ? "PROVIDER HISTORY" : "WORKER GENERATED"}</span>}
       </div>
       <div className="chart-canvas-wrap" data-layout-version={layoutVersion} onWheelCapture={() => setLayoutVersion((version) => version + 1)}>
         <div className="chart-canvas" ref={chartHost} aria-label={`${symbol} candlestick chart`} />
         <div className="chart-position-controls" aria-label="Open position chart controls">
+          {Number.isFinite(livePriceY) && <div
+            className={`live-price-countdown ${priceDirection}`}
+            style={{ top: `${livePriceY}px` }}
+            aria-label={`Current price ${displayedPrice === null ? "unavailable" : formatPrice(displayedPrice, digits)}, candle closes in ${countdownText}`}
+          >
+            <strong>{displayedPrice === null ? "--" : formatPrice(displayedPrice, digits)}</strong>
+            <span>{countdownText}</span>
+          </div>}
           {visiblePositions.map((position) => {
             const entryY = candleSeries.current?.priceToCoordinate(Number(position.open_price));
             const digitsForPosition = getPositionPriceDigits(position);
@@ -1548,7 +1581,7 @@ function ChartView({
             return (
               <React.Fragment key={position.id}>
                 {Number.isFinite(entryY) && <div
-                  className={`position-line-label ${position.side === "BUY" ? "position-line-buy" : "position-line-sell"} ${stalePnl ? "position-line-stale" : ""}`}
+                  className={`position-line-label ${position.side === "BUY" ? "position-line-buy" : "position-line-sell"}`}
                   style={{ top: `${entryY}px` }}
                   title={position.live_tick_at == null
                     ? "Waiting for the next accepted real market tick."
@@ -1557,8 +1590,41 @@ function ChartView({
                       : "Display-only P&L from the latest accepted real market tick."}
                 >
                   <span>{position.side} {Number(position.volume).toFixed(2)}</span>
-                  <span>Entry {formatPrice(position.open_price, digitsForPosition)}</span>
-                  <strong>{formatSignedMoney(pnlValue)}</strong>
+                  <strong className={
+                    pnlValue == null
+                      ? "position-pnl-neutral"
+                      : Number(pnlValue) >= 0
+                        ? "position-pnl-positive"
+                        : "position-pnl-negative"
+                  }>{formatSignedMoney(pnlValue)}</strong>
+                  {[
+                    ["take_profit", "TP", "position-level-tp"],
+                    ["stop_loss", "SL", "position-level-sl"],
+                  ].map(([field, label, className]) => (
+                    <button
+                      key={field}
+                      type="button"
+                      className={`position-protection-chip ${className} ${Number(position[field]) > 0 ? "protection-set" : "protection-unset"}`}
+                      aria-label={`Drag to ${position[field] == null ? "set" : "change"} ${label} for ${position.side} ${position.symbol} position ${position.id}${position[field] == null ? "" : ` at ${formatPrice(position[field], digitsForPosition)}`}`}
+                      title={position[field] == null
+                        ? `Drag to set ${label}`
+                        : `Drag to change ${label} ${formatPrice(position[field], digitsForPosition)}`}
+                      disabled={!canTrade || modifyingIds.has(position.id)}
+                      onPointerDown={(event) => handleProtectionPointerDown(event, position, field)}
+                      onPointerMove={handleProtectionPointerMove}
+                      onPointerUp={(event) => void finishProtectionDrag(event)}
+                      onPointerCancel={() => {
+                        const drag = dragRef.current;
+                        if (!drag || drag.id !== position.id || drag.field !== field) return;
+                        dragRef.current = null;
+                        setDraftPrices((current) => {
+                          const next = new Map(current);
+                          next.delete(`${position.id}:${field}`);
+                          return next;
+                        });
+                      }}
+                    >{label}</button>
+                  ))}
                   <button
                     type="button"
                     className="position-line-close"
@@ -1875,6 +1941,27 @@ function App() {
   const quote = quotes[selectedSymbol] || null;
   const quoteError = quoteErrors[selectedSymbol] || null;
   const { candles, state: candleState, error: candleError, source, dataKey: candleDataKey } = useCandles(selected ? selectedSymbol : "", interval);
+  const liveOpenPnl = trading.positions
+    .filter((position) => position.status === "open")
+    .reduce((total, position) => {
+      if (position.floating_pnl == null) return total;
+      const value = Number(position.floating_pnl);
+      return Number.isFinite(value) ? total + value : total;
+    }, 0);
+  const accountOpenPnl = Number(trading.account?.open_pnl);
+  const livePnlDelta = Number.isFinite(accountOpenPnl)
+    ? liveOpenPnl - accountOpenPnl
+    : 0;
+  const adjustAccountMetric = (value) => {
+    if (value == null || !Number.isFinite(Number(value))) return value;
+    return Number(value) + livePnlDelta;
+  };
+  const openPnl = trading.account ? liveOpenPnl : trading.selectedAccount?.open_pnl;
+  const equity = adjustAccountMetric((trading.account || trading.selectedAccount)?.equity);
+  const freeMargin = adjustAccountMetric(
+    (trading.account || trading.selectedAccount)?.free_margin ??
+    (trading.account || trading.selectedAccount)?.available_margin
+  );
 
   useEffect(() => {
     if (symbolState !== "ready" || symbols.some((item) => item.symbol === selectedSymbol)) return;
@@ -1982,6 +2069,9 @@ function App() {
         onToggleWatch={() => setWatchOpen((current) => !current)}
         onToggleOrder={() => setOrderOpen(true)}
         account={trading.account || trading.selectedAccount}
+        equity={equity}
+        freeMargin={freeMargin}
+        openPnl={openPnl}
         accounts={trading.accounts}
         accountsLoading={trading.accountsLoading}
         selectedAccountId={trading.selectedAccountId}

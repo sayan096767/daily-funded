@@ -203,23 +203,31 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .chart-quote-strip .quote-chip strong { font-size: 10px; }
 .chart-quote-strip .quote-chip-neutral > span { color: #aeb8b2; }
 .chart-quote-strip .quote-chip-neutral strong { color: var(--lime); font-size: 13px; font-weight: 600; }
-.candle-countdown { display: inline-flex; align-items: center; gap: 6px; min-width: 0; margin-left: auto; padding: 4px 7px; border: 1px solid #303838; border-radius: 3px; color: #8d9992; font-family: var(--mono); font-size: 8px; white-space: nowrap; }
-.candle-countdown strong { color: #d8e8bd; font-size: 10px; font-weight: 600; }
-.candle-countdown.countdown-live { border-color: #40533b; }
-.candle-countdown.countdown-stale { border-color: #635239; color: #d6ba72; }
-.candle-countdown.countdown-stale strong { color: #d6ba72; }
 .stale-flag { padding: 3px 5px; border: 1px solid #635239; border-radius: 3px; color: #d6ba72; font-size: 8px; font-weight: 700; }
 .source-label { margin-left: auto; color: #79827d; font-size: 8px; font-weight: 600; }
 .chart-canvas-wrap { position: relative; flex: 1 1 auto; min-height: 140px; }
 .chart-canvas { position: absolute; inset: 0; }
 .chart-position-controls { position: absolute; z-index: 4; inset: 0; overflow: hidden; pointer-events: none; }
-.position-line-label { position: absolute; z-index: 3; right: 78px; display: inline-flex; align-items: center; gap: 6px; max-width: calc(100% - 88px); min-height: 26px; padding: 2px 4px 2px 7px; transform: translateY(-50%); border: 1px solid #3b4944; border-radius: 3px; background: #151b1bea; color: #d9e2dc; font-family: var(--mono); font-size: 9px; white-space: nowrap; pointer-events: none; }
-.position-line-buy { border-color: #41614f; }
-.position-line-sell { border-color: #69413d; }
-.position-line-label strong { color: #8fe0b8; font-size: 9px; font-weight: 600; }
-.position-line-sell strong { color: #efa097; }
-.position-line-stale { opacity: .68; }
-.position-line-close { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; margin: -2px -3px -2px 0; padding: 0; border: 0; border-radius: 2px; background: transparent; color: #e9a29a; font-size: 16px; line-height: 1; pointer-events: auto; cursor: pointer; touch-action: manipulation; }
+.live-price-countdown { position: absolute; right: 0; z-index: 4; display: flex; width: 72px; min-height: 31px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; padding: 2px 4px; transform: translateY(-50%); color: #fff; font-family: var(--mono); line-height: 1.1; white-space: nowrap; }
+.live-price-countdown strong { font-size: 10px; font-weight: 600; }
+.live-price-countdown span { font-size: 9px; font-weight: 600; }
+.live-price-countdown.price-up { background: #26a69a; }
+.live-price-countdown.price-down { background: #ef5350; }
+.position-line-label { position: absolute; z-index: 3; right: 138px; display: inline-flex; align-items: center; gap: 8px; max-width: calc(100% - 148px); min-height: 36px; padding: 4px 8px 4px 10px; transform: translateY(-50%); border: 1px solid #3b4944; border-radius: 4px; background: #151b1efa; color: #d9e2dc; font-family: var(--mono); font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; }
+.position-line-buy { border-color: #36a879; background: #123328f2; }
+.position-line-sell { border-color: #cb5a50; background: #3a211ff2; }
+.position-line-label > span:first-child { color: #fff; }
+.position-line-label strong { font-size: 12px; font-weight: 700; }
+.position-pnl-positive { color: #8fe0b8; }
+.position-pnl-negative { color: #efa097; }
+.position-pnl-neutral { color: #a8b1ac; }
+.position-protection-chip { display: grid; min-width: 30px; height: 26px; flex: 0 0 auto; place-items: center; padding: 0 6px; border: 1px solid currentColor; border-radius: 3px; background: #101718; font-family: var(--mono); font-size: 10px; font-weight: 700; line-height: 1; pointer-events: auto; cursor: ns-resize; touch-action: none; }
+.position-protection-chip.position-level-tp { color: #62d8ae; }
+.position-protection-chip.position-level-sl { color: #f1b54a; }
+.position-protection-chip.protection-unset { border-style: dashed; opacity: .82; }
+.position-protection-chip.protection-set { background: #202a27; }
+.position-protection-chip:disabled { cursor: wait; opacity: .5; }
+.position-line-close { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; margin: -2px -3px -2px 0; padding: 0; border: 0; border-radius: 2px; background: transparent; color: #e9a29a; font-size: 19px; line-height: 1; pointer-events: auto; cursor: pointer; touch-action: manipulation; }
 .position-line-close:hover:not(:disabled) { background: #492a27; color: #fff; }
 .position-line-close:disabled { color: #78817b; cursor: wait; }
 .position-level-hitarea { position: absolute; z-index: 1; right: 72px; left: 0; width: auto; height: 18px; padding: 0; transform: translateY(-50%); border: 0; background: transparent; pointer-events: auto; cursor: ns-resize; touch-action: none; }
@@ -409,11 +417,13 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .chart-quote-strip .quote-chip { gap: 5px; }
   .chart-quote-strip .quote-chip strong { font-size: 10px; }
   .chart-quote-strip .quote-chip > span { font-size: 9px; }
-  .candle-countdown { gap: 4px; padding: 3px 5px; font-size: 7px; }
-  .candle-countdown strong { font-size: 9px; }
+  .live-price-countdown { width: 66px; min-height: 30px; padding: 2px 3px; }
+  .live-price-countdown strong { font-size: 9px; }
+  .live-price-countdown span { font-size: 8px; }
   .chart-canvas-wrap { min-height: 160px; }
-  .position-line-label { right: 76px; gap: 4px; max-width: calc(100% - 83px); padding-left: 5px; font-size: 8px; }
-  .position-line-label strong { font-size: 8px; }
+  .position-line-label { right: 116px; gap: 5px; max-width: calc(100% - 123px); min-height: 34px; padding: 4px 5px 4px 6px; font-size: 10px; }
+  .position-line-label strong { font-size: 11px; }
+  .position-protection-chip { min-width: 26px; height: 24px; padding: 0 4px; font-size: 9px; }
   .position-level-hitarea { height: 30px; }
   .position-level-label { right: 77px; font-size: 7px; }
   .chart-footer { min-height: 25px; padding: 0 9px; font-size: 9px; }
