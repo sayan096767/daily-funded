@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "daily-funded-flexible-test",
+  "main": "src/index.flexible.js",
+  "compatibility_date": "2026-09-26",
+  "d1_databases": [
+    {
+      "binding": "daily_funded_trading_db",
+      "database_name": "daily-funded-trading-db",
+      "database_id": "8a9d052f-451c-4348-86d8-4a58556ce797"
+    }
+  ]
+}

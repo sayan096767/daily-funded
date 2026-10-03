@@ -995,6 +995,21 @@ def trading_close_position_proxy():
     )
 
 
+@app.post("/api/trading/positions/modify")
+@firebase_auth_required
+def trading_modify_position_proxy():
+    payload = filtered_trading_request_payload(
+        ("position_id", "stop_loss", "take_profit")
+    )
+    if payload is None:
+        return jsonify(error="Request body must be a JSON object."), 400
+    return cloudflare_trading_proxy_response(
+        "/positions/modify",
+        method="POST",
+        payload=payload,
+    )
+
+
 @app.get("/api/trading/trades")
 @firebase_auth_required
 def trading_trades_proxy():

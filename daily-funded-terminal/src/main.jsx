@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
 import * as signalR from "@microsoft/signalr";
 import {
   Activity,
@@ -39,6 +40,7 @@ const FIREBASE_CONFIG = {
   measurementId: "G-Y7SP58FQ6H",
 };
 const INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d"];
+const INTERVAL_SECONDS = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
 const TRADING_ERROR_MESSAGES = {
   authentication_required: "Sign in with your Daily Funded account to use trading.",
   trading_disabled: "Trading is disabled until this account is approved and active.",
@@ -48,8 +50,8 @@ const TRADING_ERROR_MESSAGES = {
   market_unavailable: "Current market data is unavailable. No order was placed.",
   stale_quote: "The quote is stale or the market is closed. No order was placed.",
   invalid_volume: "The order volume is invalid for this symbol or account.",
-  invalid_tp: "Take profit must be valid and on the correct side of entry.",
-  invalid_sl: "Stop loss must be valid and on the correct side of entry.",
+  invalid_tp: "Take profit must be on the profitable side of the current executable price.",
+  invalid_sl: "Stop loss must be on the protective side of the current executable price.",
   insufficient_margin: "There is not enough available margin for this order.",
   rule_violation: "The order violates this account's trading rules.",
   position_not_found: "Position not found or not available to this user.",
@@ -60,6 +62,7 @@ const TRADING_ERROR_MESSAGES = {
   worker_http_error: "Trading service could not process the request.",
   worker_rejected: "Trading service rejected the request.",
   worker_response_invalid: "Trading service returned an invalid response.",
+  server_response_invalid: "Trading service returned an invalid position.",
   server_error: "Trading service is unavailable. Try again shortly.",
 };
 const CATEGORY_SECTIONS = [
@@ -175,10 +178,118 @@ function useTradingSession() {
   const [account, setAccount] = useState(null);
   const [rules, setRules] = useState(null);
   const [positions, setPositions] = useState([]);
+  const positionsRef = useRef(positions);
+  positionsRef.current = positions;
+  const confirmedPositionVersion = useRef(0);
+  const confirmedPositions = useRef(new Map());
+  const livePositionMarks = useRef(new Map());
+  const loadedAccountId = useRef(null);
   const [trades, setTrades] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [error, setError] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
+
+  const clearPositionTracking = useCallback(() => {
+    confirmedPositionVersion.current = 0;
+    confirmedPositions.current.clear();
+    livePositionMarks.current.clear();
+  }, []);
+
+  const reconcilePositions = useCallback((serverPositions, refreshVersionAtStart) => {
+    const byId = new Map(
+      serverPositions
+        .filter((position) => position && typeof position.id === "string")
+        .map((position) => [position.id, position])
+    );
+
+    for (const [id, confirmed] of confirmedPositions.current) {
+      if (confirmed.version > refreshVersionAtStart) {
+        byId.set(id, confirmed.position);
+      } else if (byId.has(id)) {
+        confirmedPositions.current.delete(id);
+      } else {
+        confirmedPositions.current.delete(id);
+        livePositionMarks.current.delete(id);
+      }
+    }
+
+    const reconciled = [...byId.values()].map((position) => {
+      const liveMark = livePositionMarks.current.get(position.id);
+      if (position.status === "open" && liveMark) {
+        return {
+          ...position,
+          current_price: liveMark.current_price,
+          floating_pnl: liveMark.floating_pnl,
+          live_tick_at: liveMark.timestampMs,
+        };
+      }
+      if (position.status !== "open") livePositionMarks.current.delete(position.id);
+      return position;
+    });
+    const activeIds = new Set(reconciled.map((position) => position.id));
+    for (const id of livePositionMarks.current.keys()) {
+      if (!activeIds.has(id)) livePositionMarks.current.delete(id);
+    }
+    return reconciled;
+  }, []);
+
+  const addConfirmedPosition = useCallback((position) => {
+    if (!position || typeof position.id !== "string" || position.status !== "open") {
+      throw new TradingRequestError("server_error", 502);
+    }
+    confirmedPositionVersion.current += 1;
+    confirmedPositions.current.set(position.id, {
+      position,
+      version: confirmedPositionVersion.current,
+    });
+    const liveMark = livePositionMarks.current.get(position.id);
+    const displayedPosition = liveMark
+      ? {
+        ...position,
+        current_price: liveMark.current_price,
+        floating_pnl: liveMark.floating_pnl,
+        live_tick_at: liveMark.timestampMs,
+      }
+      : position;
+    setPositions((current) => [
+      displayedPosition,
+      ...current.filter((item) => item.id !== position.id),
+    ]);
+  }, []);
+
+  const removeClosedPosition = useCallback((positionId) => {
+    confirmedPositions.current.delete(positionId);
+    livePositionMarks.current.delete(positionId);
+    setPositions((current) => current.filter((position) => position.id !== positionId));
+  }, []);
+
+  const applyLiveTickToPositions = useCallback((tick) => {
+    if (!Number.isFinite(tick.timestampMs)) return;
+    const updates = new Map();
+    for (const position of positionsRef.current) {
+      if (position.status !== "open" || position.symbol?.toUpperCase() !== tick.symbol) continue;
+      const markPrice = position.side === "BUY" ? tick.bid : position.side === "SELL" ? tick.ask : null;
+      const floatingPnl = calculateDisplayFloatingPnl(position, markPrice);
+      if (floatingPnl === null) continue;
+      const previous = livePositionMarks.current.get(position.id);
+      if (previous && tick.timestampMs < previous.timestampMs) continue;
+      const mark = { timestampMs: tick.timestampMs, current_price: markPrice, floating_pnl: floatingPnl };
+      livePositionMarks.current.set(position.id, mark);
+      updates.set(position.id, mark);
+    }
+    if (!updates.size) return;
+    setPositions((current) => current.map((position) => {
+      const mark = updates.get(position.id);
+      return mark && position.status === "open"
+        ? {
+          ...position,
+          current_price: mark.current_price,
+          floating_pnl: mark.floating_pnl,
+          live_tick_at: mark.timestampMs,
+        }
+        : position;
+    }));
+  }, []);
 
   useEffect(() => {
     let unsubscribe;
@@ -263,6 +374,8 @@ function useTradingSession() {
 
   useEffect(() => {
     if (!user || !selectedAccount) {
+      loadedAccountId.current = null;
+      clearPositionTracking();
       setDataLoading(false);
       setAccount(null);
       setRules(null);
@@ -271,6 +384,8 @@ function useTradingSession() {
       return undefined;
     }
     if (!canTrade) {
+      loadedAccountId.current = null;
+      clearPositionTracking();
       setDataLoading(false);
       setAccount(null);
       setRules(null);
@@ -283,15 +398,20 @@ function useTradingSession() {
     let disposed = false;
     let inFlight = false;
     const controller = new AbortController();
-    setAccount(null);
-    setRules(null);
-    setPositions([]);
-    setTrades([]);
+    if (loadedAccountId.current !== selectedAccount.id) {
+      loadedAccountId.current = selectedAccount.id;
+      clearPositionTracking();
+      setAccount(null);
+      setRules(null);
+      setPositions([]);
+      setTrades([]);
+    }
     setDataLoading(true);
     setError("");
     const refresh = async () => {
       if (disposed || inFlight) return;
       inFlight = true;
+      const refreshVersionAtStart = confirmedPositionVersion.current;
       try {
         const accountQuery = `?account_id=${encodeURIComponent(selectedAccount.id)}`;
         const [accountResult, rulesResult, tradesResult] = await Promise.all([
@@ -301,7 +421,10 @@ function useTradingSession() {
         ]);
         if (disposed) return;
         setAccount(accountResult.account || null);
-        setPositions(Array.isArray(accountResult.positions) ? accountResult.positions : []);
+        setPositions(reconcilePositions(
+          Array.isArray(accountResult.positions) ? accountResult.positions : [],
+          refreshVersionAtStart
+        ));
         setRules(rulesResult.rules || accountResult.rules || null);
         setTrades(Array.isArray(tradesResult.trades) ? tradesResult.trades : []);
         setError("");
@@ -310,7 +433,6 @@ function useTradingSession() {
         setError(requestError.message);
         setAccount(null);
         setRules(null);
-        setPositions([]);
         setTrades([]);
       } finally {
         if (!disposed) setDataLoading(false);
@@ -324,7 +446,7 @@ function useTradingSession() {
       controller.abort();
       window.clearInterval(timer);
     };
-  }, [user, selectedAccount?.id, canTrade, refreshVersion]);
+  }, [user, selectedAccount?.id, canTrade, refreshVersion, clearPositionTracking, reconcilePositions]);
 
   return {
     authStatus,
@@ -341,8 +463,41 @@ function useTradingSession() {
     dataLoading,
     error,
     canTrade,
+    addConfirmedPosition,
+    removeClosedPosition,
+    applyLiveTickToPositions,
     refresh: () => setRefreshVersion((current) => current + 1),
   };
+}
+
+function calculateDisplayFloatingPnl(position, markPrice) {
+  const price = Number(markPrice);
+  const openPrice = Number(position.open_price);
+  const volume = Number(position.volume);
+  const metadata = position.pnl_metadata;
+  const contractSize = Number(metadata?.contract_size);
+  const baseCurrency = typeof metadata?.base_currency === "string"
+    ? metadata.base_currency.toUpperCase()
+    : "";
+  const quoteCurrency = typeof metadata?.quote_currency === "string"
+    ? metadata.quote_currency.toUpperCase()
+    : "";
+  if (
+    !Number.isFinite(price) || price <= 0 ||
+    !Number.isFinite(openPrice) || openPrice <= 0 ||
+    !Number.isFinite(volume) || volume <= 0 ||
+    !Number.isFinite(contractSize) || contractSize <= 0 ||
+    !baseCurrency || !quoteCurrency ||
+    !["BUY", "SELL"].includes(position.side)
+  ) return null;
+
+  const direction = position.side === "BUY" ? 1 : -1;
+  const quotePnl = direction * (price - openPrice) * volume * contractSize;
+  if (quoteCurrency === "USD") return quotePnl;
+  if (baseCurrency === "USD" && ["JPY", "CHF", "CAD"].includes(quoteCurrency)) {
+    return quotePnl / price;
+  }
+  return null;
 }
 
 async function getJson(path, signal) {
@@ -366,6 +521,27 @@ function formatPrice(value, decimals = 5) {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
+}
+
+function getPositionPriceDigits(position) {
+  const digits = Number(position?.pnl_metadata?.price_decimals);
+  return Number.isInteger(digits) && digits >= 0 ? digits : getPriceDigits(position?.symbol);
+}
+
+function snapPriceToPositionPrecision(price, position) {
+  const digits = Number(position?.pnl_metadata?.price_decimals);
+  if (!Number.isInteger(digits) || digits < 0 || !Number.isFinite(price) || price <= 0) return null;
+  const scale = 10 ** digits;
+  return Number((Math.round(price * scale) / scale).toFixed(digits));
+}
+
+function formatSignedMoney(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "--";
+  const amount = Number(value);
+  return `${amount >= 0 ? "+" : "-"}$${Math.abs(amount).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function getPriceDigits(symbol) {
@@ -407,7 +583,7 @@ function quoteTimestampMs(value) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function useMarketData() {
+function useMarketData(liveTickHandler, onAcceptedTick) {
   const [symbols, setSymbols] = useState([]);
   const [symbolState, setSymbolState] = useState("loading");
   const [symbolError, setSymbolError] = useState("");
@@ -578,24 +754,34 @@ function useMarketData() {
         if (disposed || !rawTick || typeof rawTick !== "object") return;
         const symbol = typeof rawTick.symbol === "string" ? rawTick.symbol.trim().toUpperCase() : "";
         const timestamp = quoteTimestampMs(rawTick.timestamp);
-        if (!enabledSymbols.has(symbol) || (rawTick.timestamp != null && timestamp === null)) return;
+        if (!enabledSymbols.has(symbol) || timestamp === null) return;
+        const bid = normalizeQuotePrice(rawTick.bid);
+        const ask = normalizeQuotePrice(rawTick.ask);
+        const mid = normalizeQuotePrice(rawTick.mid);
+        if ((rawTick.bid != null && bid === null) || (rawTick.ask != null && ask === null) || mid === null) return;
         const tick = {
           symbol,
-          bid: normalizeQuotePrice(rawTick.bid),
-          ask: normalizeQuotePrice(rawTick.ask),
-          mid: normalizeQuotePrice(rawTick.mid),
+          bid,
+          ask,
+          mid,
           timestamp: rawTick.timestamp ?? null,
+          timestampMs: timestamp,
           stale: false,
         };
-        if (tick.bid === null && tick.ask === null && tick.mid === null) return;
-        if (!applyQuote(tick, timestamp)) return;
-        setQuoteErrors((current) => {
-          if (!current[symbol]) return current;
-          const next = { ...current };
-          delete next[symbol];
-          return next;
+        const previousTimestamp = quoteTimes.current[symbol];
+        if (previousTimestamp !== undefined && timestamp < previousTimestamp) return;
+        flushSync(() => {
+          if (liveTickHandler.current?.(tick) === false) return;
+          if (!applyQuote(tick, timestamp)) return;
+          onAcceptedTick?.(tick);
+          setQuoteErrors((current) => {
+            if (!current[symbol]) return current;
+            const next = { ...current };
+            delete next[symbol];
+            return next;
+          });
+          setQuoteRefresh("ready");
         });
-        setQuoteRefresh("ready");
       });
       connection.onreconnecting(markQuotesStale);
       connection.onreconnected(() => {
@@ -636,7 +822,7 @@ function useMarketData() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (connection) void connection.stop();
     };
-  }, [symbols]);
+  }, [symbols, onAcceptedTick]);
 
   return { symbols, symbolState, symbolError, quotes, quoteErrors, quoteRefresh };
 }
@@ -646,11 +832,14 @@ function useCandles(symbol, interval) {
   const [state, setState] = useState("loading");
   const [error, setError] = useState("");
   const [source, setSource] = useState("");
+  const [dataKey, setDataKey] = useState("");
+  const requestKey = `${symbol}|${interval}`;
 
   useEffect(() => {
     if (!symbol) {
       setCandles([]);
       setState("empty");
+      setDataKey(requestKey);
       return undefined;
     }
     const controller = new AbortController();
@@ -672,18 +861,20 @@ function useCandles(symbol, interval) {
         const unique = normalized.filter((bar, index) => index === 0 || bar.time !== normalized[index - 1].time);
         setCandles(unique);
         setSource(payload.source || "");
+        setDataKey(requestKey);
         setState(unique.length ? "ready" : "empty");
       })
       .catch((requestError) => {
         if (requestError.name === "AbortError") return;
         setCandles([]);
+        setDataKey(requestKey);
         setError(requestError.message);
         setState("error");
       });
     return () => controller.abort();
   }, [symbol, interval]);
 
-  return { candles, state, error, source };
+  return { candles, state, error, source, dataKey };
 }
 
 function BrandMark() {
@@ -910,13 +1101,49 @@ function WatchlistSection({ label, items, quotes, errors, selectedSymbol, favori
   );
 }
 
-function ChartView({ symbol, selected, quote, quoteError, candles, state, error, source, interval, onIntervalChange, onOpenWatchlist }) {
+function ChartView({
+  symbol,
+  selected,
+  quote,
+  quoteError,
+  candles,
+  candleDataKey,
+  state,
+  error,
+  source,
+  interval,
+  onIntervalChange,
+  onOpenWatchlist,
+  liveTickHandler,
+  positions,
+  canTrade,
+  onClosePosition,
+  onModifyPosition,
+}) {
   const chartHost = useRef(null);
   const chartRef = useRef(null);
   const candleSeries = useRef(null);
+  const candleDataRef = useRef([]);
+  const positionPriceLines = useRef(new Map());
+  const pendingLiveTicks = useRef([]);
+  const candleKeyRef = useRef("");
+  const baselineKeyRef = useRef("");
+  const applyLiveTickRef = useRef(null);
+  const dragRef = useRef(null);
+  const [hasLiveCandle, setHasLiveCandle] = useState(false);
+  const [candleCount, setCandleCount] = useState(0);
+  const [candleBucketTime, setCandleBucketTime] = useState(null);
+  const [latestTickTimestampMs, setLatestTickTimestampMs] = useState(null);
+  const [clockNow, setClockNow] = useState(() => Date.now());
+  const [draftPrices, setDraftPrices] = useState(new Map());
+  const [closingIds, setClosingIds] = useState(new Set());
+  const [modifyingIds, setModifyingIds] = useState(new Set());
+  const [controlError, setControlError] = useState("");
+  const [layoutVersion, setLayoutVersion] = useState(0);
   const digits = getPriceDigits(symbol);
+  const dataKey = `${symbol}|${interval}`;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!chartHost.current) return undefined;
     const chart = createChart(chartHost.current, {
       autoSize: true,
@@ -951,26 +1178,96 @@ function ChartView({ symbol, selected, quote, quoteError, candles, state, error,
     });
     chartRef.current = chart;
     candleSeries.current = series;
+    const updateOverlayLayout = () => setLayoutVersion((version) => version + 1);
+    chart.subscribeCrosshairMove(updateOverlayLayout);
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(updateOverlayLayout);
+    if (chartHost.current) resizeObserver?.observe(chartHost.current);
     return () => {
+      resizeObserver?.disconnect();
+      chart.unsubscribeCrosshairMove(updateOverlayLayout);
+      for (const { line } of positionPriceLines.current.values()) {
+        series.removePriceLine(line);
+      }
+      positionPriceLines.current.clear();
       chart.remove();
       chartRef.current = null;
       candleSeries.current = null;
     };
   }, []);
 
-  useEffect(() => {
-    const series = candleSeries.current;
-    if (!series) return;
-    series.applyOptions({ priceFormat: { type: "price", precision: digits, minMove: 10 ** -digits } });
-    if (!candles.length) {
-      series.setData([]);
-      return;
-    }
-    series.setData(candles);
-    chartRef.current?.timeScale().fitContent();
-  }, [candles, digits]);
+  useLayoutEffect(() => {
+    if (candleKeyRef.current === dataKey) return;
+    candleKeyRef.current = dataKey;
+    baselineKeyRef.current = "";
+    candleDataRef.current = [];
+    pendingLiveTicks.current = [];
+    setCandleBucketTime(null);
+    setLatestTickTimestampMs(null);
+    setDraftPrices(new Map());
+    setHasLiveCandle(false);
+    setCandleCount(0);
+    candleSeries.current?.setData([]);
+  }, [dataKey]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const series = candleSeries.current;
+    if (!series) return undefined;
+    const intervalSeconds = INTERVAL_SECONDS[interval];
+    const applyTick = (tick) => {
+      if (tick.symbol !== symbol) return true;
+      if (!Number.isFinite(tick.timestampMs) || tick.mid == null) return false;
+      const candleTime = Math.floor(tick.timestampMs / (intervalSeconds * 1000)) * intervalSeconds;
+      const current = candleDataRef.current;
+      const last = current[current.length - 1];
+      if (last && candleTime < last.time) return false;
+      setCandleBucketTime(candleTime);
+      setLatestTickTimestampMs(tick.timestampMs);
+
+      const next = last && candleTime === last.time
+        ? {
+          ...last,
+          high: Math.max(last.high, tick.mid),
+          low: Math.min(last.low, tick.mid),
+          close: tick.mid,
+        }
+        : { time: candleTime, open: tick.mid, high: tick.mid, low: tick.mid, close: tick.mid };
+
+      if (baselineKeyRef.current !== dataKey) pendingLiveTicks.current.push(tick);
+      series.update(next);
+      if (last && candleTime === last.time) current[current.length - 1] = next;
+      else {
+        current.push(next);
+        setCandleCount((count) => count + 1);
+      }
+      setHasLiveCandle(true);
+      return true;
+    };
+
+    applyLiveTickRef.current = applyTick;
+    liveTickHandler.current = applyTick;
+    return () => {
+      if (liveTickHandler.current === applyTick) liveTickHandler.current = null;
+      if (applyLiveTickRef.current === applyTick) applyLiveTickRef.current = null;
+    };
+  }, [dataKey, interval, liveTickHandler, symbol]);
+
+  useLayoutEffect(() => {
+    const series = candleSeries.current;
+    if (!series || state === "loading" || candleDataKey !== dataKey) return;
+    series.applyOptions({ priceFormat: { type: "price", precision: digits, minMove: 10 ** -digits } });
+    series.setData(candles);
+    candleDataRef.current = candles.slice();
+    setCandleCount(candles.length);
+    baselineKeyRef.current = dataKey;
+    const queuedTicks = pendingLiveTicks.current;
+    pendingLiveTicks.current = [];
+    for (const tick of queuedTicks) applyLiveTickRef.current?.(tick);
+    chartRef.current?.timeScale().fitContent();
+  }, [candles, candleDataKey, dataKey, digits, state]);
+
+  useLayoutEffect(() => {
     const series = candleSeries.current;
     if (!series) return;
     series.applyOptions({ priceLineVisible: quote?.mid != null });
@@ -988,11 +1285,229 @@ function ChartView({ symbol, selected, quote, quoteError, candles, state, error,
     return undefined;
   }, [quote?.mid, quote?.stale]);
 
+  useLayoutEffect(() => {
+    const series = candleSeries.current;
+    if (!series) return;
+    const desiredLines = new Map();
+    for (const position of positions) {
+      if (
+        position?.status !== "open" ||
+        position.symbol?.toUpperCase() !== symbol ||
+        typeof position.id !== "string"
+      ) continue;
+      const entryPrice = Number(position.open_price);
+      if (Number.isFinite(entryPrice) && entryPrice > 0) {
+        desiredLines.set(`${position.id}:entry`, {
+          price: entryPrice,
+          color: position.side === "BUY" ? "#62c99d" : "#ef8279",
+          lineStyle: 0,
+          title: `${position.side} ${Number(position.volume).toFixed(2)}`,
+        });
+      }
+      for (const [field, color, title] of [
+        ["stop_loss", "#e17f73", "SL"],
+        ["take_profit", "#6fc6a1", "TP"],
+      ]) {
+        const price = Number(draftPrices.get(`${position.id}:${field}`) ?? position[field]);
+        if (Number.isFinite(price) && price > 0) {
+          desiredLines.set(`${position.id}:${field}`, {
+            price,
+            color,
+            lineStyle: 2,
+            title,
+          });
+        }
+      }
+    }
+
+    for (const [key, existing] of positionPriceLines.current) {
+      if (!desiredLines.has(key)) {
+        series.removePriceLine(existing.line);
+        positionPriceLines.current.delete(key);
+      }
+    }
+    for (const [key, options] of desiredLines) {
+      const existing = positionPriceLines.current.get(key);
+      if (!existing) {
+        positionPriceLines.current.set(key, {
+          line: series.createPriceLine({
+            price: options.price,
+            color: options.color,
+            lineWidth: 1,
+            lineStyle: options.lineStyle,
+            axisLabelVisible: true,
+            title: options.title,
+          }),
+          price: options.price,
+        });
+      } else if (existing.price !== options.price) {
+        existing.line.applyOptions({ price: options.price });
+        existing.price = options.price;
+      }
+    }
+  }, [draftPrices, positions, symbol]);
+
+  useEffect(() => {
+    if (candleBucketTime === null) return undefined;
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [candleBucketTime]);
+
+  const tickAgeMs = latestTickTimestampMs === null ? Infinity : clockNow - latestTickTimestampMs;
+  const countdownLive = Boolean(
+    candleBucketTime !== null &&
+    quote &&
+    quote.stale !== true &&
+    tickAgeMs >= 0 &&
+    tickAgeMs <= QUOTE_FALLBACK_MS
+  );
+  const candleEndMs = candleBucketTime === null
+    ? null
+    : (candleBucketTime + INTERVAL_SECONDS[interval]) * 1000;
+  const remainingSeconds = candleEndMs === null
+    ? null
+    : Math.max(0, Math.ceil((candleEndMs - clockNow) / 1000));
+  const countdownText = remainingSeconds === null
+    ? "--:--"
+    : remainingSeconds >= 3600
+      ? `${String(Math.floor(remainingSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((remainingSeconds % 3600) / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`
+      : `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
+
+  async function closeChartPosition(position) {
+    if (closingIds.has(position.id) || !canTrade) return;
+    setClosingIds((current) => new Set(current).add(position.id));
+    setControlError("");
+    try {
+      const result = await onClosePosition(position);
+      if (result === false) setControlError("The server did not confirm closing this position.");
+    } catch (error) {
+      setControlError(error.message || "The server did not confirm closing this position.");
+    } finally {
+      setClosingIds((current) => {
+        const next = new Set(current);
+        next.delete(position.id);
+        return next;
+      });
+    }
+  }
+
+  function priceFromPointer(event) {
+    const rect = chartHost.current?.getBoundingClientRect();
+    if (!rect || !candleSeries.current) return null;
+    const price = candleSeries.current.coordinateToPrice(event.clientY - rect.top);
+    if (price === null || price === undefined || !Number.isFinite(Number(price))) return null;
+    return Number(price);
+  }
+
+  function handleProtectionPointerDown(event, position, field) {
+    if (
+      event.button !== 0 ||
+      !canTrade ||
+      modifyingIds.has(position.id) ||
+      !Number.isFinite(Number(position.pnl_metadata?.price_decimals))
+    ) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const price = Number(position[field]);
+    if (!Number.isFinite(price)) return;
+    dragRef.current = {
+      id: position.id,
+      field,
+      pointerId: event.pointerId,
+      price,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setControlError("");
+  }
+
+  function handleProtectionPointerMove(event) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const position = positions.find((item) => item.id === drag.id);
+    const rawPrice = priceFromPointer(event);
+    const price = position && rawPrice !== null
+      ? snapPriceToPositionPrecision(rawPrice, position)
+      : null;
+    if (price === null) return;
+    drag.price = price;
+    setDraftPrices((current) => new Map(current).set(`${drag.id}:${drag.field}`, price));
+    setLayoutVersion((version) => version + 1);
+  }
+
+  async function finishProtectionDrag(event) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const finalRawPrice = priceFromPointer(event);
+    const position = positions.find((item) => item.id === drag.id);
+    const finalPrice = position && finalRawPrice !== null
+      ? snapPriceToPositionPrecision(finalRawPrice, position)
+      : drag.price;
+    dragRef.current = null;
+    const draftKey = `${drag.id}:${drag.field}`;
+    if (!position || finalPrice === null) {
+      setDraftPrices((current) => {
+        const next = new Map(current);
+        next.delete(draftKey);
+        return next;
+      });
+      return;
+    }
+    setDraftPrices((current) => new Map(current).set(draftKey, finalPrice));
+    const markPrice = position.side === "BUY" ? Number(quote?.bid) : Number(quote?.ask);
+    const quoteIsLive = quote?.stale !== true &&
+      Number.isFinite(markPrice) &&
+      markPrice > 0 &&
+      latestTickTimestampMs !== null &&
+      clockNow - latestTickTimestampMs >= 0 &&
+      clockNow - latestTickTimestampMs <= QUOTE_FALLBACK_MS;
+    const validLevel = drag.field === "stop_loss"
+      ? (position.side === "BUY" ? finalPrice < markPrice : finalPrice > markPrice)
+      : (position.side === "BUY" ? finalPrice > markPrice : finalPrice < markPrice);
+    if (!quoteIsLive || !validLevel) {
+      setControlError(!quoteIsLive
+        ? "Protection levels cannot be changed while the real market quote is stale or unavailable."
+        : "The level must remain on the valid side of the current executable price.");
+      setDraftPrices((current) => {
+        const next = new Map(current);
+        next.delete(draftKey);
+        return next;
+      });
+      return;
+    }
+
+    setModifyingIds((current) => new Set(current).add(position.id));
+    setControlError("");
+    try {
+      const result = await onModifyPosition(position, { [drag.field]: finalPrice });
+      if (result === false) throw new Error("The server did not confirm the protection-level update.");
+    } catch (requestError) {
+      setControlError(requestError.message || "The server rejected the protection-level update.");
+    } finally {
+      setDraftPrices((current) => {
+        const next = new Map(current);
+        next.delete(draftKey);
+        return next;
+      });
+      setModifyingIds((current) => {
+        const next = new Set(current);
+        next.delete(position.id);
+        return next;
+      });
+    }
+  }
+
   const marketState = getMarketState(quote, quoteError);
   const highLow = candles.length ? candles.reduce((range, candle) => ({
     high: Math.max(range.high, candle.high),
     low: Math.min(range.low, candle.low),
   }), { high: -Infinity, low: Infinity }) : null;
+  const visiblePositions = positions.filter((position) =>
+    position.status === "open" && position.symbol?.toUpperCase() === symbol
+  );
 
   return (
     <section className="chart-panel">
@@ -1015,17 +1530,97 @@ function ChartView({ symbol, selected, quote, quoteError, candles, state, error,
         <QuoteChip label="BID" value={quote?.bid == null ? "--" : formatPrice(quote.bid, digits)} tone="sell" />
         <QuoteChip label="ASK" value={quote?.ask == null ? "--" : formatPrice(quote.ask, digits)} tone="buy" />
         <QuoteChip label="MID" value={quote?.mid == null ? "--" : formatPrice(quote.mid, digits)} />
+        <span className={`candle-countdown ${countdownLive ? "countdown-live" : "countdown-stale"}`}>
+          <span>{countdownLive ? "CANDLE CLOSE" : candleBucketTime === null ? "WAITING FOR LIVE TICK" : quote?.stale ? "MARKET DATA STALE" : "COUNTDOWN NOT LIVE"}</span>
+          <strong>{countdownLive ? countdownText : "--:--"}</strong>
+        </span>
         {quote?.stale && <span className="stale-flag">STALE QUOTE</span>}
         {source && <span className="source-label">{source === "provider_historical" ? "PROVIDER HISTORY" : "WORKER GENERATED"}</span>}
       </div>
-      <div className="chart-canvas-wrap">
+      <div className="chart-canvas-wrap" data-layout-version={layoutVersion} onWheelCapture={() => setLayoutVersion((version) => version + 1)}>
         <div className="chart-canvas" ref={chartHost} aria-label={`${symbol} candlestick chart`} />
-        {state !== "ready" && <div className="chart-overlay">
+        <div className="chart-position-controls" aria-label="Open position chart controls">
+          {visiblePositions.map((position) => {
+            const entryY = candleSeries.current?.priceToCoordinate(Number(position.open_price));
+            const digitsForPosition = getPositionPriceDigits(position);
+            const stalePnl = !countdownLive || position.live_tick_at == null;
+            const pnlValue = position.live_tick_at == null ? null : position.floating_pnl;
+            return (
+              <React.Fragment key={position.id}>
+                {Number.isFinite(entryY) && <div
+                  className={`position-line-label ${position.side === "BUY" ? "position-line-buy" : "position-line-sell"} ${stalePnl ? "position-line-stale" : ""}`}
+                  style={{ top: `${entryY}px` }}
+                  title={position.live_tick_at == null
+                    ? "Waiting for the next accepted real market tick."
+                    : stalePnl
+                      ? "Last display P&L; market data is not currently live."
+                      : "Display-only P&L from the latest accepted real market tick."}
+                >
+                  <span>{position.side} {Number(position.volume).toFixed(2)}</span>
+                  <span>Entry {formatPrice(position.open_price, digitsForPosition)}</span>
+                  <strong>{formatSignedMoney(pnlValue)}</strong>
+                  <button
+                    type="button"
+                    className="position-line-close"
+                    aria-label={`Close ${position.side} ${position.symbol} position ${position.id}`}
+                    title={`Close position ${position.id}`}
+                    disabled={!canTrade || closingIds.has(position.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void closeChartPosition(position);
+                    }}
+                  >{closingIds.has(position.id) ? "…" : "×"}</button>
+                </div>}
+                {[
+                  ["stop_loss", "SL", "position-level-sl"],
+                  ["take_profit", "TP", "position-level-tp"],
+                ].map(([field, label, className]) => {
+                  const draftKey = `${position.id}:${field}`;
+                  const rawPrice = draftPrices.has(draftKey) ? draftPrices.get(draftKey) : position[field];
+                  if (rawPrice === null || rawPrice === undefined) return null;
+                  const price = Number(rawPrice);
+                  const y = candleSeries.current?.priceToCoordinate(price);
+                  if (!Number.isFinite(price) || !Number.isFinite(y)) return null;
+                  return (
+                    <React.Fragment key={`${position.id}:${field}`}>
+                      <button
+                        type="button"
+                        className={`position-level-hitarea ${className} ${modifyingIds.has(position.id) ? "position-level-busy" : ""}`}
+                        style={{ top: `${y}px` }}
+                        aria-label={`Drag ${label} for ${position.side} ${position.symbol} position ${position.id}; price ${formatPrice(price, digitsForPosition)}`}
+                        title={`${label} ${formatPrice(price, digitsForPosition)} · drag to modify`}
+                        disabled={!canTrade || modifyingIds.has(position.id)}
+                        onPointerDown={(event) => handleProtectionPointerDown(event, position, field)}
+                        onPointerMove={handleProtectionPointerMove}
+                        onPointerUp={(event) => void finishProtectionDrag(event)}
+                        onPointerCancel={() => {
+                          const drag = dragRef.current;
+                          if (!drag || drag.id !== position.id || drag.field !== field) return;
+                          dragRef.current = null;
+                          setDraftPrices((current) => {
+                            const next = new Map(current);
+                            next.delete(`${position.id}:${field}`);
+                            return next;
+                          });
+                        }}
+                      />
+                      <span className={`position-level-label ${className}`} style={{ top: `${y}px` }}>
+                        {label} {formatPrice(price, digitsForPosition)}
+                      </span>
+                    </React.Fragment>
+                  );
+                })}
+              </React.Fragment>
+            );
+          })}
+        </div>
+        {controlError && <div className="chart-control-error" role="alert">{controlError}</div>}
+        {state !== "ready" && !hasLiveCandle && <div className="chart-overlay">
           {state === "loading" && <><span className="chart-loader" /><strong>Loading {symbol} candles</strong><span>Requesting {interval} market history</span></>}
           {state === "empty" && <><span className="empty-chart-icon"><BarChart3 size={22} /></span><strong>History unavailable</strong><span>No {interval} candles were returned for {symbol}.</span></>}
           {state === "error" && <><span className="empty-chart-icon error-icon"><Activity size={22} /></span><strong>Chart data unavailable</strong><span>{error || "The market service could not return candles."}</span></>}
         </div>}
-        {state === "ready" && <div className="chart-legend"><span className="legend-dot legend-up" />Up <span className="legend-dot legend-down" />Down <span className="legend-divider" />{candles.length} bars</div>}
+        {(state === "ready" || hasLiveCandle) && <div className="chart-legend"><span className="legend-dot legend-up" />Up <span className="legend-dot legend-down" />Down <span className="legend-divider" />{candleCount} bars</div>}
       </div>
       <div className="chart-footer"><span><Activity size={13} /> Market data only</span><span><CircleHelp size={13} /> Drag to pan · scroll to zoom</span></div>
     </section>
@@ -1255,8 +1850,13 @@ function StatusBar({ quoteRefresh, quote, source }) {
 }
 
 function App() {
-  const { symbols, symbolState, symbolError, quotes, quoteErrors, quoteRefresh } = useMarketData();
   const trading = useTradingSession();
+  const liveTickHandler = useRef(null);
+  const onAcceptedTick = useCallback(
+    (tick) => trading.applyLiveTickToPositions(tick),
+    [trading.applyLiveTickToPositions]
+  );
+  const { symbols, symbolState, symbolError, quotes, quoteErrors, quoteRefresh } = useMarketData(liveTickHandler, onAcceptedTick);
   const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
   const [interval, setInterval] = useState("1m");
   const [watchCollapsed, setWatchCollapsed] = useState(false);
@@ -1274,7 +1874,7 @@ function App() {
   const selected = symbols.find((item) => item.symbol === selectedSymbol) || null;
   const quote = quotes[selectedSymbol] || null;
   const quoteError = quoteErrors[selectedSymbol] || null;
-  const { candles, state: candleState, error: candleError, source } = useCandles(selected ? selectedSymbol : "", interval);
+  const { candles, state: candleState, error: candleError, source, dataKey: candleDataKey } = useCandles(selected ? selectedSymbol : "", interval);
 
   useEffect(() => {
     if (symbolState !== "ready" || symbols.some((item) => item.symbol === selectedSymbol)) return;
@@ -1302,28 +1902,57 @@ function App() {
     if (!trading.canTrade || !trading.selectedAccount) {
       throw new TradingRequestError("trading_disabled", 409);
     }
-    await getTradingJson("/trading/positions", trading.user, {
+    const result = await getTradingJson("/trading/positions", trading.user, {
       method: "POST",
       body: JSON.stringify({
         account_id: trading.selectedAccount.id,
         ...order,
       }),
     });
+    trading.addConfirmedPosition(result.position);
     setActionError("");
     trading.refresh();
   }
 
   async function closePosition(position) {
-    if (!trading.canTrade || !trading.selectedAccount) return;
+    if (!trading.canTrade || !trading.selectedAccount) return false;
     try {
       await getTradingJson("/trading/positions/close", trading.user, {
         method: "POST",
         body: JSON.stringify({ position_id: position.id }),
       });
+      trading.removeClosedPosition(position.id);
       setActionError("");
       trading.refresh();
+      return true;
     } catch (error) {
       setActionError(error.message || TRADING_ERROR_MESSAGES.server_error);
+      return false;
+    }
+  }
+
+  async function modifyPosition(position, changes) {
+    if (!trading.canTrade || !trading.selectedAccount) {
+      throw new TradingRequestError("trading_disabled", 409);
+    }
+    try {
+      const result = await getTradingJson("/trading/positions/modify", trading.user, {
+        method: "POST",
+        body: JSON.stringify({
+          position_id: position.id,
+          ...changes,
+        }),
+      });
+      if (result.position?.id !== position.id || result.position.status !== "open") {
+        throw new TradingRequestError("server_response_invalid", 502);
+      }
+      trading.addConfirmedPosition(result.position);
+      setActionError("");
+      trading.refresh();
+      return true;
+    } catch (error) {
+      setActionError(error.message || TRADING_ERROR_MESSAGES.server_error);
+      throw error;
     }
   }
 
@@ -1364,7 +1993,25 @@ function App() {
       <div className={`terminal-workspace ${watchCollapsed ? "workspace-watchlist-collapsed" : ""}`}>
         <Watchlist symbols={symbols} quotes={quotes} quoteErrors={quoteErrors} selectedSymbol={selectedSymbol} favorites={favorites} onSelect={selectSymbol} onFavorite={toggleFavorite} loading={symbolState === "loading"} error={symbolState === "error" ? symbolError : ""} collapsed={watchCollapsed} onToggleCollapse={() => setWatchCollapsed((current) => !current)} open={watchOpen} onClose={() => setWatchOpen(false)} />
         <main className="terminal-main">
-          <ChartView symbol={selectedSymbol} selected={selected} quote={quote} quoteError={quoteError} candles={candles} state={selected ? candleState : symbolState === "loading" ? "loading" : "empty"} error={candleError || symbolError} source={source} interval={interval} onIntervalChange={setInterval} onOpenWatchlist={() => setWatchOpen(true)} />
+          <ChartView
+            symbol={selectedSymbol}
+            selected={selected}
+            quote={quote}
+            quoteError={quoteError}
+            candles={candles}
+            candleDataKey={candleDataKey}
+            state={selected ? candleState : symbolState === "loading" ? "loading" : "empty"}
+            error={candleError || symbolError}
+            source={source}
+            interval={interval}
+            onIntervalChange={setInterval}
+            onOpenWatchlist={() => setWatchOpen(true)}
+            liveTickHandler={liveTickHandler}
+            positions={trading.positions}
+            canTrade={trading.canTrade}
+            onClosePosition={closePosition}
+            onModifyPosition={modifyPosition}
+          />
           <TradingPanel
             open={activityOpen}
             onToggle={() => setActivityOpen((current) => !current)}

@@ -203,10 +203,32 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .chart-quote-strip .quote-chip strong { font-size: 10px; }
 .chart-quote-strip .quote-chip-neutral > span { color: #aeb8b2; }
 .chart-quote-strip .quote-chip-neutral strong { color: var(--lime); font-size: 13px; font-weight: 600; }
+.candle-countdown { display: inline-flex; align-items: center; gap: 6px; min-width: 0; margin-left: auto; padding: 4px 7px; border: 1px solid #303838; border-radius: 3px; color: #8d9992; font-family: var(--mono); font-size: 8px; white-space: nowrap; }
+.candle-countdown strong { color: #d8e8bd; font-size: 10px; font-weight: 600; }
+.candle-countdown.countdown-live { border-color: #40533b; }
+.candle-countdown.countdown-stale { border-color: #635239; color: #d6ba72; }
+.candle-countdown.countdown-stale strong { color: #d6ba72; }
 .stale-flag { padding: 3px 5px; border: 1px solid #635239; border-radius: 3px; color: #d6ba72; font-size: 8px; font-weight: 700; }
 .source-label { margin-left: auto; color: #79827d; font-size: 8px; font-weight: 600; }
 .chart-canvas-wrap { position: relative; flex: 1 1 auto; min-height: 140px; }
 .chart-canvas { position: absolute; inset: 0; }
+.chart-position-controls { position: absolute; z-index: 4; inset: 0; overflow: hidden; pointer-events: none; }
+.position-line-label { position: absolute; z-index: 3; right: 78px; display: inline-flex; align-items: center; gap: 6px; max-width: calc(100% - 88px); min-height: 26px; padding: 2px 4px 2px 7px; transform: translateY(-50%); border: 1px solid #3b4944; border-radius: 3px; background: #151b1bea; color: #d9e2dc; font-family: var(--mono); font-size: 9px; white-space: nowrap; pointer-events: none; }
+.position-line-buy { border-color: #41614f; }
+.position-line-sell { border-color: #69413d; }
+.position-line-label strong { color: #8fe0b8; font-size: 9px; font-weight: 600; }
+.position-line-sell strong { color: #efa097; }
+.position-line-stale { opacity: .68; }
+.position-line-close { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; margin: -2px -3px -2px 0; padding: 0; border: 0; border-radius: 2px; background: transparent; color: #e9a29a; font-size: 16px; line-height: 1; pointer-events: auto; cursor: pointer; touch-action: manipulation; }
+.position-line-close:hover:not(:disabled) { background: #492a27; color: #fff; }
+.position-line-close:disabled { color: #78817b; cursor: wait; }
+.position-level-hitarea { position: absolute; z-index: 1; right: 72px; left: 0; width: auto; height: 18px; padding: 0; transform: translateY(-50%); border: 0; background: transparent; pointer-events: auto; cursor: ns-resize; touch-action: none; }
+.position-level-hitarea::before { position: absolute; top: 50%; right: 0; left: 0; border-top: 1px dashed currentColor; content: ""; opacity: .65; }
+.position-level-sl { color: #e17f73; }
+.position-level-tp { color: #6fc6a1; }
+.position-level-busy { cursor: wait; }
+.position-level-label { position: absolute; right: 78px; z-index: 2; padding: 2px 4px; transform: translateY(-50%); border-radius: 2px; background: #151b1bea; color: currentColor; font-family: var(--mono); font-size: 8px; white-space: nowrap; pointer-events: none; }
+.chart-control-error { position: absolute; z-index: 7; top: 8px; left: 50%; max-width: min(480px, calc(100% - 24px)); padding: 7px 10px; transform: translateX(-50%); border: 1px solid #68423e; border-radius: 4px; background: #291e1ded; color: #e6a59d; font-size: 10px; line-height: 1.4; text-align: center; pointer-events: none; }
 .chart-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 9px; padding: 20px; background: #141819ec; color: #a8b1ac; text-align: center; }
 .chart-overlay strong { color: #d9dfda; font-size: 12px; font-weight: 600; }
 .chart-overlay > span:last-child { max-width: 330px; color: #87918c; font-size: 10px; line-height: 1.55; }
@@ -383,11 +405,17 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .interval-control { gap: 0; padding: 2px; }
   .interval-control button { min-width: 28px; height: 29px; padding: 0 4px; font-size: 10px; }
   .chart-tool { display: none; }
-  .chart-quote-strip { gap: 12px; min-height: 36px; padding: 4px 10px; }
+  .chart-quote-strip { gap: 7px; min-height: 36px; padding: 4px 10px; }
   .chart-quote-strip .quote-chip { gap: 5px; }
   .chart-quote-strip .quote-chip strong { font-size: 10px; }
   .chart-quote-strip .quote-chip > span { font-size: 9px; }
+  .candle-countdown { gap: 4px; padding: 3px 5px; font-size: 7px; }
+  .candle-countdown strong { font-size: 9px; }
   .chart-canvas-wrap { min-height: 160px; }
+  .position-line-label { right: 76px; gap: 4px; max-width: calc(100% - 83px); padding-left: 5px; font-size: 8px; }
+  .position-line-label strong { font-size: 8px; }
+  .position-level-hitarea { height: 30px; }
+  .position-level-label { right: 77px; font-size: 7px; }
   .chart-footer { min-height: 25px; padding: 0 9px; font-size: 9px; }
   .trading-panel-open { height: min(190px, 28dvh); }
   .trading-panel-closed { height: 42px; }

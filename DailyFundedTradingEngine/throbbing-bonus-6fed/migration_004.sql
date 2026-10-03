@@ -1,0 +1,142 @@
+PRAGMA foreign_keys = ON;
+
+-- Extend the deployed legacy symbol table with the calculation metadata
+-- required by the current simulated trading engine. SQLite/D1 has no portable
+-- ADD COLUMN IF NOT EXISTS; this forward migration is intended to run once.
+ALTER TABLE trading_symbols ADD COLUMN base_currency TEXT;
+ALTER TABLE trading_symbols ADD COLUMN quote_currency TEXT;
+ALTER TABLE trading_symbols ADD COLUMN volume_unit TEXT;
+
+-- Store immutable calculation metadata for positions opened after this
+-- migration. Existing positions are not backfilled by this migration.
+CREATE TABLE IF NOT EXISTS position_calculation_snapshots (
+    position_id TEXT PRIMARY KEY,
+    metadata_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE
+);
+
+-- Seed the challenge models from seed_forex.sql. Plain INSERTs intentionally
+-- fail on unexpected duplicate IDs/codes rather than silently masking drift.
+INSERT INTO challenge_models (
+    id,
+    code,
+    name,
+    description,
+    currency,
+    leverage,
+    profit_split_percent,
+    minimum_payout,
+    maximum_payout,
+    payout_frequency,
+    payout_waiting_period_days,
+    status,
+    custom_rules_json
+) VALUES
+    ('MODEL_FX_1STEP', '1_STEP', '1-Step', 'Forex 1-Step challenge', 'USD', 100, 80, NULL, NULL, 'every_5_days', NULL, 'active', '{"reward_cycle_days":5,"reward_cycle_label":"5 days"}'),
+    ('MODEL_FX_2STEP', '2_STEP', '2-Step', 'Forex 2-Step challenge', 'USD', 100, 90, NULL, NULL, 'every_7_days', NULL, 'active', '{"reward_cycle_days":7,"reward_cycle_label":"7 days"}'),
+    ('MODEL_FX_INSTANT', 'INSTANT', 'Instant', 'Forex Instant Funding', 'USD', 100, 80, NULL, NULL, 'daily', NULL, 'active', '{"reward_cycle_days":1,"reward_cycle_label":"daily"}');
+
+-- Seed all four phases with the exact current allowlist and rules from
+-- seed_forex.sql. Phase IDs and model relationships are preserved verbatim.
+INSERT INTO challenge_model_phases (
+    id,
+    model_id,
+    phase_number,
+    phase_name,
+    description,
+    profit_target_percent,
+    daily_drawdown_percent,
+    max_drawdown_percent,
+    max_drawdown_type,
+    daily_drawdown_type,
+    minimum_trading_days,
+    maximum_trading_days,
+    minimum_profitable_days,
+    max_lot_size,
+    max_open_positions,
+    max_trades_per_day,
+    max_risk_per_trade_percent,
+    max_daily_risk_percent,
+    max_exposure_percent,
+    stop_loss_required,
+    take_profit_required,
+    weekend_holding_allowed,
+    overnight_holding_allowed,
+    news_trading_allowed,
+    ea_allowed,
+    allowed_symbols_json,
+    allowed_categories_json,
+    pass_rule,
+    fail_rule,
+    next_phase_number,
+    custom_rules_json,
+    status
+) VALUES
+    ('PHASE_FX_1STEP_1', 'MODEL_FX_1STEP', 1, 'Phase 1', NULL, 10, 5, 10, 'STATIC', 'START_OF_DAY_EQUITY', 3, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 1, 1, 1, 1, '["EURUSD","GBPUSD","USDJPY","USDCHF","USDCAD","AUDUSD","NZDUSD","XAUUSD","XAGUSD","BTCUSD","ETHUSD","USOIL"]', NULL, NULL, NULL, NULL, '{}', 'active'),
+    ('PHASE_FX_2STEP_1', 'MODEL_FX_2STEP', 1, 'Phase 1', NULL, 6, 5, 10, 'STATIC', 'START_OF_DAY_EQUITY', 5, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 1, 1, 1, 1, '["EURUSD","GBPUSD","USDJPY","USDCHF","USDCAD","AUDUSD","NZDUSD","XAUUSD","XAGUSD","BTCUSD","ETHUSD","USOIL"]', NULL, NULL, NULL, 2, '{}', 'active'),
+    ('PHASE_FX_2STEP_2', 'MODEL_FX_2STEP', 2, 'Phase 2', NULL, 6, 5, 10, 'STATIC', 'START_OF_DAY_EQUITY', 5, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 1, 1, 1, 1, '["EURUSD","GBPUSD","USDJPY","USDCHF","USDCAD","AUDUSD","NZDUSD","XAUUSD","XAGUSD","BTCUSD","ETHUSD","USOIL"]', NULL, NULL, NULL, NULL, '{}', 'active'),
+    ('PHASE_FX_INSTANT_1', 'MODEL_FX_INSTANT', 1, 'Phase 1', NULL, NULL, 5, 10, 'STATIC', 'START_OF_DAY_EQUITY', 0, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 1, 1, 1, 1, '["EURUSD","GBPUSD","USDJPY","USDCHF","USDCAD","AUDUSD","NZDUSD","XAUUSD","XAGUSD","BTCUSD","ETHUSD","USOIL"]', NULL, NULL, NULL, NULL, '{}', 'active');
+
+-- Seed all 19 account sizes from seed_forex.sql without changing prices,
+-- labels, currencies, statuses, or their model relationships.
+INSERT INTO challenge_model_sizes (
+    id,
+    model_id,
+    size,
+    display_name,
+    price,
+    currency,
+    status,
+    custom_rules_json
+) VALUES
+    ('SIZE_FX_1STEP_5000', 'MODEL_FX_1STEP', 5000, '$5,000', 32, 'USD', 'active', '{}'),
+    ('SIZE_FX_1STEP_10000', 'MODEL_FX_1STEP', 10000, '$10,000', 64, 'USD', 'active', '{}'),
+    ('SIZE_FX_1STEP_25000', 'MODEL_FX_1STEP', 25000, '$25,000', 160, 'USD', 'active', '{}'),
+    ('SIZE_FX_1STEP_50000', 'MODEL_FX_1STEP', 50000, '$50,000', 320, 'USD', 'active', '{}'),
+    ('SIZE_FX_1STEP_100000', 'MODEL_FX_1STEP', 100000, '$100,000', 640, 'USD', 'active', '{}'),
+    ('SIZE_FX_1STEP_200000', 'MODEL_FX_1STEP', 200000, '$200,000', 1280, 'USD', 'active', '{}'),
+    ('SIZE_FX_2STEP_5000', 'MODEL_FX_2STEP', 5000, '$5,000', 27, 'USD', 'active', '{}'),
+    ('SIZE_FX_2STEP_10000', 'MODEL_FX_2STEP', 10000, '$10,000', 52, 'USD', 'active', '{}'),
+    ('SIZE_FX_2STEP_25000', 'MODEL_FX_2STEP', 25000, '$25,000', 130, 'USD', 'active', '{}'),
+    ('SIZE_FX_2STEP_50000', 'MODEL_FX_2STEP', 50000, '$50,000', 260, 'USD', 'active', '{}'),
+    ('SIZE_FX_2STEP_100000', 'MODEL_FX_2STEP', 100000, '$100,000', 520, 'USD', 'active', '{}'),
+    ('SIZE_FX_2STEP_200000', 'MODEL_FX_2STEP', 200000, '$200,000', 1040, 'USD', 'active', '{}'),
+    ('SIZE_FX_INSTANT_2500', 'MODEL_FX_INSTANT', 2500, '$2,500', 25, 'USD', 'active', '{}'),
+    ('SIZE_FX_INSTANT_5000', 'MODEL_FX_INSTANT', 5000, '$5,000', 49, 'USD', 'active', '{}'),
+    ('SIZE_FX_INSTANT_10000', 'MODEL_FX_INSTANT', 10000, '$10,000', 98, 'USD', 'active', '{}'),
+    ('SIZE_FX_INSTANT_25000', 'MODEL_FX_INSTANT', 25000, '$25,000', 245, 'USD', 'active', '{}'),
+    ('SIZE_FX_INSTANT_50000', 'MODEL_FX_INSTANT', 50000, '$50,000', 490, 'USD', 'active', '{}'),
+    ('SIZE_FX_INSTANT_100000', 'MODEL_FX_INSTANT', 100000, '$100,000', 980, 'USD', 'active', '{}'),
+    ('SIZE_FX_INSTANT_200000', 'MODEL_FX_INSTANT', 200000, '$200,000', 1960, 'USD', 'active', '{}');
+
+-- Seed all 12 approved symbols using the exact IDs and calculation metadata
+-- from seed_forex.sql. No symbol-specific maximum lots are configured.
+INSERT INTO trading_symbols (
+    id,
+    symbol,
+    display_name,
+    category,
+    base_currency,
+    quote_currency,
+    volume_unit,
+    contract_size,
+    price_decimals,
+    pip_size,
+    lot_step,
+    minimum_lot,
+    maximum_lot,
+    trading_enabled
+) VALUES
+    ('SYMBOL_FX_EURUSD', 'EURUSD', 'EURUSD', 'FOREX', 'EUR', 'USD', 'lot', 100000, 5, 0.0001, 0.01, 0.01, NULL, 1),
+    ('SYMBOL_FX_GBPUSD', 'GBPUSD', 'GBPUSD', 'FOREX', 'GBP', 'USD', 'lot', 100000, 5, 0.0001, 0.01, 0.01, NULL, 1),
+    ('SYMBOL_FX_USDJPY', 'USDJPY', 'USDJPY', 'FOREX', 'USD', 'JPY', 'lot', 100000, 3, 0.01, 0.01, 0.01, NULL, 1),
+    ('SYMBOL_FX_USDCHF', 'USDCHF', 'USDCHF', 'FOREX', 'USD', 'CHF', 'lot', 100000, 5, 0.0001, 0.01, 0.01, NULL, 1),
+    ('SYMBOL_FX_USDCAD', 'USDCAD', 'USDCAD', 'FOREX', 'USD', 'CAD', 'lot', 100000, 5, 0.0001, 0.01, 0.01, NULL, 1),
+    ('SYMBOL_FX_AUDUSD', 'AUDUSD', 'AUDUSD', 'FOREX', 'AUD', 'USD', 'lot', 100000, 5, 0.0001, 0.01, 0.01, NULL, 1),
+    ('SYMBOL_FX_NZDUSD', 'NZDUSD', 'NZDUSD', 'FOREX', 'NZD', 'USD', 'lot', 100000, 5, 0.0001, 0.01, 0.01, NULL, 1),
+    ('SYMBOL_FX_XAUUSD', 'XAUUSD', 'XAUUSD', 'METALS', 'XAU', 'USD', 'lot', 100, 2, 0.01, 0.01, 0.01, NULL, 1),
+    ('SYMBOL_FX_XAGUSD', 'XAGUSD', 'XAGUSD', 'METALS', 'XAG', 'USD', 'lot', 5000, 3, 0.01, 0.01, 0.01, NULL, 1),
+    ('SYMBOL_FX_BTCUSD', 'BTCUSD', 'BTCUSD', 'CRYPTO', 'BTC', 'USD', 'lot', 1, 1, 0.1, 0.01, 0.01, NULL, 1),
+    ('SYMBOL_FX_ETHUSD', 'ETHUSD', 'ETHUSD', 'CRYPTO', 'ETH', 'USD', 'lot', 1, 2, 0.1, 0.1, 0.1, NULL, 1),
+    ('SYMBOL_FX_USOIL', 'USOIL', 'USOIL', 'ENERGY', 'OIL', 'USD', 'lot', 1000, 2, 0.01, 0.01, 0.01, NULL, 1);
