@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import * as signalR from "@microsoft/signalr";
 import {
   Activity,
   BarChart3,
@@ -25,7 +26,7 @@ import "../node_modules/flag-icons/css/flag-icons.min.css";
 import "./styles.css";
 
 const API_BASE = import.meta.env.DEV ? "" : "https://throbbing-bonus-6fed.dailyfunded.workers.dev";
-const QUOTE_POLL_MS = 5000;
+const QUOTE_FALLBACK_MS = 5000;
 const TRADING_API_BASE = import.meta.env.DEV ? "/api" : "https://daily-funded-api.onrender.com/api";
 const TRADING_POLL_MS = 5000;
 const FIREBASE_CONFIG = {
@@ -390,6 +391,22 @@ function getMarketState(quote, error) {
   return { label: "Live", tone: "live" };
 }
 
+function normalizeQuotePrice(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const price = Number(value);
+  return Number.isFinite(price) && price > 0 ? price : null;
+}
+
+function quoteTimestampMs(value) {
+  if (typeof value === "number" || (typeof value === "string" && /^\d+(\.\d+)?$/.test(value))) {
+    const timestamp = Number(value);
+    return Number.isFinite(timestamp) ? (timestamp < 1e12 ? timestamp * 1000 : timestamp) : null;
+  }
+  if (typeof value !== "string" || !value.trim()) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 function useMarketData() {
   const [symbols, setSymbols] = useState([]);
   const [symbolState, setSymbolState] = useState("loading");
@@ -397,7 +414,7 @@ function useMarketData() {
   const [quotes, setQuotes] = useState({});
   const [quoteErrors, setQuoteErrors] = useState({});
   const [quoteRefresh, setQuoteRefresh] = useState("loading");
-  const quoteFlight = useRef(false);
+  const quoteTimes = useRef({});
 
   useEffect(() => {
     const controller = new AbortController();
@@ -418,39 +435,206 @@ function useMarketData() {
   useEffect(() => {
     if (!symbols.length) return undefined;
     let disposed = false;
-    const refresh = async () => {
-      if (disposed || document.hidden || quoteFlight.current) return;
-      quoteFlight.current = true;
+    let starting = false;
+    let streamReady = false;
+    let retryTimer = null;
+    let connection = null;
+    let snapshotPromise = null;
+    const providerSymbols = symbols
+      .filter((item) => item?.enabled !== false && item?.is_enabled !== false)
+      .map((item) => item.symbol?.trim().toUpperCase())
+      .filter(Boolean);
+    if (!providerSymbols.length) return undefined;
+    const enabledSymbols = new Set(providerSymbols);
+
+    const markQuotesStale = () => {
+      streamReady = false;
+      setQuoteRefresh("error");
+      setQuotes((current) => Object.fromEntries(Object.entries(current).map(([symbol, quote]) => [
+        symbol,
+        { ...quote, bid: null, ask: null, mid: null, stale: true },
+      ])));
+    };
+
+    const applyQuote = (quote, timestamp) => {
+      const previousTimestamp = quoteTimes.current[quote.symbol];
+      if (previousTimestamp !== undefined && (timestamp === null || timestamp < previousTimestamp)) return false;
+      if (timestamp !== null) quoteTimes.current[quote.symbol] = timestamp;
+      setQuotes((current) => ({ ...current, [quote.symbol]: quote }));
+      return true;
+    };
+
+    const refreshSnapshot = () => {
+      if (disposed || document.hidden) return Promise.resolve(null);
+      if (snapshotPromise) return snapshotPromise;
+      setQuoteRefresh((current) => current === "loading" ? "loading" : "refreshing");
+      snapshotPromise = (async () => {
+        try {
+          const query = providerSymbols.join(",");
+          const payload = await getJson(`/market/quotes?symbols=${encodeURIComponent(query)}`);
+          if (disposed) return null;
+          const nextErrors = {};
+          const freshSymbols = new Set();
+          for (const rawQuote of payload.quotes || []) {
+            const symbol = typeof rawQuote?.symbol === "string" ? rawQuote.symbol.trim().toUpperCase() : "";
+            if (!enabledSymbols.has(symbol)) continue;
+            const timestamp = quoteTimestampMs(rawQuote.timestamp);
+            const accepted = applyQuote({
+              ...rawQuote,
+              symbol,
+              bid: normalizeQuotePrice(rawQuote.bid),
+              ask: normalizeQuotePrice(rawQuote.ask),
+              mid: normalizeQuotePrice(rawQuote.mid),
+              stale: !streamReady || rawQuote.stale === true,
+            }, timestamp);
+            if (accepted && rawQuote.stale !== true) freshSymbols.add(symbol);
+          }
+          for (const item of payload.errors || []) {
+            const symbol = typeof item?.symbol === "string" ? item.symbol.trim().toUpperCase() : "";
+            if (!enabledSymbols.has(symbol)) continue;
+            nextErrors[symbol] = item;
+            setQuotes((current) => current[symbol] ? {
+              ...current,
+              [symbol]: { ...current[symbol], bid: null, ask: null, mid: null, stale: true },
+            } : current);
+          }
+          setQuoteErrors(nextErrors);
+          setQuoteRefresh(streamReady ? "ready" : "error");
+          return { errors: new Set(Object.keys(nextErrors)), freshSymbols };
+        } catch (error) {
+          if (disposed) return null;
+          setQuoteErrors(Object.fromEntries(symbols.map(({ symbol }) => [symbol, {
+            symbol,
+            code: "request_failed",
+            message: error.message,
+          }])));
+          setQuoteRefresh("error");
+          return null;
+        } finally {
+          snapshotPromise = null;
+        }
+      })();
+      return snapshotPromise;
+    };
+
+    const markSnapshotFresh = (snapshot) => {
+      if (!snapshot) return;
+      setQuotes((current) => Object.fromEntries(Object.entries(current).map(([symbol, quote]) => [
+        symbol,
+        snapshot.freshSymbols.has(symbol) && !snapshot.errors.has(symbol) ? { ...quote, stale: false } : quote,
+      ])));
+    };
+
+    const refreshSnapshotForConnection = async () => {
+      if (snapshotPromise) await snapshotPromise;
+      return refreshSnapshot();
+    };
+
+    const scheduleRetry = () => {
+      if (disposed || document.hidden || retryTimer !== null) return;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        void startConnection();
+      }, QUOTE_FALLBACK_MS);
+    };
+
+    const subscribeAndSync = async () => {
+      const snapshotErrors = await refreshSnapshotForConnection();
+      if (disposed || document.hidden || connection.state !== signalR.HubConnectionState.Connected) return;
+      await connection.invoke("Subscribe", providerSymbols);
+      if (disposed || document.hidden) return;
+      streamReady = true;
+      markSnapshotFresh(snapshotErrors);
+      setQuoteRefresh("ready");
+    };
+
+    const startConnection = async () => {
+      if (disposed || document.hidden || starting || !connection
+        || connection.state !== signalR.HubConnectionState.Disconnected) return;
+      starting = true;
       setQuoteRefresh((current) => current === "loading" ? "loading" : "refreshing");
       try {
-        const query = symbols.map((item) => item.symbol).join(",");
-        const payload = await getJson(`/market/quotes?symbols=${encodeURIComponent(query)}`);
-        if (disposed) return;
-        const nextQuotes = {};
-        const nextErrors = {};
-        for (const quote of payload.quotes || []) nextQuotes[quote.symbol] = quote;
-        for (const item of payload.errors || []) nextErrors[item.symbol] = item;
-        setQuotes(nextQuotes);
-        setQuoteErrors(nextErrors);
-        setQuoteRefresh("ready");
-      } catch (error) {
-        if (disposed) return;
-        setQuoteErrors(Object.fromEntries(symbols.map(({ symbol }) => [symbol, {
-          symbol,
-          code: "request_failed",
-          message: error.message,
-        }])));
-        setQuoteRefresh("error");
+        await connection.start();
+        await subscribeAndSync();
+      } catch {
+        markQuotesStale();
+        if (connection.state !== signalR.HubConnectionState.Disconnected) await connection.stop();
+        scheduleRetry();
       } finally {
-        quoteFlight.current = false;
+        starting = false;
+        if (!disposed && !document.hidden && connection?.state === signalR.HubConnectionState.Disconnected) {
+          scheduleRetry();
+        }
       }
     };
 
-    refresh();
-    const timer = window.setInterval(refresh, QUOTE_POLL_MS);
+    if (providerSymbols.length) {
+      connection = new signalR.HubConnectionBuilder()
+        .withUrl("https://biquote.io/hubs/tick", { withCredentials: false })
+        .withAutomaticReconnect()
+        .configureLogging(signalR.LogLevel.Error)
+        .build();
+      connection.on("ReceiveTick", (rawTick) => {
+        if (disposed || !rawTick || typeof rawTick !== "object") return;
+        const symbol = typeof rawTick.symbol === "string" ? rawTick.symbol.trim().toUpperCase() : "";
+        const timestamp = quoteTimestampMs(rawTick.timestamp);
+        if (!enabledSymbols.has(symbol) || (rawTick.timestamp != null && timestamp === null)) return;
+        const tick = {
+          symbol,
+          bid: normalizeQuotePrice(rawTick.bid),
+          ask: normalizeQuotePrice(rawTick.ask),
+          mid: normalizeQuotePrice(rawTick.mid),
+          timestamp: rawTick.timestamp ?? null,
+          stale: false,
+        };
+        if (tick.bid === null && tick.ask === null && tick.mid === null) return;
+        if (!applyQuote(tick, timestamp)) return;
+        setQuoteErrors((current) => {
+          if (!current[symbol]) return current;
+          const next = { ...current };
+          delete next[symbol];
+          return next;
+        });
+        setQuoteRefresh("ready");
+      });
+      connection.onreconnecting(markQuotesStale);
+      connection.onreconnected(() => {
+        streamReady = false;
+        void subscribeAndSync().catch(() => {
+          markQuotesStale();
+          void connection.stop();
+        });
+      });
+      connection.onclose(() => {
+        markQuotesStale();
+        scheduleRetry();
+      });
+      void startConnection();
+    }
+
+    const fallbackTimer = window.setInterval(() => {
+      if (!streamReady) void refreshSnapshot();
+    }, QUOTE_FALLBACK_MS);
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (retryTimer !== null) {
+          window.clearTimeout(retryTimer);
+          retryTimer = null;
+        }
+        markQuotesStale();
+        if (connection && connection.state !== signalR.HubConnectionState.Disconnected) void connection.stop();
+      } else {
+        void startConnection();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       disposed = true;
-      window.clearInterval(timer);
+      window.clearInterval(fallbackTimer);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (connection) void connection.stop();
     };
   }, [symbols]);
 
@@ -1064,8 +1248,8 @@ function StatusBar({ quoteRefresh, quote, source }) {
   return (
     <footer className="statusbar">
       <span className={`connection-indicator ${quoteRefresh === "error" ? "connection-error" : ""}`}><span />{statusLabel}</span>
-      <span>{source === "provider_historical" ? "Provider candle history" : "Market prices via Daily Funded Worker"}</span>
-      <span className="statusbar-right"><Clock3 size={12} /> Quotes refresh every 5 sec</span>
+      <span>{source === "provider_historical" ? "Provider candle history" : "Quote snapshots via Daily Funded Worker"}</span>
+      <span className="statusbar-right"><Clock3 size={12} /> Live quotes via Biquote SignalR</span>
     </footer>
   );
 }
