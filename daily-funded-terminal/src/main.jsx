@@ -24,9 +24,43 @@ import { CandlestickSeries, ColorType, createChart } from "lightweight-charts";
 import "../node_modules/flag-icons/css/flag-icons.min.css";
 import "./styles.css";
 
-const API_BASE = "";
+const API_BASE = import.meta.env.DEV ? "" : "https://throbbing-bonus-6fed.dailyfunded.workers.dev";
 const QUOTE_POLL_MS = 5000;
+const TRADING_API_BASE = import.meta.env.DEV ? "/api" : "https://daily-funded-api.onrender.com/api";
+const TRADING_POLL_MS = 5000;
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyArsv-HojE9hn_3BAcJVFh5zp4XS9Dw480",
+  authDomain: "daily-funded.firebaseapp.com",
+  projectId: "daily-funded",
+  storageBucket: "daily-funded.firebasestorage.app",
+  messagingSenderId: "1080360028653",
+  appId: "1:1080360028653:web:9afa42197ba011c1613fe4",
+  measurementId: "G-Y7SP58FQ6H",
+};
 const INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d"];
+const TRADING_ERROR_MESSAGES = {
+  authentication_required: "Sign in with your Daily Funded account to use trading.",
+  trading_disabled: "Trading is disabled until this account is approved and active.",
+  trading_account_not_found: "This trading account is unavailable.",
+  trading_account_unavailable: "This trading account is unavailable.",
+  account_lookup_failed: "Account service is unavailable. Try again shortly.",
+  market_unavailable: "Current market data is unavailable. No order was placed.",
+  stale_quote: "The quote is stale or the market is closed. No order was placed.",
+  invalid_volume: "The order volume is invalid for this symbol or account.",
+  invalid_tp: "Take profit must be valid and on the correct side of entry.",
+  invalid_sl: "Stop loss must be valid and on the correct side of entry.",
+  insufficient_margin: "There is not enough available margin for this order.",
+  rule_violation: "The order violates this account's trading rules.",
+  position_not_found: "Position not found or not available to this user.",
+  unauthorized_action: "This action is not authorized.",
+  invalid_order_type: "Only market orders are currently supported.",
+  worker_timeout: "Trading service timed out. Try again shortly.",
+  worker_network_error: "Trading service is unavailable. Try again shortly.",
+  worker_http_error: "Trading service could not process the request.",
+  worker_rejected: "Trading service rejected the request.",
+  worker_response_invalid: "Trading service returned an invalid response.",
+  server_error: "Trading service is unavailable. Try again shortly.",
+};
 const CATEGORY_SECTIONS = [
   { key: "FOREX", label: "Forex" },
   { key: "METALS", label: "Metals" },
@@ -72,6 +106,243 @@ const INSTRUMENT_MARKS = {
   XCUUSD: { kind: "quoted-copper", flag: "us", label: "Copper / US Dollar" },
   XNGUSD: { kind: "gas-flame", label: "Natural gas" },
 };
+
+let terminalFirebaseAuth;
+
+function getTerminalFirebaseAuth() {
+  if (terminalFirebaseAuth) return terminalFirebaseAuth;
+  const firebase = window.firebase;
+  if (!firebase) throw new Error(TRADING_ERROR_MESSAGES.authentication_required);
+  if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+  terminalFirebaseAuth = firebase.auth();
+  return terminalFirebaseAuth;
+}
+
+class TradingRequestError extends Error {
+  constructor(code, status) {
+    super(TRADING_ERROR_MESSAGES[code] || TRADING_ERROR_MESSAGES.server_error);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+async function getTradingJson(path, user, options = {}) {
+  if (!user) throw new TradingRequestError("authentication_required", 401);
+  let token;
+  try {
+    token = await user.getIdToken();
+  } catch {
+    throw new TradingRequestError("authentication_required", 401);
+  }
+  let response;
+  try {
+    response = await fetch(`${TRADING_API_BASE}${path}`, {
+      ...options,
+      headers: {
+        Accept: "application/json",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        Authorization: `Bearer ${token}`,
+        ...options.headers,
+      },
+    });
+  } catch {
+    throw new TradingRequestError("server_error", 0);
+  }
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new TradingRequestError("server_error", response.status);
+  }
+  if (!response.ok) {
+    const code = payload.code ||
+      (response.status === 401 ? "authentication_required" :
+        response.status === 403 ? "unauthorized_action" :
+          response.status === 404 ? "position_not_found" :
+            response.status === 409 ? "trading_disabled" : "server_error");
+    throw new TradingRequestError(code, response.status);
+  }
+  return payload;
+}
+
+function useTradingSession() {
+  const [authStatus, setAuthStatus] = useState("loading");
+  const [user, setUser] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [account, setAccount] = useState(null);
+  const [rules, setRules] = useState(null);
+  const [positions, setPositions] = useState([]);
+  const [trades, setTrades] = useState([]);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [refreshVersion, setRefreshVersion] = useState(0);
+
+  useEffect(() => {
+    let unsubscribe;
+    let disposed = false;
+    try {
+      const auth = getTerminalFirebaseAuth();
+      auth.setPersistence(window.firebase.auth.Auth.Persistence.LOCAL)
+        .then(() => {
+          if (disposed) return;
+          unsubscribe = auth.onAuthStateChanged((nextUser) => {
+            setUser(nextUser);
+            setAuthStatus(nextUser ? "signed-in" : "signed-out");
+            setAccounts([]);
+            setSelectedAccountId("");
+            setAccount(null);
+            setRules(null);
+            setPositions([]);
+            setTrades([]);
+            setError("");
+          }, () => {
+            setAuthStatus("unavailable");
+            setError(TRADING_ERROR_MESSAGES.authentication_required);
+          });
+        })
+        .catch(() => {
+          if (disposed) return;
+          setAuthStatus("unavailable");
+          setAccountsLoading(false);
+          setError(TRADING_ERROR_MESSAGES.authentication_required);
+        });
+    } catch {
+      setAuthStatus("unavailable");
+      setAccountsLoading(false);
+      setError(TRADING_ERROR_MESSAGES.authentication_required);
+    }
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setAccounts([]);
+      setSelectedAccountId("");
+      setAccountsLoading(authStatus === "loading");
+      return undefined;
+    }
+    let disposed = false;
+    setAccountsLoading(true);
+    getTradingJson("/my/accounts", user)
+      .then((rows) => {
+        if (disposed) return;
+        const ownedAccounts = Array.isArray(rows) ? rows : [];
+        setAccounts(ownedAccounts);
+        setSelectedAccountId((current) =>
+          ownedAccounts.some((item) => item.id === current)
+            ? current
+            : ownedAccounts.find((item) => item.status === "active" && item.tradingEnabled)?.id ||
+              ownedAccounts[0]?.id ||
+              ""
+        );
+        setError("");
+      })
+      .catch((requestError) => {
+        if (disposed) return;
+        setError(requestError.message);
+      })
+      .finally(() => {
+        if (!disposed) setAccountsLoading(false);
+      });
+    return () => { disposed = true; };
+  }, [user]);
+
+  const selectedAccount = accounts.find((item) => item.id === selectedAccountId) || null;
+  const canTrade = Boolean(
+    user &&
+    selectedAccount &&
+    selectedAccount.status === "active" &&
+    selectedAccount.tradingEnabled === true
+  );
+
+  useEffect(() => {
+    if (!user || !selectedAccount) {
+      setDataLoading(false);
+      setAccount(null);
+      setRules(null);
+      setPositions([]);
+      setTrades([]);
+      return undefined;
+    }
+    if (!canTrade) {
+      setDataLoading(false);
+      setAccount(null);
+      setRules(null);
+      setPositions([]);
+      setTrades([]);
+      setError(TRADING_ERROR_MESSAGES.trading_disabled);
+      return undefined;
+    }
+
+    let disposed = false;
+    let inFlight = false;
+    const controller = new AbortController();
+    setAccount(null);
+    setRules(null);
+    setPositions([]);
+    setTrades([]);
+    setDataLoading(true);
+    setError("");
+    const refresh = async () => {
+      if (disposed || inFlight) return;
+      inFlight = true;
+      try {
+        const accountQuery = `?account_id=${encodeURIComponent(selectedAccount.id)}`;
+        const [accountResult, rulesResult, tradesResult] = await Promise.all([
+          getTradingJson(`/trading/accounts${accountQuery}`, user, { signal: controller.signal }),
+          getTradingJson(`/trading/account-rules${accountQuery}`, user, { signal: controller.signal }),
+          getTradingJson(`/trading/trades${accountQuery}`, user, { signal: controller.signal }),
+        ]);
+        if (disposed) return;
+        setAccount(accountResult.account || null);
+        setPositions(Array.isArray(accountResult.positions) ? accountResult.positions : []);
+        setRules(rulesResult.rules || accountResult.rules || null);
+        setTrades(Array.isArray(tradesResult.trades) ? tradesResult.trades : []);
+        setError("");
+      } catch (requestError) {
+        if (disposed || requestError.name === "AbortError") return;
+        setError(requestError.message);
+        setAccount(null);
+        setRules(null);
+        setPositions([]);
+        setTrades([]);
+      } finally {
+        if (!disposed) setDataLoading(false);
+        inFlight = false;
+      }
+    };
+    refresh();
+    const timer = window.setInterval(refresh, TRADING_POLL_MS);
+    return () => {
+      disposed = true;
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [user, selectedAccount?.id, canTrade, refreshVersion]);
+
+  return {
+    authStatus,
+    user,
+    accounts,
+    accountsLoading,
+    selectedAccount,
+    selectedAccountId,
+    setSelectedAccountId,
+    account,
+    rules,
+    positions,
+    trades,
+    dataLoading,
+    error,
+    canTrade,
+    refresh: () => setRefreshVersion((current) => current + 1),
+  };
+}
 
 async function getJson(path, signal) {
   const response = await fetch(`${API_BASE}${path}`, { signal, headers: { Accept: "application/json" } });
@@ -268,12 +539,34 @@ function QuoteChip({ label, value, tone = "neutral" }) {
   );
 }
 
-function TopBar({ symbol, selected, quote, quoteError, watchOpen, onToggleWatch, onToggleOrder }) {
+function TopBar({
+  symbol,
+  selected,
+  quote,
+  quoteError,
+  watchOpen,
+  onToggleWatch,
+  onToggleOrder,
+  account,
+  accounts,
+  accountsLoading,
+  selectedAccountId,
+  onAccountChange,
+  authStatus,
+  accountStatus,
+  selectedAccount,
+}) {
   const digits = getPriceDigits(symbol);
   const spread = quote?.bid != null && quote?.ask != null
     ? Number(quote.ask) - Number(quote.bid)
     : null;
   const marketState = getMarketState(quote, quoteError);
+  const formatAccountPhase = (phase) => {
+    if (typeof phase !== "string") return "";
+    if (phase.toLowerCase() === "instant") return "Instant";
+    const match = /^phase[_ -]?(\d+)$/i.exec(phase);
+    return match ? `Phase ${match[1]}` : "";
+  };
 
   return (
     <header className="topbar">
@@ -282,11 +575,36 @@ function TopBar({ symbol, selected, quote, quoteError, watchOpen, onToggleWatch,
           {watchOpen ? <X size={19} /> : <Menu size={19} />}
         </button>
         <BrandMark />
-        <button className="account-select" type="button" title="Account connection will be available in a later stage">
+        <label className="account-select">
           <span className="account-avatar">DF</span>
-          <span className="account-select-copy"><small>TRADING ACCOUNT</small><strong>Select account</strong></span>
+          <span className="account-select-copy">
+            <small>TRADING ACCOUNT</small>
+            <select
+              className="account-select-dropdown"
+              aria-label="Trading account"
+              value={selectedAccountId}
+              onChange={(event) => onAccountChange(event.target.value)}
+              disabled={accountsLoading || !accounts.length}
+            >
+              {accounts.length
+                ? accounts.map((item) => {
+                  const phase = formatAccountPhase(item.phase);
+                  return (
+                    <option key={item.id} value={item.id}>
+                      {`$${Number(item.size || 0).toLocaleString("en-US")} · ${item.label || item.plan || "Challenge"}${phase ? ` · ${phase}` : ""} · ${(item.status || "unknown").toUpperCase()} · ${item.status === "active" && item.tradingEnabled === true ? "Trading enabled" : "Trading disabled"}`}
+                    </option>
+                  );
+                })
+                : <option value="">{accountsLoading ? "Loading accounts…" : authStatus === "signed-out" ? "Sign in required" : "No account available"}</option>}
+            </select>
+            <small className={`account-status account-status-${(accountStatus || "unavailable").toLowerCase()}`}>
+              {accountStatus
+                ? `${accountStatus.toUpperCase()} · ${selectedAccount?.status === "active" && selectedAccount?.tradingEnabled === true ? "Trading enabled" : "Trading disabled"}`
+                : accountsLoading ? "Loading" : "Unavailable"}
+            </small>
+          </span>
           <ChevronDown size={14} />
-        </button>
+        </label>
       </div>
 
       <div className="topbar-market">
@@ -296,19 +614,26 @@ function TopBar({ symbol, selected, quote, quoteError, watchOpen, onToggleWatch,
           <span className={`state-dot state-${marketState.tone}`} title={marketState.label} />
         </div>
         <QuoteChip label="BID" value={quote?.bid == null ? "--" : formatPrice(quote.bid, digits)} tone="sell" />
-        <QuoteChip label="ASK" value={quote?.ask == null ? (quote?.mid == null ? "--" : formatPrice(quote.mid, digits)) : formatPrice(quote.ask, digits)} tone="buy" />
+        <QuoteChip label="ASK" value={quote?.ask == null ? "--" : formatPrice(quote.ask, digits)} tone="buy" />
         <QuoteChip label="SPREAD" value={spread == null ? "--" : formatPrice(spread, digits)} />
       </div>
 
       <div className="topbar-right">
-        <div className="account-metric"><span>Balance</span><strong>--</strong></div>
-        <div className="account-metric"><span>Equity</span><strong>--</strong></div>
+        <div className="account-metric"><span>Balance</span><strong>{formatMoney(account?.balance)}</strong></div>
+        <div className="account-metric"><span>Equity</span><strong>{formatMoney(account?.equity)}</strong></div>
+        <div className="account-metric account-metric-wide"><span>Free margin</span><strong>{formatMoney(account?.free_margin ?? account?.available_margin)}</strong></div>
+        <div className="account-metric account-metric-wide"><span>Open P/L</span><strong>{formatMoney(account?.open_pnl)}</strong></div>
         <span className="topbar-divider" />
         <button className="icon-button settings-button" type="button" title="Terminal settings" aria-label="Terminal settings"><Settings2 size={18} /></button>
         <button className="mobile-order-trigger" type="button" onClick={onToggleOrder}>Order</button>
       </div>
     </header>
   );
+}
+
+function formatMoney(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "--";
+  return `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function InstrumentRow({ item, quote, error, selected, favorite, onSelect, onFavorite }) {
@@ -401,7 +726,7 @@ function WatchlistSection({ label, items, quotes, errors, selectedSymbol, favori
   );
 }
 
-function ChartView({ symbol, selected, quote, candles, state, error, source, interval, onIntervalChange, onOpenWatchlist }) {
+function ChartView({ symbol, selected, quote, quoteError, candles, state, error, source, interval, onIntervalChange, onOpenWatchlist }) {
   const chartHost = useRef(null);
   const chartRef = useRef(null);
   const candleSeries = useRef(null);
@@ -435,6 +760,8 @@ function ChartView({ symbol, selected, quote, candles, state, error, source, int
       borderDownColor: "#ee7c72",
       wickUpColor: "#72d6ae",
       wickDownColor: "#ee7c72",
+      borderVisible: true,
+      wickVisible: true,
       priceLineVisible: false,
       lastValueVisible: true,
     });
@@ -477,7 +804,7 @@ function ChartView({ symbol, selected, quote, candles, state, error, source, int
     return undefined;
   }, [quote?.mid, quote?.stale]);
 
-  const marketState = getMarketState(quote, null);
+  const marketState = getMarketState(quote, quoteError);
   const highLow = candles.length ? candles.reduce((range, candle) => ({
     high: Math.max(range.high, candle.high),
     low: Math.min(range.low, candle.low),
@@ -502,7 +829,7 @@ function ChartView({ symbol, selected, quote, candles, state, error, source, int
       </div>
       <div className="chart-quote-strip">
         <QuoteChip label="BID" value={quote?.bid == null ? "--" : formatPrice(quote.bid, digits)} tone="sell" />
-        <QuoteChip label="ASK" value={quote?.ask == null ? (quote?.mid == null ? "--" : formatPrice(quote.mid, digits)) : formatPrice(quote.ask, digits)} tone="buy" />
+        <QuoteChip label="ASK" value={quote?.ask == null ? "--" : formatPrice(quote.ask, digits)} tone="buy" />
         <QuoteChip label="MID" value={quote?.mid == null ? "--" : formatPrice(quote.mid, digits)} />
         {quote?.stale && <span className="stale-flag">STALE QUOTE</span>}
         {source && <span className="source-label">{source === "provider_historical" ? "PROVIDER HISTORY" : "WORKER GENERATED"}</span>}
@@ -531,17 +858,65 @@ function Stepper({ value, onChange, label }) {
   );
 }
 
-function OrderPanel({ symbol, quote, orderOpen, onClose }) {
+function OrderPanel({
+  symbol,
+  quote,
+  quoteError,
+  orderOpen,
+  onClose,
+  account,
+  rules,
+  canTrade,
+  onExecute,
+}) {
   const [side, setSide] = useState("BUY");
-  const [orderType, setOrderType] = useState("Market Order");
+  const [orderType, setOrderType] = useState("MARKET");
   const [volume, setVolume] = useState(0.1);
   const [oneClick, setOneClick] = useState(false);
-  const [notice, setNotice] = useState(false);
+  const [takeProfit, setTakeProfit] = useState("");
+  const [stopLoss, setStopLoss] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState("");
   const digits = getPriceDigits(symbol);
+  const marketState = getMarketState(quote, quoteError);
+  const quoteSidePrice = side === "BUY" ? quote?.ask : quote?.bid;
 
-  function blockedAction() {
-    setNotice(true);
-    window.setTimeout(() => setNotice(false), 3200);
+  async function submitOrder() {
+    if (!canTrade || submitting) return;
+    setSubmitting(true);
+    setNotice("");
+    try {
+      await onExecute({
+        symbol,
+        side,
+        volume,
+        order_type: orderType,
+        take_profit: takeProfit === "" ? null : (Number.isFinite(Number(takeProfit)) ? Number(takeProfit) : takeProfit),
+        stop_loss: stopLoss === "" ? null : (Number.isFinite(Number(stopLoss)) ? Number(stopLoss) : stopLoss),
+      });
+      setNotice(`${side} ${symbol} market order filled.`);
+      setConfirming(false);
+      setTakeProfit("");
+      setStopLoss("");
+    } catch (error) {
+      setNotice(error.message || TRADING_ERROR_MESSAGES.server_error);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function startOrder() {
+    if (!canTrade) {
+      setNotice(TRADING_ERROR_MESSAGES.trading_disabled);
+      return;
+    }
+    if (oneClick) {
+      submitOrder();
+    } else {
+      setConfirming(true);
+      setNotice("");
+    }
   }
 
   return (
@@ -549,13 +924,13 @@ function OrderPanel({ symbol, quote, orderOpen, onClose }) {
       <button className={`drawer-scrim order-scrim ${orderOpen ? "scrim-visible" : ""}`} type="button" aria-label="Close order panel" onClick={onClose} />
       <aside className={`order-panel ${orderOpen ? "order-open" : ""}`}>
         <div className="panel-heading order-heading">
-          <div><span className="eyebrow">STAGE 1 · MARKET DATA</span><h2>New order <span className="stage-chip">PREVIEW</span></h2></div>
+          <div><span className="eyebrow">SERVER-VALIDATED EXECUTION</span><h2>New order <span className="stage-chip">MARKET</span></h2></div>
           <button className="icon-button mobile-only" type="button" aria-label="Close order panel" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="order-symbol-select">
           <InstrumentMark symbol={symbol} />
           <div><strong>{symbol || "No market selected"}</strong><small>{SHORT_NAMES[symbol] || "Select from watchlist"}</small></div>
-          <span className="market-state state-text-live">{quote?.stale ? "Stale" : quote ? "Live quote" : "Awaiting quote"}</span>
+          <span className={`market-state state-text-${marketState.tone}`}>{marketState.label}</span>
         </div>
         <div className="side-switch" role="tablist" aria-label="Order side">
           <button type="button" role="tab" aria-selected={side === "BUY"} className={side === "BUY" ? "side-buy-active" : ""} onClick={() => setSide("BUY")}><span className="side-arrow">↗</span> Buy</button>
@@ -564,55 +939,123 @@ function OrderPanel({ symbol, quote, orderOpen, onClose }) {
         <label className="field-label">Order type</label>
         <div className="select-wrap">
           <select value={orderType} onChange={(event) => setOrderType(event.target.value)} aria-label="Order type">
-            <option>Market Order</option>
-            <option>Limit Order</option>
+            <option value="MARKET">Market Order</option>
+            <option value="LIMIT" disabled>Limit Order — unavailable</option>
           </select><ChevronDown size={15} />
         </div>
         <label className="field-label volume-label">Volume <span>Lots</span></label>
         <Stepper value={volume} onChange={setVolume} label="Order volume" />
-        {orderType === "Limit Order" && <PriceField label="Entry price" placeholder={quote?.mid == null ? "Unavailable" : formatPrice(quote.mid, digits)} />}
-        <div className="optional-fields-heading"><span>Risk controls</span><span>Optional</span></div>
-        <PriceField label="Take Profit" placeholder="Price level" />
-        <PriceField label="Stop Loss" placeholder="Price level" />
+        <div className="optional-fields-heading"><span>Risk controls</span><span>Validated by server</span></div>
+        <PriceField label={`Take Profit${Number(rules?.take_profit_required) === 1 ? " · Required" : ""}`} placeholder="Price level" value={takeProfit} onChange={setTakeProfit} />
+        <PriceField label={`Stop Loss${Number(rules?.stop_loss_required) === 1 ? " · Required" : ""}`} placeholder="Price level" value={stopLoss} onChange={setStopLoss} />
         <button className={`one-click-row ${oneClick ? "one-click-enabled" : ""}`} type="button" role="switch" aria-checked={oneClick} onClick={() => setOneClick((current) => !current)}>
-          <span><strong>One-Click Trading</strong><small>Visual preference only · no orders sent</small></span><span className="switch-track"><span /></span>
+          <span><strong>One-Click Trading</strong><small>{oneClick ? "Executes without the review step" : "Review and confirm before sending"}</small></span><span className="switch-track"><span /></span>
         </button>
         <div className="order-preview">
-          <div><span>Estimated price</span><strong>{quote?.mid == null ? "Unavailable" : formatPrice(quote.mid, digits)}</strong></div>
+          <div><span>{side === "BUY" ? "Ask" : "Bid"} · display only</span><strong>{quote?.stale || quoteSidePrice == null ? "--" : formatPrice(quoteSidePrice, digits)}</strong></div>
+          <div><span>Bid</span><strong>{quote?.bid == null ? "--" : formatPrice(quote.bid, digits)}</strong></div>
+          <div><span>Ask</span><strong>{quote?.ask == null ? "--" : formatPrice(quote.ask, digits)}</strong></div>
           <div><span>Volume</span><strong>{volume.toFixed(2)} lots</strong></div>
         </div>
+        {rules && <div className="rule-summary">
+          <span>Phase {rules.phase_number ?? account?.phase_number ?? "—"}</span>
+          {rules.max_lot_size != null && <span>Max lot {rules.max_lot_size}</span>}
+          {rules.max_open_positions != null && <span>Max positions {rules.max_open_positions}</span>}
+        </div>}
         <div className="order-actions">
-          <button className={`submit-order submit-${side.toLowerCase()}`} type="button" onClick={blockedAction}><span>{side === "BUY" ? "Buy" : "Sell"} {symbol || "market"}</span><strong>{quote?.mid == null ? "--" : formatPrice(quote.mid, digits)}</strong></button>
-          <span className="execution-note"><Shield size={13} /> Stage 1 preview. No trading requests are sent.</span>
+          {confirming && <div className="order-confirmation" role="group" aria-label="Confirm market order">
+            <span>Confirm {side} {volume.toFixed(2)} {symbol} at the current server Ask/Bid? Price will be revalidated by the Worker.</span>
+            <div><button type="button" onClick={() => setConfirming(false)} disabled={submitting}>Cancel</button><button type="button" onClick={submitOrder} disabled={submitting}>{submitting ? "Sending…" : "Confirm order"}</button></div>
+          </div>}
+          {!confirming && <button className={`submit-order submit-${side.toLowerCase()}`} type="button" onClick={startOrder} disabled={!canTrade || submitting || !symbol} title={canTrade ? "Send a server-validated market order" : "An approved active account is required"}>
+            <span>{submitting ? "Sending order…" : `${oneClick ? "Execute" : "Review"} ${side} ${symbol || "market"}`}</span>
+            <strong>{quote?.stale || quoteSidePrice == null ? "--" : formatPrice(quoteSidePrice, digits)}</strong>
+          </button>}
+          <span className="execution-note"><Shield size={13} /> Server sets the fill price and enforces account rules.</span>
         </div>
-        {notice && <div className="order-notice" role="status">Order execution is not enabled in Stage 1.</div>}
+        {notice && <div className={`order-notice ${notice.includes("filled") ? "order-notice-success" : ""}`} role="status">{notice}</div>}
       </aside>
     </>
   );
 }
 
-function PriceField({ label, placeholder }) {
+function PriceField({ label, placeholder, value, onChange }) {
   return (
-    <label className="price-field"><span>{label}</span><input type="number" min="0" step="any" placeholder={placeholder} /></label>
+    <label className="price-field"><span>{label}</span><input type="number" min="0" step="any" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /></label>
   );
 }
 
-function TradingPanel({ open, onToggle }) {
+function TradingPanel({ open, onToggle, positions, trades, loading, error, canTrade, onClosePosition }) {
   const [tab, setTab] = useState("Positions");
+  const [closingId, setClosingId] = useState("");
+
+  async function closePosition(position) {
+    if (!window.confirm(`Close ${position.side} ${Number(position.volume).toFixed(2)} ${position.symbol} at the current market price?`)) return;
+    setClosingId(position.id);
+    try {
+      await onClosePosition(position);
+    } finally {
+      setClosingId("");
+    }
+  }
+
   return (
     <section className={`trading-panel ${open ? "trading-panel-open" : "trading-panel-closed"}`}>
       <div className="trading-panel-header">
         <div className="trading-tabs" role="tablist" aria-label="Trading activity">
-          {["Positions", "Orders", "History"].map((value) => <button key={value} type="button" role="tab" aria-selected={tab === value} className={tab === value ? "trading-tab-active" : ""} onClick={() => setTab(value)}>{value}<span className="tab-count">—</span></button>)}
+          {["Positions", "Orders", "History"].map((value) => {
+            const count = value === "Positions" ? positions.length : value === "History" ? trades.length : null;
+            return <button key={value} type="button" role="tab" aria-selected={tab === value} className={tab === value ? "trading-tab-active" : ""} onClick={() => setTab(value)}>{value}<span className="tab-count">{count ?? "—"}</span></button>;
+          })}
         </div>
         <button className="collapse-button" type="button" onClick={onToggle} aria-label={open ? "Collapse activity panel" : "Expand activity panel"} title={open ? "Collapse panel" : "Expand panel"}>{open ? <ChevronDown size={17} /> : <ChevronUp size={17} />}</button>
       </div>
       {open && <div className="trading-content">
-        <div className="table-header"><span>INSTRUMENT</span><span>SIDE</span><span>VOLUME</span><span>OPEN PRICE</span><span>CURRENT PRICE</span><span>FLOATING P/L</span><span>OPENED</span></div>
-        <div className="trading-empty"><span className="empty-table-icon"><PanelBottomClose size={18} /></span><strong>{tab === "Positions" ? "No open positions" : `No ${tab.toLowerCase()} to display`}</strong><span>Account activity will appear here when an account is connected.</span></div>
+        {error && <div className="trading-alert" role="alert">{error}</div>}
+        {tab === "Positions" && <>
+          <div className="table-header position-grid"><span>SYMBOL</span><span>DIRECTION</span><span>VOLUME</span><span>OPEN PRICE</span><span>CURRENT PRICE</span><span>FLOATING P&amp;L</span><span>TAKE PROFIT</span><span>STOP LOSS</span><span>STATUS</span><span>ACTION</span></div>
+          {positions.map((position) => <div className="position-row position-grid" key={position.id}>
+            <strong>{position.symbol}</strong>
+            <span className={position.side === "BUY" ? "direction-buy" : "direction-sell"}>{position.side === "BUY" ? "BUY / LONG" : "SELL / SHORT"}</span>
+            <span>{position.volume ?? "--"}</span>
+            <span>{formatPrice(position.open_price, getPriceDigits(position.symbol))}</span>
+            <span>{formatPrice(position.current_price, getPriceDigits(position.symbol))}</span>
+            <span>{formatMoney(position.floating_pnl)}</span>
+            <span>{formatPrice(position.take_profit, getPriceDigits(position.symbol))}</span>
+            <span>{formatPrice(position.stop_loss, getPriceDigits(position.symbol))}</span>
+            <span>{position.status || "open"}</span>
+            <button type="button" className="close-position-button" onClick={() => closePosition(position)} disabled={!canTrade || closingId === position.id}>
+              {closingId === position.id ? "Closing…" : "Close"}
+            </button>
+          </div>)}
+          {!loading && !positions.length && <div className="trading-empty"><span className="empty-table-icon"><PanelBottomClose size={18} /></span><strong>No open positions</strong><span>Positions will appear here after a server-accepted market order.</span></div>}
+          {loading && !positions.length && <div className="trading-empty"><strong>Loading positions…</strong></div>}
+        </>}
+        {tab === "History" && <>
+          <div className="table-header history-grid"><span>SYMBOL</span><span>DIRECTION</span><span>VOLUME</span><span>ENTRY</span><span>EXIT</span><span>REALIZED P&amp;L</span><span>OPENED</span><span>CLOSED</span><span>STATUS</span></div>
+          {trades.map((trade) => <div className="position-row history-grid" key={trade.id}>
+            <strong>{trade.symbol}</strong>
+            <span>{trade.side === "BUY" ? "BUY / LONG" : "SELL / SHORT"}</span>
+            <span>{trade.volume ?? "--"}</span>
+            <span>{formatPrice(trade.open_price, getPriceDigits(trade.symbol))}</span>
+            <span>{formatPrice(trade.close_price, getPriceDigits(trade.symbol))}</span>
+            <span>{formatMoney(trade.realized_pnl)}</span>
+            <span>{formatDate(trade.opened_at)}</span>
+            <span>{formatDate(trade.closed_at)}</span>
+            <span>Closed</span>
+          </div>)}
+          {!loading && !trades.length && <div className="trading-empty"><strong>No trade history</strong><span>Completed trades from this account will appear here.</span></div>}
+        </>}
+        {tab === "Orders" && <div className="trading-empty"><strong>Market order list unavailable</strong><span>The Worker currently exposes positions and completed trades, not a separate orders history route.</span></div>}
       </div>}
     </section>
   );
+}
+
+function formatDate(value) {
+  if (!value) return "--";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString() : "--";
 }
 
 function StatusBar({ quoteRefresh, quote, source }) {
@@ -629,6 +1072,7 @@ function StatusBar({ quoteRefresh, quote, source }) {
 
 function App() {
   const { symbols, symbolState, symbolError, quotes, quoteErrors, quoteRefresh } = useMarketData();
+  const trading = useTradingSession();
   const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
   const [interval, setInterval] = useState("1m");
   const [watchCollapsed, setWatchCollapsed] = useState(false);
@@ -642,6 +1086,7 @@ function App() {
   const [watchOpen, setWatchOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(true);
+  const [actionError, setActionError] = useState("");
   const selected = symbols.find((item) => item.symbol === selectedSymbol) || null;
   const quote = quotes[selectedSymbol] || null;
   const quoteError = quoteErrors[selectedSymbol] || null;
@@ -669,16 +1114,95 @@ function App() {
     setWatchOpen(false);
   }
 
+  async function executeOrder(order) {
+    if (!trading.canTrade || !trading.selectedAccount) {
+      throw new TradingRequestError("trading_disabled", 409);
+    }
+    await getTradingJson("/trading/positions", trading.user, {
+      method: "POST",
+      body: JSON.stringify({
+        account_id: trading.selectedAccount.id,
+        ...order,
+      }),
+    });
+    setActionError("");
+    trading.refresh();
+  }
+
+  async function closePosition(position) {
+    if (!trading.canTrade || !trading.selectedAccount) return;
+    try {
+      await getTradingJson("/trading/positions/close", trading.user, {
+        method: "POST",
+        body: JSON.stringify({ position_id: position.id }),
+      });
+      setActionError("");
+      trading.refresh();
+    } catch (error) {
+      setActionError(error.message || TRADING_ERROR_MESSAGES.server_error);
+    }
+  }
+
+  const tradingError = actionError || trading.error ||
+    (trading.authStatus === "signed-out" ? TRADING_ERROR_MESSAGES.authentication_required : "");
+
+  if (trading.authStatus === "signed-out" || trading.authStatus === "unavailable") {
+    return (
+      <main className="auth-required-screen">
+        <section className="auth-required-card">
+          <h1>Please sign in to Daily Funded to trade</h1>
+          <p>Your existing Daily Funded session will be used here.</p>
+          <a href="/">Return to Daily Funded</a>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <div className="terminal-shell">
-      <TopBar symbol={selectedSymbol} selected={selected} quote={quote} quoteError={quoteError} watchOpen={watchOpen} onToggleWatch={() => setWatchOpen((current) => !current)} onToggleOrder={() => setOrderOpen(true)} />
+      <TopBar
+        symbol={selectedSymbol}
+        selected={selected}
+        quote={quote}
+        quoteError={quoteError}
+        watchOpen={watchOpen}
+        onToggleWatch={() => setWatchOpen((current) => !current)}
+        onToggleOrder={() => setOrderOpen(true)}
+        account={trading.account || trading.selectedAccount}
+        accounts={trading.accounts}
+        accountsLoading={trading.accountsLoading}
+        selectedAccountId={trading.selectedAccountId}
+        onAccountChange={trading.setSelectedAccountId}
+        authStatus={trading.authStatus}
+        accountStatus={trading.account?.status || trading.selectedAccount?.status}
+        selectedAccount={trading.selectedAccount}
+      />
       <div className={`terminal-workspace ${watchCollapsed ? "workspace-watchlist-collapsed" : ""}`}>
         <Watchlist symbols={symbols} quotes={quotes} quoteErrors={quoteErrors} selectedSymbol={selectedSymbol} favorites={favorites} onSelect={selectSymbol} onFavorite={toggleFavorite} loading={symbolState === "loading"} error={symbolState === "error" ? symbolError : ""} collapsed={watchCollapsed} onToggleCollapse={() => setWatchCollapsed((current) => !current)} open={watchOpen} onClose={() => setWatchOpen(false)} />
         <main className="terminal-main">
-          <ChartView symbol={selectedSymbol} selected={selected} quote={quote} candles={candles} state={selected ? candleState : symbolState === "loading" ? "loading" : "empty"} error={candleError || symbolError} source={source} interval={interval} onIntervalChange={setInterval} onOpenWatchlist={() => setWatchOpen(true)} />
-          <TradingPanel open={activityOpen} onToggle={() => setActivityOpen((current) => !current)} />
+          <ChartView symbol={selectedSymbol} selected={selected} quote={quote} quoteError={quoteError} candles={candles} state={selected ? candleState : symbolState === "loading" ? "loading" : "empty"} error={candleError || symbolError} source={source} interval={interval} onIntervalChange={setInterval} onOpenWatchlist={() => setWatchOpen(true)} />
+          <TradingPanel
+            open={activityOpen}
+            onToggle={() => setActivityOpen((current) => !current)}
+            positions={trading.positions}
+            trades={trading.trades}
+            loading={trading.accountsLoading || trading.dataLoading || trading.authStatus === "loading"}
+            error={tradingError}
+            canTrade={trading.canTrade}
+            onClosePosition={closePosition}
+          />
         </main>
-        <OrderPanel symbol={selectedSymbol} quote={quote} orderOpen={orderOpen} onClose={() => setOrderOpen(false)} />
+        <OrderPanel
+          symbol={selectedSymbol}
+          quote={quote}
+          quoteError={quoteError}
+          orderOpen={orderOpen}
+          onClose={() => setOrderOpen(false)}
+          account={trading.account}
+          rules={trading.rules}
+          canTrade={trading.canTrade}
+          onExecute={executeOrder}
+        />
       </div>
       <StatusBar quoteRefresh={quoteRefresh} quote={quote} source={source} />
       <nav className="mobile-bottom-nav" aria-label="Terminal panels">

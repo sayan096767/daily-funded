@@ -736,6 +736,7 @@ class AccountOwnershipApiTests(unittest.TestCase):
         account.to_dict.return_value = {
             "planKey": "1step",
             "accountSize": 5000,
+            "phase": "phase_1",
             "status": "active",
             "tradingEnabled": True,
         }
@@ -749,6 +750,7 @@ class AccountOwnershipApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual([row["id"] for row in response.get_json()], ["user-a-account"])
         self.assertEqual(response.get_json()[0]["accountId"], "user-a-account")
+        self.assertEqual(response.get_json()[0]["phase"], "phase_1")
         self.assertTrue(response.get_json()[0]["tradingEnabled"])
         document_for_user.assert_called_once_with("user-a")
 
@@ -1319,6 +1321,7 @@ class CloudflareTradingProxyRouteTests(unittest.TestCase):
         if account_data is None:
             account_data = {
                 "ownerUid": "verified-user-123",
+                "status": "active",
                 "tradingEnabled": True,
                 "tradingEngineAccountId": self.worker_account_id,
             }
@@ -1373,12 +1376,14 @@ class CloudflareTradingProxyRouteTests(unittest.TestCase):
             ),
             (
                 "POST", "/api/trading/positions",
-                {"account_id": "ACC_TEST", "symbol": "EURUSD", "side": "BUY", "volume": 0.1, "open_price": 1.25,
+                {"account_id": "ACC_TEST", "symbol": "EURUSD", "side": "BUY", "volume": 0.1,
+                 "order_type": "MARKET", "take_profit": 1.3, "stop_loss": 1.2, "open_price": 1.25,
                  "user_id": "browser", "uid": "browser", "owner_uid": "browser", "authenticated_uid": "browser",
                  "provisioning_token": "browser", "api_token": "browser", "authorization": "browser",
                  "tradingEngineAccountId": "ACC_22222222-2222-4222-8222-222222222222"},
                 "POST", "https://worker.example/positions",
-                {"account_id": self.worker_account_id, "symbol": "EURUSD", "side": "BUY", "volume": 0.1, "open_price": 1.25},
+                {"account_id": self.worker_account_id, "symbol": "EURUSD", "side": "BUY", "volume": 0.1,
+                 "order_type": "MARKET", "take_profit": 1.3, "stop_loss": 1.2},
             ),
             (
                 "POST", "/api/trading/positions/price",
@@ -1390,7 +1395,7 @@ class CloudflareTradingProxyRouteTests(unittest.TestCase):
                 "POST", "/api/trading/positions/close",
                 {"position_id": "POS_TEST", "close_price": 1.26, "uid": "browser"},
                 "POST", "https://worker.example/positions/close",
-                {"position_id": "POS_TEST", "close_price": 1.26},
+                {"position_id": "POS_TEST"},
             ),
             (
                 "GET", "/api/trading/trades?account_id=ACC_TEST&owner_uid=browser",
@@ -1496,7 +1501,7 @@ class CloudflareTradingProxyRouteTests(unittest.TestCase):
         response, _worker_urlopen, _verify_token = self.call_proxy(
             "/api/trading/positions",
             method="POST",
-            body={"account_id": "ACC_TEST", "symbol": "EURUSD", "side": "BUY", "volume": 0.1, "open_price": 1.25},
+            body={"account_id": "ACC_TEST", "symbol": "EURUSD", "side": "BUY", "volume": 0.1},
             worker_status=201,
             worker_payload=payload,
         )
@@ -1550,9 +1555,10 @@ class CloudflareTradingProxyRouteTests(unittest.TestCase):
 
     def test_missing_or_invalid_engine_account_id_fails_without_provisioning(self):
         account_records = (
-            {"ownerUid": "verified-user-123", "tradingEnabled": True},
+            {"ownerUid": "verified-user-123", "status": "active", "tradingEnabled": True},
             {
                 "ownerUid": "verified-user-123",
+                "status": "active",
                 "tradingEnabled": True,
                 "tradingEngineAccountId": "not-a-worker-id",
             },
@@ -1575,6 +1581,7 @@ class CloudflareTradingProxyRouteTests(unittest.TestCase):
             "/api/trading/accounts?account_id=firestore-account-123",
             account_data={
                 "ownerUid": "verified-user-123",
+                "status": "active",
                 "tradingEnabled": False,
                 "tradingEngineAccountId": self.worker_account_id,
             },
@@ -1584,6 +1591,22 @@ class CloudflareTradingProxyRouteTests(unittest.TestCase):
         self.assertEqual(response.get_json()["code"], "trading_disabled")
         self.account_ref.update.assert_not_called()
         worker_urlopen.assert_not_called()
+
+    def test_pending_or_rejected_account_is_not_forwarded_even_if_flagged_enabled(self):
+        for status in ("pending", "rejected"):
+            with self.subTest(status=status):
+                response, worker_urlopen, _verify_token = self.call_proxy(
+                    "/api/trading/accounts?account_id=firestore-account-123",
+                    account_data={
+                        "ownerUid": "verified-user-123",
+                        "status": status,
+                        "tradingEnabled": True,
+                        "tradingEngineAccountId": self.worker_account_id,
+                    },
+                )
+                self.assertEqual(response.status_code, 409)
+                self.assertEqual(response.get_json()["code"], "trading_disabled")
+                worker_urlopen.assert_not_called()
 
     def test_request_cannot_override_stored_engine_account_id(self):
         cases = (
@@ -1599,6 +1622,9 @@ class CloudflareTradingProxyRouteTests(unittest.TestCase):
                     "symbol": "EURUSD",
                     "side": "BUY",
                     "volume": 0.1,
+                    "order_type": "MARKET",
+                    "take_profit": 1.3,
+                    "stop_loss": 1.2,
                     "open_price": 1.25,
                 },
             ),

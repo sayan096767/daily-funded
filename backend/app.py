@@ -547,6 +547,21 @@ class CloudflareTradingApiError(Exception):
         self.worker_status = worker_status
 
 
+WORKER_TRADING_ERRORS = {
+    "trading_disabled": ("Trading is disabled for this account.", 409),
+    "market_unavailable": ("Current market data is unavailable. No order was placed.", 503),
+    "stale_quote": ("The market quote is stale or the market is closed. No order was placed.", 409),
+    "invalid_volume": ("The order volume is invalid for this symbol or account.", 400),
+    "invalid_tp": ("Take profit must be valid and on the correct side of entry.", 400),
+    "invalid_sl": ("Stop loss must be valid and on the correct side of entry.", 400),
+    "insufficient_margin": ("There is not enough available margin for this order.", 409),
+    "rule_violation": ("The order violates this account's trading rules.", 400),
+    "position_not_found": ("Position not found or not available to this user.", 404),
+    "unauthorized_action": ("This action is not authorized.", 403),
+    "invalid_order_type": ("Only market orders are currently supported.", 400),
+}
+
+
 def resolve_trading_engine_account_for_user(firebase_uid, firestore_account_id):
     if not isinstance(firebase_uid, str) or not firebase_uid.strip():
         raise CloudflareTradingApiError(
@@ -586,10 +601,10 @@ def resolve_trading_engine_account_for_user(firebase_uid, firestore_account_id):
             "Trading account not found.",
             404,
         )
-    if account.get("tradingEnabled") is not True:
+    if account.get("status") != "active" or account.get("tradingEnabled") is not True:
         raise CloudflareTradingApiError(
             "trading_disabled",
-            "Trading is not enabled for this account.",
+            "Trading is not enabled for an active account.",
             409,
         )
 
@@ -695,6 +710,20 @@ def call_cloudflare_trading_worker(worker_path, payload=None, method="POST", que
             worker_status = getattr(response, "status", None) or response.getcode()
             response_body = response.read(MAX_CLOUDFLARE_RESPONSE_BYTES + 1)
     except HTTPError as error:
+        try:
+            upstream_body = error.read(MAX_CLOUDFLARE_RESPONSE_BYTES + 1)
+            upstream_payload = json.loads(upstream_body) if len(upstream_body) <= MAX_CLOUDFLARE_RESPONSE_BYTES else {}
+        except (OSError, TypeError, ValueError):
+            upstream_payload = {}
+        upstream_code = upstream_payload.get("code") if isinstance(upstream_payload, dict) else None
+        if upstream_code in WORKER_TRADING_ERRORS:
+            message, status_code = WORKER_TRADING_ERRORS[upstream_code]
+            raise CloudflareTradingApiError(
+                upstream_code,
+                message,
+                status_code,
+                error.code,
+            ) from None
         public_status = error.code if error.code in {400, 404, 409, 422} else 502
         raise CloudflareTradingApiError(
             "worker_http_error",
@@ -895,6 +924,7 @@ def list_accounts():
             "label": plan["label"],
             "plan": plan_key,
             "size": row.get("accountSize"),
+            "phase": row.get("phase"),
             "status": row.get("status"),
             "balance": row.get("balance"),
             "equity": row.get("equity"),
@@ -928,7 +958,7 @@ def trading_account_proxy():
 @firebase_auth_required
 def trading_open_position_proxy():
     payload = filtered_trading_request_payload(
-        ("account_id", "symbol", "side", "volume", "open_price")
+        ("account_id", "symbol", "side", "volume", "order_type", "take_profit", "stop_loss")
     )
     if payload is None:
         return jsonify(error="Request body must be a JSON object."), 400
@@ -955,7 +985,7 @@ def trading_mark_position_proxy():
 @app.post("/api/trading/positions/close")
 @firebase_auth_required
 def trading_close_position_proxy():
-    payload = filtered_trading_request_payload(("position_id", "close_price"))
+    payload = filtered_trading_request_payload(("position_id",))
     if payload is None:
         return jsonify(error="Request body must be a JSON object."), 400
     return cloudflare_trading_proxy_response(
