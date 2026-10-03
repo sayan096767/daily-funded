@@ -685,6 +685,7 @@ def call_cloudflare_trading_worker(worker_path, payload=None, method="POST", que
             "Authorization": f"Bearer {token}",
             "X-Authenticated-User-Uid": user_uid.strip(),
             "Content-Type": "application/json",
+            "User-Agent": "DailyFundedTradingService/1.0",
         },
         method=method,
     )
