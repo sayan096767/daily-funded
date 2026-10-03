@@ -1223,6 +1223,10 @@ class CloudflareTradingApiClientTests(unittest.TestCase):
             "verified-firebase-uid",
         )
         self.assertEqual(
+            outbound_request.get_header("User-agent"),
+            "DailyFundedTradingService/1.0",
+        )
+        self.assertEqual(
             json.loads(outbound_request.data),
             {"account_id": "ACC_TEST"},
         )
