@@ -43,54 +43,90 @@ export function normalizeCandleBars(rows) {
   return [...candlesByTime.values()].sort((left, right) => left.time - right.time);
 }
 
-export async function loadCandleHistory({ symbol, interval, signal, fetchPage, onPage }) {
+export function createCandleHistoryPager({ symbol, interval, signal, fetchPage }) {
   const candlesByTime = new Map();
   let cursor = null;
   let pageCount = 0;
+  let initialized = false;
+  let hasMore = true;
+  let request = null;
   let oldestLoaded = null;
 
-  while (true) {
-    throwIfAborted(signal);
-    const rows = await fetchPage({
-      symbol,
-      interval,
-      limit: CANDLE_HISTORY_PAGE_SIZE,
-      to: cursor,
-      signal,
-    });
-    throwIfAborted(signal);
-    pageCount += 1;
+  const snapshot = () => [...candlesByTime.values()].sort((left, right) => left.time - right.time);
 
-    const page = normalizeCandleBars(rows);
-    if (!page.length) break;
+  const result = (added = 0) => ({
+    candles: snapshot(),
+    added,
+    hasMore,
+    pageCount,
+  });
 
-    let oldestNewTime = null;
-    for (const candle of page) {
-      if (candlesByTime.has(candle.time)) continue;
-      candlesByTime.set(candle.time, candle);
-      if (oldestLoaded === null || candle.time < oldestLoaded) {
-        oldestNewTime = oldestNewTime === null ? candle.time : Math.min(oldestNewTime, candle.time);
-      }
-    }
+  const loadPage = () => {
+    if (request) return request;
+    if (!hasMore) return Promise.resolve(result());
 
-    if (pageCount === 1 || pageCount % 10 === 0) {
-      onPage?.([...candlesByTime.values()].sort((left, right) => left.time - right.time), {
-        pageCount,
-        complete: false,
+    request = (async () => {
+      throwIfAborted(signal);
+      const rows = await fetchPage({
+        symbol,
+        interval,
+        limit: CANDLE_HISTORY_PAGE_SIZE,
+        to: initialized ? cursor : null,
+        signal,
       });
-    }
+      throwIfAborted(signal);
+      pageCount += 1;
 
-    if (oldestLoaded !== null && oldestNewTime === null) break;
-    const pageOldest = page[0];
-    oldestLoaded = oldestLoaded === null
-      ? pageOldest.time
-      : Math.min(oldestLoaded, oldestNewTime);
-    cursor = new Date(pageOldest.timestampMs - 1).toISOString();
-    await yieldToBrowser(signal);
-  }
+      const page = normalizeCandleBars(rows);
+      if (!page.length) {
+        hasMore = false;
+        initialized = true;
+        return result();
+      }
 
-  throwIfAborted(signal);
-  return [...candlesByTime.values()].sort((left, right) => left.time - right.time);
+      let added = 0;
+      const previousOldestLoaded = oldestLoaded;
+      let foundOlder = !initialized;
+      for (const candle of page) {
+        if (candlesByTime.has(candle.time)) continue;
+        candlesByTime.set(candle.time, candle);
+        oldestLoaded = oldestLoaded === null ? candle.time : Math.min(oldestLoaded, candle.time);
+        if (previousOldestLoaded === null || candle.time < previousOldestLoaded) foundOlder = true;
+        added += 1;
+      }
+
+      if (initialized && !foundOlder) {
+        hasMore = false;
+      } else {
+        cursor = new Date(oldestLoaded * 1000 - 1).toISOString();
+      }
+      initialized = true;
+      await yieldToBrowser(signal);
+      throwIfAborted(signal);
+      return result(added);
+    })().finally(() => {
+      request = null;
+    });
+
+    return request;
+  };
+
+  return {
+    loadInitial: loadPage,
+    loadOlder: loadPage,
+    get hasMore() {
+      return hasMore;
+    },
+    get isLoading() {
+      return request !== null;
+    },
+    get candles() {
+      return snapshot();
+    },
+    get pageCount() {
+      return pageCount;
+    },
+  };
 }
 
 export function candleFromLiveTick(lastCandle, tick, intervalSeconds) {
@@ -132,4 +168,28 @@ export function mergeHistoryWithLive(history, liveCandles) {
     }
   }
   return [...candlesByTime.values()].sort((left, right) => left.time - right.time);
+}
+
+export function fitInitialHistoryOnce(timeScale, dataKey, loadingMore, fittedDataKeyRef, candleCount) {
+  if (loadingMore || !dataKey || fittedDataKeyRef.current === dataKey || !timeScale) return false;
+  timeScale.fitContent();
+  if (Number.isFinite(candleCount) && candleCount > 150) {
+    timeScale.setVisibleLogicalRange({
+      from: candleCount - 150,
+      to: candleCount + 5,
+    });
+  }
+  fittedDataKeyRef.current = dataKey;
+  return true;
+}
+
+export function shouldLoadOlderHistory(logicalRange, preloadBars = 50) {
+  return Number.isFinite(logicalRange?.from) && logicalRange.from <= preloadBars;
+}
+
+export function setSeriesDataPreservingVisibleRange(series, timeScale, data, preserveRange) {
+  const visibleRange = preserveRange ? timeScale?.getVisibleRange?.() : null;
+  series.setData(data);
+  if (visibleRange) timeScale.setVisibleRange(visibleRange);
+  return visibleRange;
 }

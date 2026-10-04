@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   candleFromLiveTick,
-  loadCandleHistory,
+  createCandleHistoryPager,
+  fitInitialHistoryOnce,
   mergeHistoryWithLive,
   normalizeCandleBars,
+  setSeriesDataPreservingVisibleRange,
+  shouldLoadOlderHistory,
 } from "../src/candleHistory.js";
 
 function bar(time, price = 10) {
@@ -17,40 +20,258 @@ function bar(time, price = 10) {
   };
 }
 
-test("loads bounded pages backward, keeps provider bars unique, and preserves gaps", async () => {
+test("loads one initial page then older pages, deduplicates boundaries, and preserves gaps", async () => {
   const baseTime = Date.UTC(2026, 0, 1);
   const firstPage = Array.from({ length: 1000 }, (_, index) => bar(baseTime + (999 - index) * 60_000));
   const requests = [];
-  const history = await loadCandleHistory({
+  const pager = createCandleHistoryPager({
     symbol: "EURUSD",
     interval: "1m",
     fetchPage: async (request) => {
       requests.push(request);
       if (requests.length === 1) return firstPage;
       if (requests.length === 2) return [
+        bar(baseTime - 2 * 60_000),
         bar(baseTime - 60_000),
         firstPage[firstPage.length - 1],
       ];
+      if (requests.length === 3) return [bar(baseTime - 3 * 60_000), bar(baseTime - 2 * 60_000)];
       return [];
     },
   });
 
-  assert.equal(history.length, 1001);
+  const initial = await pager.loadInitial();
+  assert.equal(initial.candles.length, 1000);
+  assert.equal(initial.hasMore, true);
+  assert.equal(requests.length, 1);
+  const older = await pager.loadOlder();
+  assert.equal(older.candles.length, 1002);
+  const oldest = await pager.loadOlder();
+  const history = oldest.candles;
+  assert.equal(history.length, 1003);
+  assert.equal(oldest.hasMore, true);
+  const exhausted = await pager.loadOlder();
+  assert.equal(exhausted.hasMore, false);
   assert.equal(requests[0].limit, 1000);
   assert.equal(requests[0].symbol, "EURUSD");
   assert.equal(requests[0].interval, "1m");
   assert.equal(requests[0].to, null);
   assert.equal(requests[1].to, new Date(baseTime - 1).toISOString());
-  assert.equal(requests[2].to, new Date(baseTime - 60_001).toISOString());
+  assert.equal(requests[2].to, new Date(baseTime - 2 * 60_000 - 1).toISOString());
+  assert.equal(requests[3].to, new Date(baseTime - 3 * 60_000 - 1).toISOString());
   assert.deepEqual(history.map((candle) => candle.time), [...new Set(history.map((candle) => candle.time))]);
-  assert.equal(history[0].timestampMs, baseTime - 60_000);
+  assert.equal(history[0].timestampMs, baseTime - 3 * 60_000);
   assert.equal(history[history.length - 1].timestampMs, baseTime + 999 * 60_000);
+});
+
+test("fits the initial page once and does not refit while older pages or live ticks arrive", async () => {
+  const baseTime = Date.UTC(2026, 5, 1);
+  const olderPage = Array.from({ length: 1000 }, (_, index) => bar(baseTime + index * 60_000));
+  const newestPage = Array.from({ length: 1000 }, (_, index) =>
+    bar(baseTime + (1000 + index) * 60_000));
+  const requests = [];
+  let currentSeriesData = [];
+  const timeScale = {
+    fitCount: 0,
+    visibleRange: null,
+    logicalRange: null,
+    fitContent() {
+      this.fitCount += 1;
+      this.visibleRange = {
+        from: currentSeriesData[0]?.time ?? null,
+        to: currentSeriesData.at(-1)?.time ?? null,
+      };
+    },
+    setVisibleLogicalRange(range) {
+      this.logicalRange = range;
+      this.visibleRange = {
+        from: currentSeriesData[Math.floor(range.from)]?.time ?? null,
+        to: currentSeriesData[Math.min(currentSeriesData.length - 1, Math.ceil(range.to) - 1)]?.time ?? null,
+      };
+    },
+  };
+  const fittedDataKeyRef = { current: "" };
+  const pager = createCandleHistoryPager({
+    symbol: "XAUUSD",
+    interval: "1m",
+    fetchPage: async (request) => {
+      requests.push(request);
+      if (requests.length === 1) return [...newestPage, newestPage[0]];
+      if (requests.length === 2) return [...olderPage, newestPage[0]];
+      return [];
+    },
+  });
+
+  const initial = await pager.loadInitial();
+  currentSeriesData = initial.candles;
+  assert.equal(currentSeriesData.length, 1000);
+  assert.equal(fitInitialHistoryOnce(
+    timeScale,
+    "XAUUSD|1m",
+    pager.isLoading,
+    fittedDataKeyRef,
+    initial.candles.length,
+  ), true);
+  assert.equal(timeScale.fitCount, 1);
+  assert.deepEqual(timeScale.logicalRange, { from: 850, to: 1005 });
+
+  const expanded = await pager.loadOlder();
+  currentSeriesData = expanded.candles;
+  assert.equal(expanded.candles.length, 2000);
+  assert.equal(currentSeriesData.length, 2000);
+  assert.equal(expanded.candles[0].timestampMs, baseTime);
+  assert.equal(expanded.candles.at(-1).timestampMs, baseTime + 1999 * 60_000);
+  assert.equal(new Set(expanded.candles.map((candle) => candle.timestampMs)).size, 2000);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].to, new Date(baseTime + (1000 * 60_000) - 1).toISOString());
+  assert.equal(fitInitialHistoryOnce(timeScale, "XAUUSD|1m", pager.isLoading, fittedDataKeyRef), false);
+  assert.equal(timeScale.fitCount, 1);
+
+  const exhausted = await pager.loadOlder();
+  assert.equal(exhausted.hasMore, false);
+  assert.equal(requests.length, 3);
+
+  currentSeriesData = expanded.candles;
+  assert.equal(fitInitialHistoryOnce(timeScale, "XAUUSD|1m", false, fittedDataKeyRef), false);
+  assert.deepEqual(timeScale.visibleRange, {
+    from: (baseTime + (1000 + 850) * 60_000) / 1000,
+    to: (baseTime + 1999 * 60_000) / 1000,
+  });
+
+  const liveUpdate = candleFromLiveTick(expanded.candles.at(-1), {
+    timestampMs: expanded.candles.at(-1).timestampMs + 10_000,
+    mid: 15,
+  }, 60);
+  assert.ok(liveUpdate);
+  assert.equal(fitInitialHistoryOnce(timeScale, "XAUUSD|1m", false, fittedDataKeyRef), false);
+  assert.equal(timeScale.fitCount, 1);
+});
+
+test("does not synthesize candles across gaps in provider history", async () => {
+  const baseTime = Date.UTC(2026, 5, 1);
+  const pager = createCandleHistoryPager({
+    symbol: "EURUSD",
+    interval: "1h",
+    fetchPage: async () => [bar(baseTime + 2 * 60 * 60_000), bar(baseTime)],
+  });
+  const { candles: history } = await pager.loadInitial();
+
+  assert.deepEqual(history.map((candle) => candle.timestampMs), [
+    baseTime,
+    baseTime + 2 * 60 * 60_000,
+  ]);
+  assert.equal(history.length, 2);
+});
+
+test("detects the left preload threshold and preserves visible timestamps after prepending", () => {
+  assert.equal(shouldLoadOlderHistory({ from: 49 }), true);
+  assert.equal(shouldLoadOlderHistory({ from: 50 }), true);
+  assert.equal(shouldLoadOlderHistory({ from: 51 }), false);
+  assert.equal(shouldLoadOlderHistory(null), false);
+
+  const range = { from: 1_800_000_000, to: 1_800_000_200 };
+  const calls = [];
+  const timeScale = {
+    getVisibleRange() { calls.push("read"); return range; },
+    setVisibleRange(nextRange) { calls.push(["restore", nextRange]); },
+  };
+  const series = { setData(data) { calls.push(["setData", data.length]); } };
+  const restored = setSeriesDataPreservingVisibleRange(
+    series,
+    timeScale,
+    Array.from({ length: 200 }, (_, index) => ({ time: index })),
+    true,
+  );
+
+  assert.deepEqual(restored, range);
+  assert.deepEqual(calls, [
+    "read",
+    ["setData", 200],
+    ["restore", range],
+  ]);
+});
+
+test("coalesces repeated left-edge triggers into one older-page request", async () => {
+  const baseTime = Date.UTC(2026, 6, 1);
+  let resolvePage;
+  let requestCount = 0;
+  const pager = createCandleHistoryPager({
+    symbol: "BTCUSD",
+    interval: "5m",
+    fetchPage: () => {
+      requestCount += 1;
+      if (requestCount === 1) return [bar(baseTime)];
+      return new Promise((resolve) => {
+        resolvePage = resolve;
+      });
+    },
+  });
+
+  await pager.loadInitial();
+  const firstRequest = pager.loadOlder();
+  const repeatedRequest = pager.loadOlder();
+  assert.strictEqual(repeatedRequest, firstRequest);
+  assert.equal(requestCount, 2);
+  resolvePage([bar(baseTime - 5 * 60_000)]);
+  const result = await firstRequest;
+  assert.equal(result.candles.length, 2);
+  assert.equal(result.candles[0].timestampMs, baseTime - 5 * 60_000);
+});
+
+test("live ticks continue while an older page is pending and remain authoritative", async () => {
+  const latestTime = 1_800_000_000;
+  let resolveOlderPage;
+  let requestCount = 0;
+  const pager = createCandleHistoryPager({
+    symbol: "BTCUSD",
+    interval: "1m",
+    fetchPage: () => {
+      requestCount += 1;
+      if (requestCount === 1) return [bar(latestTime * 1000, 100)];
+      return new Promise((resolve) => {
+        resolveOlderPage = resolve;
+      });
+    },
+  });
+  const initial = await pager.loadInitial();
+  const olderRequest = pager.loadOlder();
+  const liveCandles = new Map();
+  const tickCandle = candleFromLiveTick(initial.candles.at(-1), {
+    timestampMs: (latestTime + 10) * 1000,
+    mid: 110,
+  }, 60);
+  liveCandles.set(tickCandle.time, tickCandle);
+  assert.equal(tickCandle.close, 110);
+  resolveOlderPage([
+    bar((latestTime - 60) * 1000, 90),
+    bar(latestTime * 1000, 95),
+  ]);
+  const older = await olderRequest;
+  const merged = mergeHistoryWithLive(older.candles, liveCandles);
+
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].timestampMs, (latestTime - 60) * 1000);
+  assert.equal(merged.at(-1).close, 110);
+  assert.equal(merged.at(-1).high, 110);
+});
+
+test("a symbol or timeframe change waits for its own complete history before fitting", () => {
+  const timeScale = { fitCount: 0, fitContent() { this.fitCount += 1; } };
+  const fittedDataKeyRef = { current: "" };
+
+  assert.equal(fitInitialHistoryOnce(timeScale, "XAUUSD|1m", true, fittedDataKeyRef), false);
+  assert.equal(fitInitialHistoryOnce(timeScale, "XAUUSD|1m", false, fittedDataKeyRef), true);
+  assert.equal(fitInitialHistoryOnce(timeScale, "GER40|1m", true, fittedDataKeyRef), false);
+  assert.equal(fitInitialHistoryOnce(timeScale, "GER40|1m", false, fittedDataKeyRef), true);
+  assert.equal(fitInitialHistoryOnce(timeScale, "GER40|4h", true, fittedDataKeyRef), false);
+  assert.equal(fitInitialHistoryOnce(timeScale, "GER40|4h", false, fittedDataKeyRef), true);
+  assert.equal(timeScale.fitCount, 3);
 });
 
 test("uses the requested canonical symbol and timeframe and stops at no older unique bars", async () => {
   const requested = [];
   const baseTime = Date.UTC(2026, 1, 1);
-  const history = await loadCandleHistory({
+  const pager = createCandleHistoryPager({
     symbol: "GER40",
     interval: "4h",
     fetchPage: async (request) => {
@@ -60,7 +281,11 @@ test("uses the requested canonical symbol and timeframe and stops at no older un
     },
   });
 
-  assert.equal(history.length, 2);
+  const initial = await pager.loadInitial();
+  assert.equal(initial.candles.length, 2);
+  const exhausted = await pager.loadOlder();
+  assert.equal(exhausted.candles.length, 2);
+  assert.equal(exhausted.hasMore, false);
   assert.equal(requested.length, 2);
   assert.equal(requested[0].symbol, "GER40");
   assert.equal(requested[0].interval, "4h");
@@ -96,27 +321,26 @@ test("deduplicates exact timestamps without rounding distinct provider open time
   assert.deepEqual(normalized.map((candle) => candle.time), [(baseTime + 250) / 1000, (baseTime + 750) / 1000]);
 });
 
-test("cancels an in-flight history chain before publishing an old symbol", async () => {
+test("cancels pending symbol and timeframe requests before stale history can publish", async () => {
   const controller = new AbortController();
   let resolvePage;
-  const published = [];
-  const loading = loadCandleHistory({
+  const oldPager = createCandleHistoryPager({
     symbol: "XAUUSD",
     interval: "1m",
     signal: controller.signal,
     fetchPage: () => new Promise((resolve) => {
       resolvePage = resolve;
     }),
-    onPage: (page) => published.push(page),
   });
+  const loading = oldPager.loadInitial();
 
   controller.abort();
   resolvePage([bar(Date.UTC(2026, 3, 1))]);
   await assert.rejects(loading, { name: "AbortError" });
-  assert.deepEqual(published, []);
+  assert.deepEqual(oldPager.candles, []);
 
   const replacementRequests = [];
-  const replacement = await loadCandleHistory({
+  const replacementPager = createCandleHistoryPager({
     symbol: "GER40",
     interval: "4h",
     fetchPage: async (request) => {
@@ -124,9 +348,26 @@ test("cancels an in-flight history chain before publishing an old symbol", async
       return replacementRequests.length === 1 ? [bar(Date.UTC(2026, 3, 2))] : [];
     },
   });
+  const replacement = await replacementPager.loadInitial();
   assert.equal(replacementRequests[0].symbol, "GER40");
   assert.equal(replacementRequests[0].interval, "4h");
-  assert.equal(replacement.length, 1);
+  assert.equal(replacement.candles.length, 1);
+
+  const timeframeController = new AbortController();
+  let resolveTimeframePage;
+  const timeframePager = createCandleHistoryPager({
+    symbol: "GER40",
+    interval: "1m",
+    signal: timeframeController.signal,
+    fetchPage: () => new Promise((resolve) => {
+      resolveTimeframePage = resolve;
+    }),
+  });
+  const timeframeRequest = timeframePager.loadInitial();
+  timeframeController.abort();
+  resolveTimeframePage([bar(Date.UTC(2026, 3, 3))]);
+  await assert.rejects(timeframeRequest, { name: "AbortError" });
+  assert.deepEqual(timeframePager.candles, []);
 });
 
 test("replays pending real ticks into the latest candle and rejects older buckets", () => {
@@ -163,12 +404,14 @@ test("replays pending real ticks into the latest candle and rejects older bucket
 });
 
 test("keeps the chart empty when Biquote returns no real history", async () => {
-  const history = await loadCandleHistory({
+  const pager = createCandleHistoryPager({
     symbol: "XNGUSD",
     interval: "1d",
     fetchPage: async () => [],
   });
-  assert.deepEqual(history, []);
+  const result = await pager.loadInitial();
+  assert.deepEqual(result.candles, []);
+  assert.equal(result.hasMore, false);
 });
 
 test("older history pages cannot overwrite live candle values", () => {

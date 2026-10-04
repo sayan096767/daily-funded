@@ -24,9 +24,12 @@ import {
 } from "lucide-react";
 import { CandlestickSeries, ColorType, createChart, TickMarkType } from "lightweight-charts";
 import {
+  createCandleHistoryPager,
   candleFromLiveTick,
-  loadCandleHistory,
+  fitInitialHistoryOnce,
   mergeHistoryWithLive,
+  setSeriesDataPreservingVisibleRange,
+  shouldLoadOlderHistory,
 } from "./candleHistory.js";
 import "../node_modules/flag-icons/css/flag-icons.min.css";
 import "./styles.css";
@@ -1153,7 +1156,33 @@ function useCandles(symbol, interval) {
   const [source, setSource] = useState("");
   const [dataKey, setDataKey] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const pagerRef = useRef(null);
+  const loadingMoreRef = useRef(false);
   const requestKey = `${symbol}|${interval}`;
+
+  const loadOlderHistory = useCallback(async () => {
+    const pager = pagerRef.current;
+    if (!pager || !pager.hasMore || loadingMoreRef.current) return;
+
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const result = await pager.loadOlder();
+      if (pagerRef.current !== pager) return;
+      if (result.added > 0) setCandles(result.candles);
+      setHasMoreHistory(result.hasMore);
+      setError("");
+    } catch (requestError) {
+      if (requestError.name === "AbortError" || pagerRef.current !== pager) return;
+      setError(requestError.message);
+    } finally {
+      if (pagerRef.current === pager) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     setCandles([]);
@@ -1162,7 +1191,10 @@ function useCandles(symbol, interval) {
     setError("");
     setSource("");
     setLoadingMore(false);
+    setHasMoreHistory(false);
+    loadingMoreRef.current = false;
     if (!symbol) {
+      pagerRef.current = null;
       setState("empty");
       return undefined;
     }
@@ -1181,35 +1213,45 @@ function useCandles(symbol, interval) {
       }
       return payload.bars;
     };
-    loadCandleHistory({
+    const pager = createCandleHistoryPager({
       symbol,
       interval,
       signal: controller.signal,
       fetchPage,
-      onPage: (page) => {
-        if (controller.signal.aborted) return;
-        initialPageLoaded = true;
-        setCandles(page);
-        setSource("provider_historical");
-        setState(page.length ? "ready" : "empty");
-        setLoadingMore(true);
-      },
-    }).then((history) => {
-      if (controller.signal.aborted) return;
-      setCandles(history);
+    });
+    pagerRef.current = pager;
+    pager.loadInitial().then((result) => {
+      if (controller.signal.aborted || pagerRef.current !== pager) return;
+      initialPageLoaded = true;
+      setCandles(result.candles);
       setSource("provider_historical");
-      setState(history.length ? "ready" : "empty");
-      setLoadingMore(false);
+      setState(result.candles.length ? "ready" : "empty");
+      setHasMoreHistory(result.hasMore);
     }).catch((requestError) => {
-      if (requestError.name === "AbortError" || controller.signal.aborted) return;
+      if (
+        requestError.name === "AbortError" ||
+        controller.signal.aborted ||
+        pagerRef.current !== pager
+      ) return;
       setError(requestError.message);
       setState(initialPageLoaded ? "ready" : "error");
-      setLoadingMore(false);
     });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (pagerRef.current === pager) pagerRef.current = null;
+    };
   }, [symbol, interval]);
 
-  return { candles, state, error, source, dataKey, loadingMore };
+  return {
+    candles,
+    state,
+    error,
+    source,
+    dataKey,
+    loadingMore,
+    hasMoreHistory,
+    loadOlderHistory,
+  };
 }
 
 function BrandMark() {
@@ -1454,6 +1496,8 @@ function ChartView({
   candleDataKey,
   state,
   error,
+  hasMoreHistory,
+  loadOlderHistory,
   loadingMore,
   interval,
   onIntervalChange,
@@ -1472,6 +1516,8 @@ function ChartView({
   const positionPriceLines = useRef(new Map());
   const pendingLiveTicks = useRef([]);
   const candleKeyRef = useRef("");
+  const initialHistoryFitKeyRef = useRef("");
+  const applyingHistoryRef = useRef(false);
   const baselineKeyRef = useRef("");
   const applyLiveTickRef = useRef(null);
   const dragRef = useRef(null);
@@ -1558,6 +1604,7 @@ function ChartView({
   useLayoutEffect(() => {
     if (candleKeyRef.current === dataKey) return;
     candleKeyRef.current = dataKey;
+    initialHistoryFitKeyRef.current = "";
     baselineKeyRef.current = "";
     candleDataRef.current = [];
     liveCandlesRef.current = new Map();
@@ -1613,19 +1660,36 @@ function ChartView({
     if (!series || state === "loading" || candleDataKey !== dataKey) return;
     const sameBaseline = baselineKeyRef.current === dataKey;
     const timeScale = chartRef.current?.timeScale();
-    const visibleRange = sameBaseline ? timeScale?.getVisibleRange() : null;
     const mergedCandles = mergeHistoryWithLive(candles, liveCandlesRef.current);
     series.applyOptions({ priceFormat: { type: "price", precision: digits, minMove: 10 ** -digits } });
-    series.setData(mergedCandles);
+    applyingHistoryRef.current = true;
+    try {
+      setSeriesDataPreservingVisibleRange(series, timeScale, mergedCandles, sameBaseline);
+    } finally {
+      applyingHistoryRef.current = false;
+    }
     candleDataRef.current = mergedCandles;
     setCandleCount(mergedCandles.length);
     baselineKeyRef.current = dataKey;
-    if (sameBaseline && visibleRange) timeScale.setVisibleRange(visibleRange);
     const queuedTicks = pendingLiveTicks.current;
     pendingLiveTicks.current = [];
     for (const tick of queuedTicks) applyLiveTickRef.current?.(tick);
-    if (!sameBaseline) chartRef.current?.timeScale().fitContent();
-  }, [candles, candleDataKey, dataKey, digits, state]);
+    fitInitialHistoryOnce(timeScale, dataKey, loadingMore, initialHistoryFitKeyRef, mergedCandles.length);
+  }, [candles, candleDataKey, dataKey, digits, loadingMore, state]);
+
+  useEffect(() => {
+    if (!hasMoreHistory || state !== "ready" || candleDataKey !== dataKey) return undefined;
+    const timeScale = chartRef.current?.timeScale();
+    if (!timeScale) return undefined;
+    const checkLeftEdge = (logicalRange) => {
+      if (!applyingHistoryRef.current && shouldLoadOlderHistory(logicalRange)) {
+        void loadOlderHistory();
+      }
+    };
+    timeScale.subscribeVisibleLogicalRangeChange(checkLeftEdge);
+    checkLeftEdge(timeScale.getVisibleLogicalRange());
+    return () => timeScale.unsubscribeVisibleLogicalRangeChange(checkLeftEdge);
+  }, [candles, candleDataKey, dataKey, hasMoreHistory, loadOlderHistory, state]);
 
   useLayoutEffect(() => {
     const series = candleSeries.current;
@@ -2338,6 +2402,8 @@ function App() {
     error: candleError,
     dataKey: candleDataKey,
     loadingMore: candleHistoryLoading,
+    hasMoreHistory: candleHasMoreHistory,
+    loadOlderHistory,
   } = useCandles(selected ? selectedSymbol : "", interval);
   const liveOpenPnl = trading.positions
     .filter((position) => position.status === "open")
@@ -2491,6 +2557,8 @@ function App() {
             state={selected ? candleState : symbolState === "loading" ? "loading" : "empty"}
             error={candleError || symbolError}
             loadingMore={candleHistoryLoading}
+            hasMoreHistory={candleHasMoreHistory}
+            loadOlderHistory={loadOlderHistory}
             interval={interval}
             onIntervalChange={setInterval}
             onOpenWatchlist={() => setWatchOpen(true)}
