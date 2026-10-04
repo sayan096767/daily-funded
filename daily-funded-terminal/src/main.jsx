@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import * as signalR from "@microsoft/signalr";
 import {
   Activity,
   BarChart3,
+  Clock3,
   CandlestickChart,
   ChevronDown,
   ChevronLeft,
@@ -21,12 +22,18 @@ import {
   Star,
   X,
 } from "lucide-react";
-import { CandlestickSeries, ColorType, createChart } from "lightweight-charts";
+import { CandlestickSeries, ColorType, createChart, TickMarkType } from "lightweight-charts";
+import {
+  candleFromLiveTick,
+  loadCandleHistory,
+  mergeHistoryWithLive,
+} from "./candleHistory.js";
 import "../node_modules/flag-icons/css/flag-icons.min.css";
 import "./styles.css";
 
 const API_BASE = import.meta.env.DEV ? "" : "https://throbbing-bonus-6fed.dailyfunded.workers.dev";
 const QUOTE_FALLBACK_MS = 5000;
+const LIVE_TICK_MAX_AGE_MS = 5 * 60 * 1000;
 const TRADING_API_BASE = import.meta.env.DEV ? "/api" : "https://daily-funded-api.onrender.com/api";
 const TRADING_POLL_MS = 5000;
 const FIREBASE_CONFIG = {
@@ -40,6 +47,256 @@ const FIREBASE_CONFIG = {
 };
 const INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d"];
 const INTERVAL_SECONDS = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
+const EXCHANGE_TIME_ZONES = {
+  AUS200: "Australia/Sydney",
+  GER40: "Europe/Berlin",
+  UK100: "Europe/London",
+  US30: "America/New_York",
+  US500: "America/New_York",
+  USTEC: "America/New_York",
+};
+const FALLBACK_TIME_ZONES = [
+  "Pacific/Honolulu", "America/Anchorage", "America/Los_Angeles", "America/Phoenix",
+  "America/Vancouver", "America/Denver", "America/Mexico_City", "America/Chicago",
+  "America/Bogota", "America/Lima", "America/New_York", "America/Toronto",
+  "America/Sao_Paulo", "Atlantic/Reykjavik", "Europe/London", "Europe/Paris",
+  "Europe/Berlin", "Europe/Moscow", "Asia/Dubai", "Asia/Kolkata",
+  "Asia/Bangkok", "Asia/Singapore", "Asia/Shanghai", "Asia/Tokyo",
+  "Australia/Sydney", "Pacific/Auckland",
+];
+const SUPPORTED_TIME_ZONES = typeof Intl.supportedValuesOf === "function"
+  ? Intl.supportedValuesOf("timeZone")
+  : FALLBACK_TIME_ZONES;
+
+function isValidTimeZone(timeZone) {
+  if (timeZone === "UTC" || timeZone === "Exchange") return true;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone });
+    return true;
+  } catch (error) {
+    if (error instanceof RangeError) return false;
+    throw error;
+  }
+}
+
+function getInitialChartTimeZone() {
+  try {
+    const savedTimeZone = localStorage.getItem("df-terminal-chart-timezone");
+    if (savedTimeZone && isValidTimeZone(savedTimeZone)) return savedTimeZone;
+  } catch (error) {
+    console.warn("Unable to load the saved chart time zone.", error);
+  }
+  const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return browserTimeZone && isValidTimeZone(browserTimeZone) ? browserTimeZone : "UTC";
+}
+
+function getExchangeTimeZone(symbol) {
+  return EXCHANGE_TIME_ZONES[symbol?.toUpperCase()] || "UTC";
+}
+
+function getResolvedTimeZone(timeZone, symbol) {
+  return timeZone === "Exchange" ? getExchangeTimeZone(symbol) : timeZone;
+}
+
+function formatTimeZoneOffset(timeZone, date) {
+  const zoneName = new Intl.DateTimeFormat("en", {
+    timeZone,
+    timeZoneName: "longOffset",
+  }).formatToParts(date).find((part) => part.type === "timeZoneName")?.value;
+  if (!zoneName || zoneName === "GMT" || zoneName === "UTC") return "UTC";
+  const match = zoneName.match(/^GMT([+-])(\d{2})(?::(\d{2}))?$/);
+  if (!match) return zoneName.replace(/^GMT/, "UTC");
+  const [, sign, rawHours, minutes = "00"] = match;
+  const hours = Number(rawHours);
+  return minutes === "00" ? `UTC${sign}${hours}` : `UTC${sign}${hours}:${minutes}`;
+}
+
+function timeToDate(time) {
+  if (typeof time === "number") return new Date(time * 1000);
+  if (typeof time === "string") return new Date(time);
+  if (time && typeof time === "object" && "year" in time && "month" in time && "day" in time) {
+    return new Date(Date.UTC(time.year, time.month - 1, time.day));
+  }
+  return null;
+}
+
+function formatChartTime(time, timeZone, tickMarkType) {
+  const date = timeToDate(time);
+  if (!date || Number.isNaN(date.getTime())) return null;
+  const options = tickMarkType === TickMarkType.Year
+    ? { year: "numeric" }
+    : tickMarkType === TickMarkType.Month
+      ? { month: "short" }
+      : tickMarkType === TickMarkType.DayOfMonth
+        ? { day: "2-digit" }
+        : { hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
+  return new Intl.DateTimeFormat("en-GB", { ...options, timeZone }).format(date);
+}
+
+function formatChartCrosshairTime(time, timeZone) {
+  const date = timeToDate(time);
+  if (!date || Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+}
+
+function formatChartRangeTimestamp(timestampMs, timeZone) {
+  if (!Number.isFinite(timestampMs)) return "—";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+    timeZoneName: "short",
+  }).format(new Date(timestampMs));
+}
+
+function formatChartClock(date, timeZone) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+}
+
+function ChartTimezonePicker({ timeZone, exchangeTimeZone, now, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const pickerRef = useRef(null);
+  const selectedZone = timeZone === "Exchange" ? exchangeTimeZone : timeZone;
+  const displayedZone = timeZone === "Exchange" ? exchangeTimeZone : timeZone;
+  const searchValue = search.trim().toLowerCase();
+  const zoneOptions = useMemo(() => {
+    if (!open) return [];
+    const date = new Date(now);
+    return SUPPORTED_TIME_ZONES.map((zone) => ({
+      zone,
+      city: zone.split("/").pop().replace(/_/g, " "),
+      offset: formatTimeZoneOffset(zone, date),
+      offsetMinutes: getTimeZoneOffsetMinutes(zone, date),
+    })).sort((a, b) =>
+      a.offsetMinutes - b.offsetMinutes || a.city.localeCompare(b.city)
+    );
+  }, [open, Math.floor(now / 60000)]);
+  const visibleZones = zoneOptions.filter(({ zone, city, offset }) =>
+    !searchValue || `${zone} ${city} ${offset}`.toLowerCase().includes(searchValue)
+  );
+  const clockText = `${formatChartClock(new Date(now), selectedZone)} ${formatTimeZoneOffset(selectedZone, new Date(now))}`;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event) => {
+      if (!pickerRef.current?.contains(event.target)) setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  function chooseTimeZone(value) {
+    onSelect(value);
+    setSearch("");
+    setOpen(false);
+  }
+
+  return (
+    <div className="chart-timezone-picker" ref={pickerRef}>
+      <button
+        className="chart-timezone-trigger"
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Chart time ${clockText}. Time zone: ${timeZone === "Exchange" ? `Exchange (${displayedZone})` : timeZone}. Change time zone`}
+        title={`${timeZone === "Exchange" ? `Exchange (${displayedZone})` : timeZone} · click to change`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Clock3 size={13} />
+        <span>{clockText}</span>
+        <ChevronDown size={12} />
+      </button>
+      {open && <div className="chart-timezone-menu">
+        <label className="chart-timezone-search">
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search time zones"
+            aria-label="Search time zones"
+          />
+        </label>
+        <div className="chart-timezone-options" role="listbox" aria-label="Chart time zone">
+          {[
+            ["UTC", "UTC"],
+            ["Exchange", `Exchange · ${exchangeTimeZone}`],
+          ].filter(([value, label]) =>
+            !searchValue || `${value} ${label}`.toLowerCase().includes(searchValue)
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              className={`chart-timezone-option ${timeZone === value ? "chart-timezone-option-selected" : ""}`}
+              type="button"
+              role="option"
+              aria-selected={timeZone === value}
+              onClick={() => chooseTimeZone(value)}
+            >{label}</button>
+          ))}
+          <div className="chart-timezone-divider" />
+          {visibleZones.map(({ zone, city, offset }) => (
+            <button
+              key={zone}
+              className={`chart-timezone-option ${timeZone === zone ? "chart-timezone-option-selected" : ""}`}
+              type="button"
+              role="option"
+              aria-selected={timeZone === zone}
+              title={zone}
+              onClick={() => chooseTimeZone(zone)}
+            >({offset}) {city}</button>
+          ))}
+          {visibleZones.length === 0 && <div className="chart-timezone-empty">No matching time zones</div>}
+        </div>
+      </div>}
+    </div>
+  );
+}
+
+function getTimeZoneOffsetMinutes(timeZone, date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+    hourCycle: "h23",
+  }).formatToParts(date).reduce((result, part) => {
+    if (part.type !== "literal") result[part.type] = Number(part.value);
+    return result;
+  }, {});
+  const roundedDate = Math.floor(date.getTime() / 1000) * 1000;
+  const zoneDate = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return (zoneDate - roundedDate) / 60000;
+}
 const TRADING_ERROR_MESSAGES = {
   authentication_required: "Sign in with your Daily Funded account to use trading.",
   trading_disabled: "Trading is disabled until this account is approved and active.",
@@ -615,12 +872,37 @@ function useMarketData(liveTickHandler, onAcceptedTick) {
     let retryTimer = null;
     let connection = null;
     let snapshotPromise = null;
-    const providerSymbols = symbols
+    const marketSymbolRecords = symbols
       .filter((item) => item?.enabled !== false && item?.is_enabled !== false)
-      .map((item) => item.symbol?.trim().toUpperCase())
-      .filter(Boolean);
-    if (!providerSymbols.length) return undefined;
-    const enabledSymbols = new Set(providerSymbols);
+      .map((item) => ({
+        symbol: item.symbol?.trim().toUpperCase(),
+        provider: item.provider,
+        providerSymbol: item.provider_symbol?.trim().toUpperCase(),
+      }))
+      .filter((item) => item.symbol);
+    const canonicalSymbols = [...new Set(marketSymbolRecords.map((item) => item.symbol))];
+    if (!canonicalSymbols.length) return undefined;
+    const enabledSymbols = new Set(canonicalSymbols);
+    const canonicalSymbolsByProviderSymbol = new Map();
+    for (const item of marketSymbolRecords) {
+      if (item.provider !== "biquote" || !item.providerSymbol) continue;
+      const mappedSymbols = canonicalSymbolsByProviderSymbol.get(item.providerSymbol) || [];
+      mappedSymbols.push(item.symbol);
+      canonicalSymbolsByProviderSymbol.set(item.providerSymbol, mappedSymbols);
+    }
+    const providerSymbols = [...canonicalSymbolsByProviderSymbol.keys()];
+    const liveMappedSymbols = new Set([...canonicalSymbolsByProviderSymbol.values()].flat());
+    const unmappedSymbols = canonicalSymbols.filter((symbol) => !liveMappedSymbols.has(symbol));
+    if (unmappedSymbols.length) {
+      setQuoteErrors((current) => ({
+        ...current,
+        ...Object.fromEntries(unmappedSymbols.map((symbol) => [symbol, {
+          symbol,
+          code: "provider_mapping_missing",
+          message: "No Biquote live symbol mapping is configured.",
+        }])),
+      }));
+    }
 
     const markQuotesStale = () => {
       streamReady = false;
@@ -651,7 +933,7 @@ function useMarketData(liveTickHandler, onAcceptedTick) {
       setQuoteRefresh((current) => current === "loading" ? "loading" : "refreshing");
       snapshotPromise = (async () => {
         try {
-          const query = providerSymbols.join(",");
+          const query = canonicalSymbols.join(",");
           const payload = await getJson(`/market/quotes?symbols=${encodeURIComponent(query)}`);
           if (disposed) return null;
           const nextErrors = {};
@@ -757,36 +1039,67 @@ function useMarketData(liveTickHandler, onAcceptedTick) {
         .build();
       connection.on("ReceiveTick", (rawTick) => {
         if (disposed || !rawTick || typeof rawTick !== "object") return;
-        const symbol = typeof rawTick.symbol === "string" ? rawTick.symbol.trim().toUpperCase() : "";
+        const providerSymbol = typeof rawTick.symbol === "string" ? rawTick.symbol.trim().toUpperCase() : "";
+        const mappedSymbols = canonicalSymbolsByProviderSymbol.get(providerSymbol);
         const timestamp = quoteTimestampMs(rawTick.timestamp);
-        if (!enabledSymbols.has(symbol) || timestamp === null) return;
+        if (!mappedSymbols?.length || timestamp === null) return;
         const bid = normalizeQuotePrice(rawTick.bid);
         const ask = normalizeQuotePrice(rawTick.ask);
         const mid = normalizeQuotePrice(rawTick.mid);
         if ((rawTick.bid != null && bid === null) || (rawTick.ask != null && ask === null) || mid === null) return;
-        const tick = {
-          symbol,
-          bid,
-          ask,
-          mid,
-          timestamp: rawTick.timestamp ?? null,
-          timestampMs: timestamp,
-          stale: false,
-          ...(typeof rawTick.marketState === "string" ? { market_state: rawTick.marketState } : {}),
-        };
-        const previousTimestamp = quoteTimes.current[symbol];
-        if (previousTimestamp !== undefined && timestamp < previousTimestamp) return;
-        flushSync(() => {
-          if (!applyQuote(tick, timestamp, true)) return;
-          onAcceptedTick?.(tick);
-          liveTickHandler.current?.(tick);
-          setQuoteErrors((current) => {
-            if (!current[symbol]) return current;
+        const marketState = typeof rawTick.marketState === "string" ? rawTick.marketState : null;
+        const receivedAt = Date.now();
+        const isStale = rawTick.stale === true ||
+          marketState?.toLowerCase() === "closed" ||
+          timestamp > receivedAt + 60_000 ||
+          receivedAt - timestamp > LIVE_TICK_MAX_AGE_MS;
+        if (isStale) {
+          setQuotes((current) => {
             const next = { ...current };
-            delete next[symbol];
+            for (const symbol of mappedSymbols) {
+              const previousTimestamp = quoteTimes.current[symbol];
+              if (previousTimestamp !== undefined && timestamp <= previousTimestamp) continue;
+              next[symbol] = {
+                symbol,
+                bid,
+                ask,
+                mid,
+                timestamp: rawTick.timestamp ?? null,
+                stale: true,
+                ...(marketState ? { market_state: marketState } : {}),
+              };
+            }
             return next;
           });
-          setQuoteRefresh("ready");
+          return;
+        }
+        flushSync(() => {
+          let accepted = false;
+          for (const symbol of mappedSymbols) {
+            const previousTimestamp = quoteTimes.current[symbol];
+            if (previousTimestamp !== undefined && timestamp < previousTimestamp) continue;
+            const tick = {
+              symbol,
+              bid,
+              ask,
+              mid,
+              timestamp: rawTick.timestamp ?? null,
+              timestampMs: timestamp,
+              stale: false,
+              ...(marketState ? { market_state: marketState } : {}),
+            };
+            if (!applyQuote(tick, timestamp, true)) continue;
+            accepted = true;
+            onAcceptedTick?.(tick);
+            liveTickHandler.current?.(tick);
+            setQuoteErrors((current) => {
+              if (!current[symbol]) return current;
+              const next = { ...current };
+              delete next[symbol];
+              return next;
+            });
+          }
+          if (accepted) setQuoteRefresh("ready");
         });
       });
       connection.onreconnecting(markQuotesStale);
@@ -839,48 +1152,64 @@ function useCandles(symbol, interval) {
   const [error, setError] = useState("");
   const [source, setSource] = useState("");
   const [dataKey, setDataKey] = useState("");
+  const [loadingMore, setLoadingMore] = useState(false);
   const requestKey = `${symbol}|${interval}`;
 
   useEffect(() => {
+    setCandles([]);
+    setDataKey(requestKey);
+    setState("loading");
+    setError("");
+    setSource("");
+    setLoadingMore(false);
     if (!symbol) {
-      setCandles([]);
       setState("empty");
-      setDataKey(requestKey);
       return undefined;
     }
     const controller = new AbortController();
-    setState("loading");
-    setError("");
-    getJson(`/market/candles?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=100`, controller.signal)
-      .then((payload) => {
-        const rows = Array.isArray(payload.bars) ? payload.bars : [];
-        const normalized = rows.map((bar) => ({
-          time: Math.floor(new Date(bar.open_time).getTime() / 1000),
-          open: Number(bar.open),
-          high: Number(bar.high),
-          low: Number(bar.low),
-          close: Number(bar.close),
-        })).filter((bar) =>
-          Number.isFinite(bar.time) &&
-          [bar.open, bar.high, bar.low, bar.close].every((price) => Number.isFinite(price) && price > 0)
-        ).sort((left, right) => left.time - right.time);
-        const unique = normalized.filter((bar, index) => index === 0 || bar.time !== normalized[index - 1].time);
-        setCandles(unique);
-        setSource(payload.source || "");
-        setDataKey(requestKey);
-        setState(unique.length ? "ready" : "empty");
-      })
-      .catch((requestError) => {
-        if (requestError.name === "AbortError") return;
-        setCandles([]);
-        setDataKey(requestKey);
-        setError(requestError.message);
-        setState("error");
+    let initialPageLoaded = false;
+    const fetchPage = async ({ symbol: requestedSymbol, interval: requestedInterval, limit, to, signal }) => {
+      const params = new URLSearchParams({
+        symbol: requestedSymbol,
+        interval: requestedInterval,
+        limit: String(limit),
       });
+      if (to) params.set("to", to);
+      const payload = await getJson(`/market/candles?${params}`, signal);
+      if (!Array.isArray(payload.bars)) {
+        throw new Error("The market service returned malformed candle data.");
+      }
+      return payload.bars;
+    };
+    loadCandleHistory({
+      symbol,
+      interval,
+      signal: controller.signal,
+      fetchPage,
+      onPage: (page) => {
+        if (controller.signal.aborted) return;
+        initialPageLoaded = true;
+        setCandles(page);
+        setSource("provider_historical");
+        setState(page.length ? "ready" : "empty");
+        setLoadingMore(true);
+      },
+    }).then((history) => {
+      if (controller.signal.aborted) return;
+      setCandles(history);
+      setSource("provider_historical");
+      setState(history.length ? "ready" : "empty");
+      setLoadingMore(false);
+    }).catch((requestError) => {
+      if (requestError.name === "AbortError" || controller.signal.aborted) return;
+      setError(requestError.message);
+      setState(initialPageLoaded ? "ready" : "error");
+      setLoadingMore(false);
+    });
     return () => controller.abort();
   }, [symbol, interval]);
 
-  return { candles, state, error, source, dataKey };
+  return { candles, state, error, source, dataKey, loadingMore };
 }
 
 function BrandMark() {
@@ -1125,6 +1454,7 @@ function ChartView({
   candleDataKey,
   state,
   error,
+  loadingMore,
   interval,
   onIntervalChange,
   onOpenWatchlist,
@@ -1138,6 +1468,7 @@ function ChartView({
   const chartRef = useRef(null);
   const candleSeries = useRef(null);
   const candleDataRef = useRef([]);
+  const liveCandlesRef = useRef(new Map());
   const positionPriceLines = useRef(new Map());
   const pendingLiveTicks = useRef([]);
   const candleKeyRef = useRef("");
@@ -1149,12 +1480,15 @@ function ChartView({
   const [candleBucketTime, setCandleBucketTime] = useState(null);
   const [latestTickTimestampMs, setLatestTickTimestampMs] = useState(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const [chartTimeZone, setChartTimeZone] = useState(getInitialChartTimeZone);
   const [draftPrices, setDraftPrices] = useState(new Map());
   const [closingIds, setClosingIds] = useState(new Set());
   const [modifyingIds, setModifyingIds] = useState(new Set());
   const [controlError, setControlError] = useState("");
   const [layoutVersion, setLayoutVersion] = useState(0);
   const digits = getPriceDigits(symbol);
+  const chartTimeZoneRef = useRef(getResolvedTimeZone(chartTimeZone, symbol));
+  chartTimeZoneRef.current = getResolvedTimeZone(chartTimeZone, symbol);
   const dataKey = `${symbol}|${interval}`;
 
   useLayoutEffect(() => {
@@ -1172,11 +1506,21 @@ function ChartView({
         horzLines: { color: "#303a3f" },
       },
       rightPriceScale: { borderColor: "#303737", minimumWidth: 72, autoScale: true },
-      timeScale: { borderColor: "#303737", timeVisible: true, secondsVisible: false, rightOffset: 5, barSpacing: 9 },
+      timeScale: {
+        borderColor: "#303737",
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 5,
+        barSpacing: 9,
+        tickMarkFormatter: (time, tickMarkType) => formatChartTime(time, chartTimeZoneRef.current, tickMarkType),
+      },
       crosshair: { vertLine: { color: "#758280", labelBackgroundColor: "#2e3735" }, horzLine: { color: "#758280", labelBackgroundColor: "#2e3735" } },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
-      localization: { priceFormatter: (price) => formatPrice(price, digits) },
+      localization: {
+        priceFormatter: (price) => formatPrice(price, digits),
+        timeFormatter: (time) => formatChartCrosshairTime(time, chartTimeZoneRef.current),
+      },
     });
     const series = chart.addSeries(CandlestickSeries, {
       upColor: "#1685f5",
@@ -1216,6 +1560,7 @@ function ChartView({
     candleKeyRef.current = dataKey;
     baselineKeyRef.current = "";
     candleDataRef.current = [];
+    liveCandlesRef.current = new Map();
     pendingLiveTicks.current = [];
     setCandleBucketTime(null);
     setLatestTickTimestampMs(null);
@@ -1232,23 +1577,19 @@ function ChartView({
     const applyTick = (tick) => {
       if (tick.symbol !== symbol) return true;
       if (!Number.isFinite(tick.timestampMs) || tick.mid == null) return false;
-      const candleTime = Math.floor(tick.timestampMs / (intervalSeconds * 1000)) * intervalSeconds;
+      if (baselineKeyRef.current !== dataKey) {
+        pendingLiveTicks.current.push(tick);
+        return true;
+      }
       const current = candleDataRef.current;
       const last = current[current.length - 1];
-      if (last && candleTime < last.time) return false;
+      const next = candleFromLiveTick(last, tick, intervalSeconds);
+      if (!next) return false;
+      const candleTime = next.time;
+      liveCandlesRef.current.set(candleTime, next);
       setCandleBucketTime(candleTime);
       setLatestTickTimestampMs(tick.timestampMs);
 
-      const next = last && candleTime === last.time
-        ? {
-          ...last,
-          high: Math.max(last.high, tick.mid),
-          low: Math.min(last.low, tick.mid),
-          close: tick.mid,
-        }
-        : { time: candleTime, open: tick.mid, high: tick.mid, low: tick.mid, close: tick.mid };
-
-      if (baselineKeyRef.current !== dataKey) pendingLiveTicks.current.push(tick);
       series.update(next);
       if (last && candleTime === last.time) current[current.length - 1] = next;
       else {
@@ -1270,15 +1611,20 @@ function ChartView({
   useLayoutEffect(() => {
     const series = candleSeries.current;
     if (!series || state === "loading" || candleDataKey !== dataKey) return;
+    const sameBaseline = baselineKeyRef.current === dataKey;
+    const timeScale = chartRef.current?.timeScale();
+    const visibleRange = sameBaseline ? timeScale?.getVisibleRange() : null;
+    const mergedCandles = mergeHistoryWithLive(candles, liveCandlesRef.current);
     series.applyOptions({ priceFormat: { type: "price", precision: digits, minMove: 10 ** -digits } });
-    series.setData(candles);
-    candleDataRef.current = candles.slice();
-    setCandleCount(candles.length);
+    series.setData(mergedCandles);
+    candleDataRef.current = mergedCandles;
+    setCandleCount(mergedCandles.length);
     baselineKeyRef.current = dataKey;
+    if (sameBaseline && visibleRange) timeScale.setVisibleRange(visibleRange);
     const queuedTicks = pendingLiveTicks.current;
     pendingLiveTicks.current = [];
     for (const tick of queuedTicks) applyLiveTickRef.current?.(tick);
-    chartRef.current?.timeScale().fitContent();
+    if (!sameBaseline) chartRef.current?.timeScale().fitContent();
   }, [candles, candleDataKey, dataKey, digits, state]);
 
   useLayoutEffect(() => {
@@ -1531,6 +1877,11 @@ function ChartView({
   );
   const latestCandle = candleDataRef.current[candleDataRef.current.length - 1]
     || candles[candles.length - 1];
+  const historyStartTimestampMs = candles[0]?.timestampMs ?? null;
+  const latestCandleTimestampMs = latestCandle?.timestampMs ?? (
+    Number.isFinite(latestCandle?.time) ? latestCandle.time * 1000 : null
+  );
+  const displayTimeZone = chartTimeZoneRef.current;
   const hasLivePrice = quote?.mid !== null
     && quote?.mid !== undefined
     && Number.isFinite(Number(quote.mid));
@@ -1692,7 +2043,44 @@ function ChartView({
         </div>}
         {(state === "ready" || hasLiveCandle) && <div className="chart-legend"><span className="legend-dot legend-up" />Up <span className="legend-dot legend-down" />Down <span className="legend-divider" />{candleCount} bars</div>}
       </div>
-      <div className="chart-footer"><span><Activity size={13} /> Market data only</span><span><CircleHelp size={13} /> Drag to pan · scroll to zoom</span></div>
+      <div className="chart-footer">
+        <span><Activity size={13} /> Market data only</span>
+        <div className="chart-history-range" aria-label="Chart candle timestamps">
+          <span>
+            <b>Start</b>
+            {historyStartTimestampMs === null ? "—" : <time
+              dateTime={new Date(historyStartTimestampMs).toISOString()}
+              title={`UTC ${new Date(historyStartTimestampMs).toISOString()}`}
+            >{formatChartRangeTimestamp(historyStartTimestampMs, displayTimeZone)}</time>}
+          </span>
+          <span>
+            <b>Latest Candle</b>
+            {latestCandleTimestampMs === null ? "—" : <time
+              dateTime={new Date(latestCandleTimestampMs).toISOString()}
+              title={`UTC ${new Date(latestCandleTimestampMs).toISOString()}`}
+            >{formatChartRangeTimestamp(latestCandleTimestampMs, displayTimeZone)}</time>}
+          </span>
+          <span>
+            <b>Latest Real Tick</b>
+            {latestTickTimestampMs === null ? "—" : <time
+              dateTime={new Date(latestTickTimestampMs).toISOString()}
+              title={`UTC ${new Date(latestTickTimestampMs).toISOString()}`}
+            >{formatChartRangeTimestamp(latestTickTimestampMs, displayTimeZone)}</time>}
+          </span>
+        </div>
+        {(loadingMore || (error && candleCount > 0)) && <span
+          className={error && candleCount > 0 ? "chart-history-error" : "chart-history-loading"}
+          role="status"
+          aria-label={error && candleCount > 0 ? `History incomplete: ${error}` : "Loading older provider candles"}
+          title={error || "Loading older provider candles"}
+        >{error && candleCount > 0 ? "History incomplete" : "Loading older history…"}</span>}
+        <ChartTimezonePicker
+          timeZone={chartTimeZone}
+          exchangeTimeZone={getExchangeTimeZone(symbol)}
+          now={clockNow}
+          onSelect={setChartTimeZone}
+        />
+      </div>
     </section>
   );
 }
@@ -1944,7 +2332,13 @@ function App() {
   const selected = symbols.find((item) => item.symbol === selectedSymbol) || null;
   const quote = quotes[selectedSymbol] || null;
   const quoteError = quoteErrors[selectedSymbol] || null;
-  const { candles, state: candleState, error: candleError, dataKey: candleDataKey } = useCandles(selected ? selectedSymbol : "", interval);
+  const {
+    candles,
+    state: candleState,
+    error: candleError,
+    dataKey: candleDataKey,
+    loadingMore: candleHistoryLoading,
+  } = useCandles(selected ? selectedSymbol : "", interval);
   const liveOpenPnl = trading.positions
     .filter((position) => position.status === "open")
     .reduce((total, position) => {
@@ -2096,6 +2490,7 @@ function App() {
             candleDataKey={candleDataKey}
             state={selected ? candleState : symbolState === "loading" ? "loading" : "empty"}
             error={candleError || symbolError}
+            loadingMore={candleHistoryLoading}
             interval={interval}
             onIntervalChange={setInterval}
             onOpenWatchlist={() => setWatchOpen(true)}

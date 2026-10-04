@@ -861,6 +861,102 @@ describe("Market data foundation", () => {
 		expect(payload.bars[0]).toMatchObject({ symbol: "XAUUSD", close: 2001 });
 	});
 
+	it("routes every current web symbol through its configured Biquote OHLC mapping", async () => {
+		const mappings = [
+			["EURUSD", "EURUSD"], ["GBPUSD", "GBPUSD"], ["USDJPY", "USDJPY"],
+			["XAUUSD", "XAUUSD"], ["XAGUSD", "XAGUSD"], ["BTCUSD", "BTCUSD"],
+			["ETHUSD", "ETHUSD"], ["USOIL", "USOIL"], ["XCUUSD", "XCUUSD"],
+			["UKOIL", "UKOIL"], ["XNGUSD", "XNGUSD"],
+			["USTEC", "USTEC"], ["US30", "US30"], ["US500", "US500"],
+			["GER40", "GER40"], ["UK100", "UK100"], ["AUS200", "AUS200"],
+		];
+		const requestedProviderSymbols = [];
+		vi.stubGlobal("fetch", vi.fn(async (input) => {
+			const providerUrl = new URL(input);
+			requestedProviderSymbols.push(providerUrl.pathname.split("/").at(-2));
+			return new Response(JSON.stringify({
+				bars: [{
+					openTime: "2026-10-02T11:59:00Z",
+					open: 100,
+					high: 101,
+					low: 99,
+					close: 100,
+					isOpen: false,
+				}],
+			}));
+		}));
+		const { db } = mockDb({ tradingSymbols: mappings.map(([symbol]) => marketRecord(symbol)) });
+		const catalogResponse = await callMarket(db, "/market/symbols");
+		const catalog = await catalogResponse.json();
+
+		expect(catalogResponse.status).toBe(200);
+		expect(catalog.symbols.map(({ symbol }) => symbol).sort()).toEqual(mappings.map(([symbol]) => symbol).sort());
+		expect(Object.fromEntries(catalog.symbols.map(({ symbol, provider_symbol: providerSymbol }) => [symbol, providerSymbol])))
+			.toEqual(Object.fromEntries(mappings));
+		for (const [webSymbol, providerSymbol] of mappings) {
+			const response = await callMarket(db, `/market/candles?symbol=${webSymbol}&interval=15m&limit=1000`);
+			const payload = await response.json();
+			expect(response.status).toBe(200);
+			expect(payload.bars[0]).toMatchObject({ symbol: webSymbol, source: "provider_historical" });
+			expect(requestedProviderSymbols.at(-1)).toBe(providerSymbol);
+		}
+		expect(requestedProviderSymbols).toEqual(mappings.map(([, providerSymbol]) => providerSymbol));
+	});
+
+	it("forwards validated Biquote date ranges and preserves its in-progress extra bar", async () => {
+		let requestedUrl;
+		vi.stubGlobal("fetch", vi.fn(async (input) => {
+			requestedUrl = new URL(input);
+			const bars = Array.from({ length: 1001 }, (_, index) => ({
+				openTime: new Date(Date.UTC(2026, 0, 1) + index * 60_000).toISOString(),
+				open: 100,
+				high: 101,
+				low: 99,
+				close: 100,
+				isOpen: index === 1000,
+			}));
+			return new Response(JSON.stringify({ bars }));
+		}));
+		const { db } = mockDb({ tradingSymbols: [marketRecord("EURUSD")] });
+		const response = await callMarket(
+			db,
+			"/market/candles?symbol=EURUSD&interval=1m&limit=1000&from=2026-01-01T02%3A00%3A00%2B02%3A00&to=2026-01-02T00%3A00%3A00Z",
+		);
+		const payload = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(requestedUrl.origin).toBe("https://biquote.io");
+		expect(requestedUrl.searchParams.get("limit")).toBe("1000");
+		expect(requestedUrl.searchParams.get("from")).toBe("2026-01-01T00:00:00.000Z");
+		expect(requestedUrl.searchParams.get("to")).toBe("2026-01-02T00:00:00.000Z");
+		expect(payload.bars).toHaveLength(1001);
+		expect(payload.bars.at(-1).is_open).toBe(true);
+		expect(payload.bars[0].open_time).toBe("2026-01-01T00:00:00.000Z");
+
+		await callMarket(db, "/market/candles?symbol=EURUSD&interval=1m&limit=1000&to=2025-12-31T23%3A59%3A59.999Z");
+		expect(requestedUrl.searchParams.has("from")).toBe(false);
+		expect(requestedUrl.searchParams.get("to")).toBe("2025-12-31T23:59:59.999Z");
+	});
+
+	it("rejects invalid candle limits and date ranges before contacting Biquote", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		const { db } = mockDb({ tradingSymbols: [marketRecord("EURUSD")] });
+		for (const query of [
+			"limit=1001",
+			"from=2026-02-30T00%3A00%3A00Z",
+		]) {
+			const response = await callMarket(db, `/market/candles?symbol=EURUSD&interval=1m&${query}`);
+			expect(response.status).toBe(400);
+		}
+		const reversed = await callMarket(
+			db,
+			"/market/candles?symbol=EURUSD&interval=1m&from=2026-01-02T00%3A00%3A00Z&to=2026-01-01T00%3A00%3A00Z",
+		);
+		expect(reversed.status).toBe(400);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it("builds OHLC from normalized quotes and persists after the candle interval rolls", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2030-01-01T00:00:10.000Z"));

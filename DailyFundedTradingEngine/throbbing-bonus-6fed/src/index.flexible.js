@@ -1484,6 +1484,37 @@ function normalizeProviderCandle(symbol, interval, bar) {
   };
 }
 
+function parseOptionalCandleDateTime(value, field) {
+  if (value === null) return { value: null };
+  const match = typeof value === "string"
+    ? value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/)
+    : null;
+  if (!match) return { error: `${field} must be an ISO 8601 timestamp with a timezone` };
+
+  const [, rawYear, rawMonth, rawDay, rawHour, rawMinute, rawSecond, zone] = match;
+  const year = Number(rawYear);
+  const month = Number(rawMonth);
+  const day = Number(rawDay);
+  const hour = Number(rawHour);
+  const minute = Number(rawMinute);
+  const second = Number(rawSecond);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (
+    month < 1 || month > 12 || day < 1 || day > daysInMonth ||
+    hour > 23 || minute > 59 || second > 59
+  ) return { error: `${field} must be a valid ISO 8601 timestamp` };
+  if (zone !== "Z") {
+    const [, zoneHour, zoneMinute] = zone.match(/^[+-](\d{2}):(\d{2})$/) || [];
+    if (Number(zoneHour) > 23 || Number(zoneMinute) > 59) {
+      return { error: `${field} must be a valid ISO 8601 timestamp` };
+    }
+  }
+
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return { error: `${field} must be a valid ISO 8601 timestamp` };
+  return { value: new Date(timestamp).toISOString(), timestamp };
+}
+
 async function getMarketQuotesForSymbols(env, symbols) {
   if (!symbols.length) return { quotes: [], errors: [] };
   const url = new URL("https://internal.dailyfunded/market/quotes");
@@ -1549,12 +1580,20 @@ function tradingError(code, message, status) {
 async function getMarketCandles(env, url) {
   const symbol = normalizeText(url.searchParams.get("symbol")).toUpperCase();
   const interval = normalizeText(url.searchParams.get("interval")).toLowerCase();
-  const limit = Number(url.searchParams.get("limit") || 100);
+  const limit = Number(url.searchParams.get("limit") || 1000);
+  const from = parseOptionalCandleDateTime(url.searchParams.get("from"), "from");
+  const to = parseOptionalCandleDateTime(url.searchParams.get("to"), "to");
   if (!symbol || !Object.hasOwn(MARKET_CANDLE_INTERVALS, interval)) {
     return json({ success: false, error: "symbol and a supported interval are required" }, 400);
   }
-  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
-    return json({ success: false, error: "limit must be an integer from 1 to 500" }, 400);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
+    return json({ success: false, error: "limit must be an integer from 1 to 1000" }, 400);
+  }
+  if (from.error || to.error) {
+    return json({ success: false, error: from.error || to.error }, 400);
+  }
+  if (from.timestamp !== undefined && to.timestamp !== undefined && from.timestamp > to.timestamp) {
+    return json({ success: false, error: "from must not be later than to" }, 400);
   }
 
   const records = await getConfiguredMarketSymbols(env);
@@ -1565,6 +1604,8 @@ async function getMarketCandles(env, url) {
     const providerUrl = new URL(`https://biquote.io/api/${encodeURIComponent(record.provider_symbol)}/ohlc`);
     providerUrl.searchParams.set("interval", interval);
     providerUrl.searchParams.set("limit", String(limit));
+    if (from.value !== null) providerUrl.searchParams.set("from", from.value);
+    if (to.value !== null) providerUrl.searchParams.set("to", to.value);
     let response;
     try {
       response = await fetch(providerUrl, { signal: AbortSignal.timeout(5000) });
@@ -1578,7 +1619,7 @@ async function getMarketCandles(env, url) {
       payload = await response.json();
       if (!Array.isArray(payload?.bars)) throw new Error("Invalid bars payload");
       const bars = payload.bars
-        .slice(0, limit)
+        .slice(0, limit + 1)
         .map((bar) => normalizeProviderCandle(symbol, interval, bar));
       return json({ success: true, symbol, provider: record.provider, source: "provider_historical", interval, bars });
     } catch {

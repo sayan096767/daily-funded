@@ -323,6 +323,30 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .position-symbol .bitcoin-glyph { font-size: 15px; }
 .position-symbol .ethereum-glyph { width: 12px; height: 16px; }
 .position-type { display: inline-flex; align-items: center; gap: 6px; font-family: "DM Sans", sans-serif; font-size: 12px; font-weight: 600; }
+.chart-footer > span:first-child { grid-column: 1; grid-row: 1 / span 2; }
+.chart-history-range { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; min-width: 0; }
+.chart-history-range > span { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 2px; }
+.chart-history-range b { color: #9aa59e; font-size: 8px; font-weight: 600; white-space: nowrap; }
+.chart-history-range time { color: #c0c9c3; font-family: var(--mono); font-size: 9px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.chart-history-loading { color: #b8c78c; font-size: 8px; white-space: nowrap; }
+.chart-history-error { color: #e1887d; font-size: 8px; white-space: nowrap; }
+.chart-timezone-picker { grid-column: 3; grid-row: 1 / span 2; }
+.chart-history-loading, .chart-history-error { grid-column: 2; grid-row: 2; }
+.chart-timezone-picker { position: relative; align-self: stretch; display: flex; align-items: center; }
+.chart-timezone-trigger { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 7px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: #aeb8b2; font-family: var(--mono); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chart-timezone-trigger:hover, .chart-timezone-trigger[aria-expanded="true"] { border-color: #46514c; background: #202729; color: #eef2ee; }
+.chart-timezone-trigger > svg:first-child { color: #95a39a; }
+.chart-timezone-trigger > svg:last-child { color: #77827c; }
+.chart-timezone-menu { position: absolute; z-index: 30; right: 0; bottom: calc(100% + 5px); display: flex; width: min(280px, calc(100vw - 24px)); max-height: min(450px, 65dvh); flex-direction: column; overflow: hidden; border: 1px solid #3b4547; border-radius: 5px; background: #252d32; box-shadow: 0 12px 32px #0008; }
+.chart-timezone-search { flex: 0 0 auto; padding: 8px; border-bottom: 1px solid #394347; }
+.chart-timezone-search input { width: 100%; height: 30px; padding: 0 9px; border: 1px solid #3b474b; border-radius: 3px; outline: 0; background: #1d2428; color: #e5eae7; font-size: 11px; }
+.chart-timezone-search input::placeholder { color: #87928d; }
+.chart-timezone-search input:focus { border-color: #798c6c; }
+.chart-timezone-options { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 3px 0; scrollbar-color: #526063 #252d32; scrollbar-width: thin; }
+.chart-timezone-option { display: block; width: 100%; min-height: 32px; padding: 0 12px; border: 0; background: transparent; color: #e0e5e2; font-size: 11px; text-align: left; white-space: nowrap; }
+.chart-timezone-option:hover, .chart-timezone-option-selected { background: #394449; color: #fff; }
+.chart-timezone-divider { height: 1px; margin: 4px 0; background: #404a4e; }
+.chart-timezone-empty { padding: 12px; color: #a5b0aa; font-size: 11px; }
 .position-type > span { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .protection-add { color: #c0cbc4; text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .protection-value { color: #f0f3f0; font-weight: 600; }
@@ -437,7 +461,13 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .position-protection-chip { min-width: 26px; height: 24px; padding: 0 4px; font-size: 9px; }
   .position-level-hitarea { height: 30px; }
   .position-level-label { right: 77px; font-size: 7px; }
-  .chart-footer { min-height: 25px; padding: 0 9px; font-size: 9px; }
+  .chart-footer { grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; min-height: 56px; padding: 5px 9px; font-size: 9px; }
+  .chart-history-range { grid-column: 1 / -1; grid-row: 1; gap: 6px; }
+  .chart-history-range b { font-size: 7px; }
+  .chart-history-range time { font-size: 8px; }
+  .chart-footer > span:first-child { grid-column: 1; grid-row: 2; }
+  .chart-timezone-picker { grid-column: 2; grid-row: 2; justify-self: end; }
+  .chart-history-loading, .chart-history-error { grid-column: 1; grid-row: 3; }
   .trading-panel-open { height: min(190px, 28dvh); }
   .trading-panel-closed { height: 42px; }
   .trading-panel-header { height: 42px; padding-left: 11px; }
