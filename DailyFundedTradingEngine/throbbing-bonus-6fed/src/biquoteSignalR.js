@@ -45,7 +45,6 @@ export async function negotiateBiquoteSignalR(fetcher = fetch, hubUrl = BIQUOTE_
   }
 
   const socketUrl = new URL(hub);
-  socketUrl.protocol = socketUrl.protocol === "https:" ? "wss:" : "ws:";
   socketUrl.searchParams.set("id", connectionId);
   return { socketUrl: socketUrl.toString() };
 }
