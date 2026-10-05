@@ -1147,6 +1147,7 @@ const MARKET_DATA_CACHE_TTL_SECONDS = 5;
 const MARKET_FEED_ALARM_MS = 60 * 1000;
 const MARKET_FEED_REFRESH_MS = 10 * 60 * 1000;
 const MARKET_FEED_HEALTH_TIMEOUT_MS = 45 * 1000;
+const MARKET_FEED_SYMBOL_TICK_TIMEOUT_MS = 15 * 1000;
 const MARKET_FEED_FAILURE_REASONS = new Set([
   "biquote_negotiation_failed",
   "websocket_upgrade_failed",
@@ -1979,6 +1980,7 @@ export class MarketFeedDO {
     this.symbolRecords = [];
     this.baselineTimestamps = new Map();
     this.latestTicks = new Map();
+    this.symbolReadinessWaiters = new Map();
     this.safeAfterTimestamp = new Map();
     this.trustedSymbols = new Set();
     this.connections = new Set();
@@ -2087,6 +2089,37 @@ export class MarketFeedDO {
       this.baselineTimestamps.set(record.symbol, highWater);
       this.trustedSymbols.add(record.symbol);
     }
+  }
+
+  hasFreshSymbolTick(symbol) {
+    const baselineTimestamp = this.baselineTimestamps.get(symbol);
+    const latestTick = this.latestTicks.get(symbol);
+    return this.trustedSymbols.has(symbol) &&
+      this.safeAfterTimestamp.has(symbol) &&
+      baselineTimestamp !== undefined &&
+      freshProviderTick(latestTick) &&
+      Number(latestTick.timestamp_ms) > baselineTimestamp;
+  }
+
+  waitForFreshSymbolTick(symbol, timeoutMs = MARKET_FEED_SYMBOL_TICK_TIMEOUT_MS) {
+    if (this.hasFreshSymbolTick(symbol)) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const waiters = this.symbolReadinessWaiters.get(symbol) || new Set();
+      let timer;
+      const finish = (ready) => {
+        clearTimeout(timer);
+        waiters.delete(onTick);
+        if (waiters.size === 0) this.symbolReadinessWaiters.delete(symbol);
+        resolve(ready);
+      };
+      const onTick = () => {
+        if (this.hasFreshSymbolTick(symbol)) finish(true);
+      };
+      waiters.add(onTick);
+      this.symbolReadinessWaiters.set(symbol, waiters);
+      timer = setTimeout(() => finish(this.hasFreshSymbolTick(symbol)), timeoutMs);
+      onTick();
+    });
   }
 
   async ensureConnection({ refresh = false } = {}) {
@@ -2285,6 +2318,7 @@ export class MarketFeedDO {
     this.safeAfterTimestamp.set(tick.symbol, Number(tick.timestamp_ms));
     this.latestTicks.set(tick.symbol, tick);
     this.recordTick(tick);
+    for (const onTick of this.symbolReadinessWaiters.get(tick.symbol) || []) onTick();
 
     const positionIds = [...(this.positionIdsBySymbol.get(tick.symbol) || [])];
     this.metrics.protectionTicks += 1;
@@ -2470,13 +2504,11 @@ export class MarketFeedDO {
             !this.safeAfterTimestamp.has(requiredSymbol)) {
             await this.refreshProviderBaselines();
           }
-          const latestTick = this.latestTicks.get(requiredSymbol);
-          const baselineTimestamp = this.baselineTimestamps.get(requiredSymbol);
-          connected = this.trustedSymbols.has(requiredSymbol) &&
+          const baselineReady = this.trustedSymbols.has(requiredSymbol) &&
             this.safeAfterTimestamp.has(requiredSymbol) &&
-            baselineTimestamp !== undefined &&
-            freshProviderTick(latestTick) &&
-            Number(latestTick.timestamp_ms) > baselineTimestamp;
+            this.baselineTimestamps.has(requiredSymbol);
+          connected = baselineReady &&
+            await this.waitForFreshSymbolTick(requiredSymbol);
         }
         if (!connected) reason = "feed_not_connected";
       }
