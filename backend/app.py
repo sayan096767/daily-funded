@@ -550,6 +550,15 @@ class CloudflareTradingApiError(Exception):
 WORKER_TRADING_ERRORS = {
     "trading_disabled": ("Trading is disabled for this account.", 409),
     "market_unavailable": ("Current market data is unavailable. No order was placed.", 503),
+    "protection_unavailable": (
+        "The server-side protection feed is unavailable. No position was opened.",
+        503,
+    ),
+    "protection_state_sync_failed": (
+        "The Worker may already have opened the position, but protection state synchronization failed. "
+        "Do not retry until the position status is checked.",
+        503,
+    ),
     "stale_quote": ("The market quote is stale or the market is closed. No order was placed.", 409),
     "invalid_volume": ("The order volume is invalid for this symbol or account.", 400),
     "invalid_tp": ("Take profit must be valid and on the correct side of entry.", 400),
@@ -560,6 +569,87 @@ WORKER_TRADING_ERRORS = {
     "unauthorized_action": ("This action is not authorized.", 403),
     "invalid_order_type": ("Only market orders are currently supported.", 400),
 }
+
+SENSITIVE_WORKER_ERROR_TEXT = re.compile(
+    r"\b(?:authorization|bearer|token|secret|password|credential|api[_ -]?key|cookie)\b",
+    re.IGNORECASE,
+)
+OPAQUE_WORKER_ERROR_TEXT = re.compile(r"\b[A-Za-z0-9_-]{24,}\b")
+WORKER_ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+WORKER_POSITION_ID = re.compile(r"^POS_[A-Za-z0-9_-]{1,120}$")
+
+
+def sanitize_worker_error_code(value):
+    if not isinstance(value, str) or not WORKER_ERROR_CODE.fullmatch(value):
+        return None
+    if SENSITIVE_WORKER_ERROR_TEXT.search(value.replace("_", " ")):
+        return None
+    return value
+
+
+def sanitize_worker_error_message(value):
+    if not isinstance(value, str):
+        return None
+    message = " ".join(value.split()).strip()
+    if (
+        not message
+        or len(message) > 240
+        or SENSITIVE_WORKER_ERROR_TEXT.search(message)
+        or OPAQUE_WORKER_ERROR_TEXT.search(message)
+        or not re.fullmatch(r"[A-Za-z][A-Za-z .,;:()'!?/-]{0,239}", message)
+    ):
+        return None
+    return message
+
+
+def cloudflare_worker_http_error(status, response_body):
+    try:
+        payload = json.loads(response_body)
+    except (TypeError, ValueError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    upstream_code = payload.get("code")
+    upstream_status = status if isinstance(status, int) and 400 <= status <= 599 else 502
+    safe_position_id = payload.get("position_id")
+    if (
+        not isinstance(safe_position_id, str)
+        or not WORKER_POSITION_ID.fullmatch(safe_position_id)
+    ):
+        safe_position_id = None
+
+    if isinstance(upstream_code, str) and upstream_code in WORKER_TRADING_ERRORS:
+        message, public_status = WORKER_TRADING_ERRORS[upstream_code]
+        if upstream_code == "protection_unavailable":
+            message = sanitize_worker_error_message(payload.get("error")) or message
+        error = CloudflareTradingApiError(
+            upstream_code,
+            message,
+            public_status,
+            upstream_status,
+        )
+        error.include_upstream_status = upstream_code in {
+            "protection_unavailable",
+            "protection_state_sync_failed",
+        }
+        error.position_id = (
+            safe_position_id
+            if upstream_code == "protection_state_sync_failed"
+            else None
+        )
+        return error
+
+    safe_code = sanitize_worker_error_code(upstream_code)
+    safe_message = sanitize_worker_error_message(payload.get("error"))
+    error = CloudflareTradingApiError(
+        safe_code or "worker_http_error",
+        safe_message or "Cloudflare trading API could not process the request.",
+        upstream_status,
+        upstream_status,
+    )
+    error.include_upstream_status = True
+    return error
 
 
 def resolve_trading_engine_account_for_user(firebase_uid, firestore_account_id):
@@ -712,25 +802,11 @@ def call_cloudflare_trading_worker(worker_path, payload=None, method="POST", que
     except HTTPError as error:
         try:
             upstream_body = error.read(MAX_CLOUDFLARE_RESPONSE_BYTES + 1)
-            upstream_payload = json.loads(upstream_body) if len(upstream_body) <= MAX_CLOUDFLARE_RESPONSE_BYTES else {}
-        except (OSError, TypeError, ValueError):
-            upstream_payload = {}
-        upstream_code = upstream_payload.get("code") if isinstance(upstream_payload, dict) else None
-        if upstream_code in WORKER_TRADING_ERRORS:
-            message, status_code = WORKER_TRADING_ERRORS[upstream_code]
-            raise CloudflareTradingApiError(
-                upstream_code,
-                message,
-                status_code,
-                error.code,
-            ) from None
-        public_status = error.code if error.code in {400, 404, 409, 422} else 502
-        raise CloudflareTradingApiError(
-            "worker_http_error",
-            "Cloudflare trading API could not process the request.",
-            public_status,
-            error.code,
-        ) from None
+        except OSError:
+            upstream_body = b""
+        if len(upstream_body) > MAX_CLOUDFLARE_RESPONSE_BYTES:
+            upstream_body = b""
+        raise cloudflare_worker_http_error(error.code, upstream_body) from None
     except (TimeoutError, socket.timeout):
         raise CloudflareTradingApiError(
             "worker_timeout",
@@ -757,13 +833,7 @@ def call_cloudflare_trading_worker(worker_path, payload=None, method="POST", que
         ) from None
 
     if worker_status < 200 or worker_status >= 300:
-        public_status = worker_status if worker_status in {400, 404, 409, 422} else 502
-        raise CloudflareTradingApiError(
-            "worker_http_error",
-            "Cloudflare trading API could not process the request.",
-            public_status,
-            worker_status,
-        )
+        raise cloudflare_worker_http_error(worker_status, response_body)
     if len(response_body) > MAX_CLOUDFLARE_RESPONSE_BYTES:
         raise CloudflareTradingApiError(
             "worker_response_invalid",
@@ -819,7 +889,19 @@ def cloudflare_trading_proxy_response(worker_path, method="GET", payload=None, q
             query=query,
         )
     except CloudflareTradingApiError as error:
-        return jsonify(success=False, error=str(error), code=error.code), error.status_code
+        response = {
+            "success": False,
+            "error": str(error),
+            "code": error.code,
+        }
+        if getattr(error, "include_upstream_status", False):
+            response["upstream_status"] = error.worker_status
+        if error.code == "protection_state_sync_failed":
+            response["position_may_be_open"] = True
+            position_id = getattr(error, "position_id", None)
+            if position_id:
+                response["position_id"] = position_id
+        return jsonify(response), error.status_code
 
     return jsonify(worker_payload), worker_status
 

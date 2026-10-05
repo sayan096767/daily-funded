@@ -1484,6 +1484,189 @@ class CloudflareTradingProxyRouteTests(unittest.TestCase):
         self.assertEqual(network_error.status_code, 502)
         self.assertNotIn("private network detail", network_error.get_data(as_text=True))
 
+    def test_protection_unavailable_preserves_safe_worker_details(self):
+        worker_error = HTTPError(
+            "https://worker.example/positions",
+            503,
+            "Service Unavailable",
+            None,
+            io.BytesIO(json.dumps({
+                "success": False,
+                "code": "protection_unavailable",
+                "error": "The server-side Biquote protection feed is not ready",
+            }).encode("utf-8")),
+        )
+
+        response, _worker_urlopen, _verify_token = self.call_proxy(
+            "/api/trading/positions",
+            method="POST",
+            body={
+                "account_id": "ACC_TEST",
+                "symbol": "XAUUSD",
+                "side": "BUY",
+                "volume": 0.01,
+            },
+            worker_error=worker_error,
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json(), {
+            "success": False,
+            "code": "protection_unavailable",
+            "error": "The server-side Biquote protection feed is not ready",
+            "upstream_status": 503,
+        })
+
+    def test_protection_state_sync_failure_warns_position_may_be_open(self):
+        worker_error = HTTPError(
+            "https://worker.example/positions",
+            503,
+            "Service Unavailable",
+            None,
+            io.BytesIO(json.dumps({
+                "success": False,
+                "code": "protection_state_sync_failed",
+                "error": "Position was opened but server-side protection state synchronization failed",
+                "position_id": "POS_11111111-1111-4111-8111-111111111111",
+            }).encode("utf-8")),
+        )
+
+        response, _worker_urlopen, _verify_token = self.call_proxy(
+            "/api/trading/positions",
+            method="POST",
+            body={
+                "account_id": "ACC_TEST",
+                "symbol": "XAUUSD",
+                "side": "BUY",
+                "volume": 0.01,
+            },
+            worker_error=worker_error,
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json(), {
+            "success": False,
+            "code": "protection_state_sync_failed",
+            "error": (
+                "The Worker may already have opened the position, but protection state "
+                "synchronization failed. Do not retry until the position status is checked."
+            ),
+            "upstream_status": 503,
+            "position_may_be_open": True,
+            "position_id": "POS_11111111-1111-4111-8111-111111111111",
+        })
+
+    def test_unrecognized_worker_500_preserves_safe_status_code_and_message(self):
+        worker_error = HTTPError(
+            "https://worker.example/positions",
+            500,
+            "Internal Server Error",
+            None,
+            io.BytesIO(json.dumps({
+                "success": False,
+                "code": "internal_error",
+                "error": "The trading service could not complete this request",
+            }).encode("utf-8")),
+        )
+
+        response, _worker_urlopen, _verify_token = self.call_proxy(
+            "/api/trading/positions",
+            method="POST",
+            body={
+                "account_id": "ACC_TEST",
+                "symbol": "XAUUSD",
+                "side": "BUY",
+                "volume": 0.01,
+            },
+            worker_error=worker_error,
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.get_json(), {
+            "success": False,
+            "code": "internal_error",
+            "error": "The trading service could not complete this request",
+            "upstream_status": 500,
+        })
+
+    def test_known_worker_trading_error_response_remains_unchanged(self):
+        worker_error = HTTPError(
+            "https://worker.example/positions",
+            400,
+            "Bad Request",
+            None,
+            io.BytesIO(json.dumps({
+                "success": False,
+                "code": "invalid_volume",
+                "error": "Worker internal detail is intentionally not forwarded",
+            }).encode("utf-8")),
+        )
+
+        response, _worker_urlopen, _verify_token = self.call_proxy(
+            "/api/trading/positions",
+            method="POST",
+            body={
+                "account_id": "ACC_TEST",
+                "symbol": "XAUUSD",
+                "side": "BUY",
+                "volume": 0.01,
+            },
+            worker_error=worker_error,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json(), {
+            "success": False,
+            "code": "invalid_volume",
+            "error": "The order volume is invalid for this symbol or account.",
+        })
+
+    def test_worker_error_response_never_returns_sensitive_headers_or_tokens(self):
+        secrets = (
+            "local-test-trading-token",
+            "firebase-id-token-value",
+            "cloudflare-api-key-value",
+        )
+        worker_error = HTTPError(
+            "https://worker.example/positions",
+            500,
+            "Internal Server Error",
+            None,
+            io.BytesIO(json.dumps({
+                "success": False,
+                "code": "api_token",
+                "error": (
+                    "Authorization: Bearer local-test-trading-token; "
+                    "Firebase token firebase-id-token-value; "
+                    "Cloudflare API key cloudflare-api-key-value"
+                ),
+            }).encode("utf-8")),
+        )
+
+        response, _worker_urlopen, _verify_token = self.call_proxy(
+            "/api/trading/positions",
+            method="POST",
+            body={
+                "account_id": "ACC_TEST",
+                "symbol": "XAUUSD",
+                "side": "BUY",
+                "volume": 0.01,
+            },
+            worker_error=worker_error,
+        )
+
+        body = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 500)
+        for secret in secrets:
+            self.assertNotIn(secret, body)
+        self.assertNotIn("Authorization", body)
+        self.assertNotIn("Bearer", body)
+        self.assertEqual(response.get_json()["code"], "worker_http_error")
+        self.assertEqual(
+            response.get_json()["error"],
+            "Cloudflare trading API could not process the request.",
+        )
+
     def test_worker_timeout_is_sanitized_and_maps_to_gateway_timeout(self):
         response, worker_urlopen, _verify_token = self.call_proxy(
             "/api/trading/accounts?account_id=ACC_TEST",
