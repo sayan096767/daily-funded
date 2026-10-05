@@ -1147,6 +1147,20 @@ const MARKET_DATA_CACHE_TTL_SECONDS = 5;
 const MARKET_FEED_ALARM_MS = 60 * 1000;
 const MARKET_FEED_REFRESH_MS = 10 * 60 * 1000;
 const MARKET_FEED_HEALTH_TIMEOUT_MS = 45 * 1000;
+const MARKET_FEED_FAILURE_REASONS = new Set([
+  "biquote_negotiation_failed",
+  "websocket_upgrade_failed",
+  "signalr_handshake_failed",
+  "subscription_failed",
+  "feed_not_connected",
+]);
+const MARKET_FEED_FAILURE_MESSAGES = {
+  biquote_negotiation_failed: "Biquote negotiation failed",
+  websocket_upgrade_failed: "Biquote WebSocket upgrade failed",
+  signalr_handshake_failed: "Biquote SignalR handshake failed",
+  subscription_failed: "Biquote subscription failed",
+  feed_not_connected: "Biquote feed is not connected",
+};
 const MARKET_CANDLE_INTERVALS = {
   "1m": 60_000,
   "5m": 5 * 60_000,
@@ -2088,9 +2102,12 @@ export class MarketFeedDO {
     const previousConnection = this.activeConnection;
     const generation = ++this.connectionGeneration;
     let candidateConnection = null;
+    let failureReason = "feed_not_connected";
     try {
       await this.refreshProviderBaselines();
+      failureReason = "biquote_negotiation_failed";
       const { socketUrl } = await negotiateBiquoteSignalR(fetch);
+      failureReason = "websocket_upgrade_failed";
       const response = await fetch(socketUrl, {
         headers: { Upgrade: "websocket" },
         signal: AbortSignal.timeout(10_000),
@@ -2113,6 +2130,7 @@ export class MarketFeedDO {
         ready: null,
         resolveReady: null,
         rejectReady: null,
+        failureReason: "signalr_handshake_failed",
       };
       candidateConnection = connection;
       connection.ready = new Promise((resolve, reject) => {
@@ -2162,12 +2180,15 @@ export class MarketFeedDO {
         this.connections.delete(candidateConnection);
         candidateConnection.socket.close(1011, "Biquote connection setup failed");
       }
-      console.error("Biquote SignalR connection failed:", error);
+      console.error("Biquote SignalR connection failed:", failureReason);
       if (this.activeConnection === previousConnection &&
         previousConnection?.socket.readyState === WebSocket.OPEN) {
         return { connected: true, refresh_failed: true };
       }
-      return { connected: false, error: error.message };
+      return {
+        connected: false,
+        reason: candidateConnection?.failureReason || failureReason,
+      };
     }
   }
 
@@ -2181,6 +2202,7 @@ export class MarketFeedDO {
         if (!connection.handshakeComplete) {
           if (message.error) throw new Error(`SignalR handshake rejected: ${message.error}`);
           connection.handshakeComplete = true;
+          connection.failureReason = "subscription_failed";
           connection.socket.send(signalRRecord({
             type: 1,
             target: "Subscribe",
@@ -2214,7 +2236,7 @@ export class MarketFeedDO {
       }
     } catch (error) {
       connection.rejectReady?.(error);
-      console.error("Biquote SignalR message processing failed:", error);
+      console.error("Biquote SignalR message processing failed");
       connection.socket.close(1011, "SignalR message processing failed");
     }
   }
@@ -2440,7 +2462,11 @@ export class MarketFeedDO {
         success: result.connected,
         connected: result.connected,
         symbols: this.symbolRecords.length,
-        error: result.error,
+        ...(result.connected ? {} : {
+          reason: MARKET_FEED_FAILURE_REASONS.has(result.reason)
+            ? result.reason
+            : "feed_not_connected",
+        }),
       }, result.connected ? 200 : 503);
     }
     if (request.method === "POST" && url.pathname === "/sync-account") {
@@ -2506,11 +2532,21 @@ async function syncMarketFeedAccount(env, accountId) {
 }
 
 async function ensureMarketFeed(env) {
-  const response = await marketFeedStub(env).fetch("https://market-feed/ensure", {
-    method: "POST",
-  });
-  const result = await response.json().catch(() => ({}));
-  return response.ok && result.connected === true;
+  try {
+    const response = await marketFeedStub(env).fetch("https://market-feed/ensure", {
+      method: "POST",
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.ok && result.connected === true) return { connected: true };
+    return {
+      connected: false,
+      reason: MARKET_FEED_FAILURE_REASONS.has(result.reason)
+        ? result.reason
+        : "feed_not_connected",
+    };
+  } catch {
+    return { connected: false, reason: "feed_not_connected" };
+  }
 }
 
 export class PositionEventsDO {
@@ -4465,13 +4501,17 @@ export default {
           return tradingError("rule_violation", `Symbol ${symbol} is not available for trading`, 400);
         }
         if (symbolRecord.provider === "biquote") {
-          try {
-            if (!await ensureMarketFeed(env)) {
-              return tradingError("protection_unavailable", "The server-side Biquote protection feed is not ready", 503);
-            }
-          } catch (error) {
-            console.error("Unable to verify the server-side Biquote protection feed:", error);
-            return tradingError("protection_unavailable", error.message, 503);
+          const feed = await ensureMarketFeed(env);
+          if (!feed.connected) {
+            const reason = MARKET_FEED_FAILURE_REASONS.has(feed.reason)
+              ? feed.reason
+              : "feed_not_connected";
+            return json({
+              success: false,
+              code: "protection_unavailable",
+              error: `The server-side Biquote protection feed is not ready (${MARKET_FEED_FAILURE_MESSAGES[reason]})`,
+              reason,
+            }, 503);
           }
         }
 
