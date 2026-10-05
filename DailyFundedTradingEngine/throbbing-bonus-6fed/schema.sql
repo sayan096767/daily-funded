@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS positions (
     take_profit REAL,
     stop_loss REAL,
     status TEXT NOT NULL DEFAULT 'open',
+    close_price REAL,
+    realized_pnl REAL,
+    closed_at TEXT,
     opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (account_id) REFERENCES trading_accounts(id),
     FOREIGN KEY (order_id) REFERENCES orders(id)
@@ -95,6 +98,14 @@ ON orders(account_id);
 
 CREATE INDEX IF NOT EXISTS idx_positions_account
 ON positions(account_id);
+
+CREATE TABLE IF NOT EXISTS market_tick_cursors (
+    symbol TEXT PRIMARY KEY,
+    timestamp_ms INTEGER NOT NULL,
+    bid REAL NOT NULL,
+    ask REAL NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE INDEX IF NOT EXISTS idx_trades_account
 ON trades(account_id);

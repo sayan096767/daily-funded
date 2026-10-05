@@ -37,3 +37,15 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+  - type: worker
+    name: daily-funded-market-consumer
+    runtime: node
+    plan: starter
+    rootDir: server-market-consumer
+    buildCommand: npm ci
+    startCommand: npm start
+    envVars:
+      - key: CLOUDFLARE_TRADING_WORKER_URL
+        sync: false
+      - key: MARKET_TICK_INGEST_TOKEN
+        sync: false

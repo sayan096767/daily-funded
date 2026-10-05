@@ -4,22 +4,36 @@ import { flushSync } from "react-dom";
 import * as signalR from "@microsoft/signalr";
 import {
   Activity,
+  AlignHorizontalSpaceAround,
   BarChart3,
-  Clock3,
   CandlestickChart,
+  ChartNoAxesCombined,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  CircleHelp,
+  CircleDot,
+  Clock3,
+  Crosshair,
+  Eye,
+  Magnet,
   Menu,
+  MoveVertical,
+  MousePointer2,
   Minus,
+  MoveUpRight,
+  PencilLine,
   PanelBottomClose,
   Plus,
+  RotateCcw,
+  Ruler,
   Search,
   Settings2,
   Shield,
   Star,
+  TrendingUp,
+  Trash2,
+  GitFork,
   X,
 } from "lucide-react";
 import { CandlestickSeries, ColorType, createChart, TickMarkType } from "lightweight-charts";
@@ -31,6 +45,7 @@ import {
   setSeriesDataPreservingVisibleRange,
   shouldLoadOlderHistory,
 } from "./candleHistory.js";
+import { applyPositionEvent } from "./tradingPositionEvents.js";
 import "../node_modules/flag-icons/css/flag-icons.min.css";
 import "./styles.css";
 
@@ -38,6 +53,7 @@ const API_BASE = import.meta.env.DEV ? "" : "https://throbbing-bonus-6fed.dailyf
 const QUOTE_FALLBACK_MS = 5000;
 const LIVE_TICK_MAX_AGE_MS = 5 * 60 * 1000;
 const TRADING_API_BASE = import.meta.env.DEV ? "/api" : "https://daily-funded-api.onrender.com/api";
+const TRADING_EVENTS_URL = "wss://throbbing-bonus-6fed.dailyfunded.workers.dev/trading/events";
 const TRADING_POLL_MS = 5000;
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyArsv-HojE9hn_3BAcJVFh5zp4XS9Dw480",
@@ -50,6 +66,532 @@ const FIREBASE_CONFIG = {
 };
 const INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d"];
 const INTERVAL_SECONDS = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
+const DRAWING_TOOL_GROUPS = [
+  {
+    id: "lines",
+    label: "Lines",
+    icon: PencilLine,
+    tools: [
+      { id: "trend-line", label: "Trend Line", icon: TrendingUp, shortcut: "Alt+T", points: 2 },
+      { id: "ray", label: "Ray", icon: TrendingUp, points: 2 },
+      { id: "info-line", label: "Info Line", icon: Ruler, points: 2 },
+      { id: "extended-line", label: "Extended Line", icon: ChartNoAxesCombined, points: 2 },
+      { id: "trend-angle", label: "Trend Angle", icon: MoveUpRight, points: 2 },
+      { id: "horizontal-line", label: "Horizontal Line", icon: Minus, shortcut: "Alt+H", points: 1 },
+      { id: "horizontal-ray", label: "Horizontal Ray", icon: AlignHorizontalSpaceAround, shortcut: "Alt+J", points: 1 },
+      { id: "vertical-line", label: "Vertical Line", icon: MoveVertical, shortcut: "Alt+V", points: 1 },
+      { id: "cross-line", label: "Cross Line", icon: Crosshair, shortcut: "Alt+C", points: 1 },
+    ],
+  },
+  {
+    id: "fibonacci",
+    label: "Fibonacci",
+    icon: AlignHorizontalSpaceAround,
+    tools: [
+      { id: "fib-retracement", label: "Fib Retracement", icon: AlignHorizontalSpaceAround, shortcut: "Alt+F", points: 2 },
+    ],
+  },
+  {
+    id: "shapes",
+    label: "Shapes",
+    icon: CandlestickChart,
+    tools: [
+      { id: "rectangle", label: "Rectangle", icon: CandlestickChart, shortcut: "Alt+Shift+R", points: 2 },
+    ],
+  },
+  {
+    id: "channels",
+    label: "Channels",
+    icon: Ruler,
+    tools: [
+      { id: "parallel-channel", label: "Parallel Channel", icon: AlignHorizontalSpaceAround, points: 3 },
+      { id: "regression-trend", label: "Regression Trend", icon: TrendingUp, points: 2 },
+      { id: "flat-top-bottom", label: "Flat Top/Bottom", icon: Minus, points: 3 },
+      { id: "disjoint-channel", label: "Disjoint Channel", icon: ChartNoAxesCombined, points: 3 },
+    ],
+  },
+  {
+    id: "pitchforks",
+    label: "Pitchforks",
+    icon: GitFork,
+    tools: [
+      { id: "pitchfork", label: "Pitchfork", icon: GitFork, points: 3 },
+      { id: "schiff-pitchfork", label: "Schiff Pitchfork", icon: GitFork, points: 3 },
+      { id: "modified-schiff-pitchfork", label: "Modified Schiff Pitchfork", icon: GitFork, points: 3 },
+      { id: "inside-pitchfork", label: "Inside Pitchfork", icon: GitFork, points: 3 },
+    ],
+  },
+];
+const DRAWING_TOOL_BY_ID = new Map(
+  DRAWING_TOOL_GROUPS.flatMap((group) =>
+    group.tools.map((tool) => [tool.id, { ...tool, group: group.id }])
+  )
+);
+const DRAWING_SHORTCUTS = new Map(
+  DRAWING_TOOL_GROUPS.flatMap((group) =>
+    group.tools.filter((tool) => tool.shortcut).map((tool) => [
+      tool.shortcut.toLowerCase().replaceAll("+", ""),
+      tool.id,
+    ])
+  )
+);
+const DRAWINGS_STORAGE_KEY = "df-terminal-drawings-v1";
+
+function readStoredDrawings() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(DRAWINGS_STORAGE_KEY) || "{}");
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return {};
+    return Object.fromEntries(Object.entries(stored).map(([symbol, drawings]) => [
+      symbol,
+      Array.isArray(drawings)
+        ? drawings.filter((drawing) =>
+          drawing &&
+          typeof drawing.id === "string" &&
+          DRAWING_TOOL_BY_ID.has(drawing.type) &&
+          Array.isArray(drawing.points) &&
+          drawing.points.length === DRAWING_TOOL_BY_ID.get(drawing.type).points &&
+          drawing.points.every((point) =>
+            point &&
+            Number.isFinite(point.price) &&
+            (Number.isFinite(point.time) ||
+              (point.time && typeof point.time === "object" && Number.isInteger(point.time.year)))
+          )
+        ).map((drawing) => ({
+          ...drawing,
+          color: typeof drawing.color === "string" && drawing.color ? drawing.color : "#c8eb7b",
+          opacity: Number.isFinite(Number(drawing.opacity)) ? Math.min(1, Math.max(0.1, Number(drawing.opacity))) : 1,
+          width: [1, 2, 3, 4, 5].includes(Number(drawing.width)) ? Number(drawing.width) : 2,
+          lineStyle: ["solid", "dashed", "dotted"].includes(drawing.lineStyle) ? drawing.lineStyle : "solid",
+          hidden: Boolean(drawing.hidden),
+          locked: Boolean(drawing.locked),
+        }))
+        : [],
+    ]));
+  } catch (error) {
+    console.warn("Unable to load saved chart drawings.", error);
+    return {};
+  }
+}
+
+function getDrawingLineDash(lineStyle) {
+  switch (lineStyle) {
+    case "dashed": return "10 7";
+    case "dotted": return "2 6";
+    default: return undefined;
+  }
+}
+
+const DRAWING_TOOLBAR_ITEMS = [
+  { id: "cursor", label: "Cursor", icon: Crosshair, kind: "menu" },
+  { id: "lines", label: "Lines", icon: PencilLine, kind: "menu" },
+  { id: "fibonacci", label: "Fibonacci", icon: AlignHorizontalSpaceAround, kind: "menu" },
+  { id: "patterns", label: "Patterns", icon: GitFork, kind: "unavailable" },
+  { id: "projection", label: "Projection", icon: ChartNoAxesCombined, kind: "unavailable" },
+  { id: "brushes", label: "Brushes", icon: MoveUpRight, kind: "menu" },
+  { id: "text", label: "Text and notes", icon: Minus, kind: "unavailable" },
+  { id: "icons", label: "Icons", icon: Star, kind: "unavailable" },
+  { id: "measure", label: "Measure", icon: Ruler, kind: "action" },
+  { id: "zoom", label: "Zoom in", icon: Plus, kind: "action" },
+  { id: "magnet", label: "Magnet", icon: Magnet, kind: "menu" },
+  { id: "lock", label: "Lock drawings", icon: Shield, kind: "action" },
+  { id: "visibility", label: "Visibility", icon: Eye, kind: "menu" },
+  { id: "remove", label: "Remove drawings", icon: Trash2, kind: "menu" },
+];
+
+function DrawingToolbar({
+  selectedTool,
+  onSelectTool,
+  cursorMode,
+  onSetCursorMode,
+  onToggleLock,
+  onRemoveLatestDrawing,
+  onClearDrawings,
+  drawingCount,
+  lockedDrawingCount,
+  alwaysRemoveLocked,
+  onToggleAlwaysRemoveLocked,
+  magnetMode,
+  onSetMagnetMode,
+  drawingsVisible,
+  onToggleVisibility,
+  positionsVisible,
+  onTogglePositionsVisibility,
+  onHideAll,
+  hiddenDrawings,
+  onShowDrawing,
+  onZoomIn,
+}) {
+  const [openMenu, setOpenMenu] = useState("");
+  const toolbarRef = useRef(null);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (!toolbarRef.current?.contains(event.target)) setOpenMenu("");
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setOpenMenu("");
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (selectedTool) setOpenMenu("");
+  }, [selectedTool]);
+
+  function selectTool(toolId) {
+    onSelectTool(toolId);
+    setOpenMenu("");
+  }
+
+  return (
+    <div className="drawing-toolbar" ref={toolbarRef} aria-label="Chart drawing tools">
+      {DRAWING_TOOLBAR_ITEMS.map((item, index) => {
+        const Icon = item.icon;
+        const isOpen = openMenu === item.id;
+        const unavailable = item.kind === "unavailable";
+        const buttonLabel = item.id === "lock" && drawingCount > 0 && lockedDrawingCount === drawingCount
+          ? "Unlock drawings"
+          : item.label;
+        const pressed = item.id === "cursor"
+          ? cursorMode === "cross"
+          : item.id === "lines" || item.id === "fibonacci" || item.id === "brushes"
+            ? Boolean(
+              selectedTool &&
+              (item.id === "brushes"
+                ? DRAWING_TOOL_BY_ID.get(selectedTool)?.group === "shapes"
+                : item.id === "fibonacci"
+                ? DRAWING_TOOL_BY_ID.get(selectedTool)?.group === "fibonacci"
+                : ["lines", "channels", "pitchforks"].includes(DRAWING_TOOL_BY_ID.get(selectedTool)?.group))
+            )
+            : item.id === "magnet"
+              ? magnetMode !== "off"
+              : item.id === "lock"
+                ? drawingCount > 0 && lockedDrawingCount === drawingCount
+                : false;
+        return (
+          <React.Fragment key={item.id}>
+            {index === 8 || index === 10 || index === 12
+              ? <span className="drawing-toolbar-divider" aria-hidden="true" />
+              : null}
+            <div className="drawing-toolbar-item">
+              <button
+                type="button"
+                className={`drawing-toolbar-button ${pressed ? "drawing-toolbar-button-active" : ""}`}
+                aria-label={buttonLabel}
+                aria-pressed={item.kind === "action" || item.id === "cursor" ? pressed : undefined}
+                aria-expanded={item.kind === "menu" ? isOpen : undefined}
+                title={unavailable ? `${item.label}: not implemented yet` : buttonLabel}
+                disabled={unavailable || (item.id === "lock" && !drawingCount)}
+                onClick={() => {
+                  if (unavailable) return;
+                  if (item.kind === "menu") {
+                    setOpenMenu((current) => current === item.id ? "" : item.id);
+                  } else if (item.id === "measure") {
+                    selectTool("info-line");
+                  } else if (item.id === "zoom") {
+                    onZoomIn();
+                  } else if (item.id === "lock") {
+                    onSelectTool("");
+                    onToggleLock();
+                  }
+                }}
+              ><Icon size={16} strokeWidth={1.6} /></button>
+              {isOpen && <div className="drawing-tool-menu" role="menu" aria-label={`${item.label} tools`}>
+                {item.id === "cursor" && <>
+                  <div className="drawing-tool-menu-heading">Cursor</div>
+                  {[
+                    ["cross", "Cross", Crosshair],
+                    ["dot", "Dot", CircleDot],
+                    ["arrow", "Arrow", MousePointer2],
+                    ["eraser", "Eraser", Trash2],
+                  ].map(([mode, label, ModeIcon]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={cursorMode === mode}
+                      className={`drawing-tool-option ${cursorMode === mode ? "drawing-tool-option-active" : ""}`}
+                      onClick={() => {
+                        onSelectTool("");
+                        onSetCursorMode(mode);
+                        setOpenMenu("");
+                      }}
+                    ><ModeIcon size={15} /><span>{label}</span></button>
+                  ))}
+                </>}
+                {(item.id === "lines" || item.id === "fibonacci" || item.id === "brushes") &&
+                  DRAWING_TOOL_GROUPS.filter((group) =>
+                    item.id === "brushes"
+                      ? group.id === "shapes"
+                      : item.id === "fibonacci"
+                      ? group.id === "fibonacci"
+                      : ["lines", "channels", "pitchforks"].includes(group.id)
+                  ).map((group) => (
+                    <section className="drawing-tool-menu-section" key={group.id}>
+                      <div className="drawing-tool-menu-heading">{group.label}</div>
+                      {group.tools.map((tool) => {
+                        const ToolIcon = tool.icon;
+                        return (
+                          <button
+                            key={tool.id}
+                            type="button"
+                            className={`drawing-tool-option ${selectedTool === tool.id ? "drawing-tool-option-active" : ""}`}
+                            role="menuitem"
+                            onClick={() => selectTool(tool.id)}
+                          ><ToolIcon size={15} /><span>{tool.label}</span>{tool.shortcut && <kbd>{tool.shortcut}</kbd>}</button>
+                        );
+                      })}
+                    </section>
+                  ))}
+                {item.id === "magnet" && <>
+                  <div className="drawing-tool-menu-heading">Magnet</div>
+                  {[
+                    ["weak", "Weak Magnet"],
+                    ["strong", "Strong Magnet"],
+                    ["off", "Magnet Off"],
+                  ].map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={magnetMode === mode}
+                      className={`drawing-tool-option ${magnetMode === mode ? "drawing-tool-option-active" : ""}`}
+                      onClick={() => { onSetMagnetMode(mode); setOpenMenu(""); }}
+                    ><Magnet size={15} /><span>{label}</span></button>
+                  ))}
+                </>}
+                {item.id === "visibility" && <>
+                  <button type="button" role="menuitemcheckbox" aria-checked={!drawingsVisible} className="drawing-tool-option" onClick={onToggleVisibility}><Eye size={15} /><span>{drawingsVisible ? "Hide drawings" : "Show drawings"}</span></button>
+                  <button type="button" role="menuitemcheckbox" aria-checked={!positionsVisible} className="drawing-tool-option" onClick={onTogglePositionsVisibility}><Eye size={15} /><span>{positionsVisible ? "Hide positions & orders" : "Show positions & orders"}</span></button>
+                  <button type="button" role="menuitem" className="drawing-tool-option" onClick={onHideAll}><Eye size={15} /><span>{drawingsVisible || positionsVisible ? "Hide all" : "Show all"}</span></button>
+                  {hiddenDrawings.length > 0 && <>
+                    <div className="drawing-tool-menu-heading">Hidden drawings</div>
+                    {hiddenDrawings.map((drawing, index) => (
+                      <button
+                        key={drawing.id}
+                        type="button"
+                        role="menuitem"
+                        className="drawing-tool-option"
+                        onClick={() => onShowDrawing(drawing.id)}
+                      ><Eye size={15} /><span>Show {DRAWING_TOOL_BY_ID.get(drawing.type)?.label || "drawing"} {index + 1}</span></button>
+                    ))}
+                  </>}
+                </>}
+                {item.id === "remove" && <>
+                  <button type="button" role="menuitem" className="drawing-tool-option" disabled={!drawingCount || (lockedDrawingCount === drawingCount && !alwaysRemoveLocked)} onClick={onRemoveLatestDrawing}><Trash2 size={15} /><span>Remove 1 drawing</span></button>
+                  <button type="button" role="menuitem" className="drawing-tool-option" disabled={!drawingCount || (lockedDrawingCount === drawingCount && !alwaysRemoveLocked)} onClick={onClearDrawings}><Trash2 size={15} /><span>Remove all drawings</span></button>
+                  <label className="drawing-tool-option drawing-tool-toggle">
+                    <span>Always remove locked drawings</span>
+                    <input type="checkbox" checked={alwaysRemoveLocked} onChange={onToggleAlwaysRemoveLocked} />
+                  </label>
+                </>}
+              </div>}
+            </div>
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+function getExtendedLine(start, end, width, height, extendStart, extendEnd) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (!length) return [{ start, end }];
+  const distance = Math.max(width, height) * 2;
+  const unitX = dx / length;
+  const unitY = dy / length;
+  return [{
+    start: extendStart ? { x: start.x - unitX * distance, y: start.y - unitY * distance } : start,
+    end: extendEnd ? { x: end.x + unitX * distance, y: end.y + unitY * distance } : end,
+  }];
+}
+
+function getRegressionSegments(drawing, data, timeToCoordinate, priceToCoordinate, width, height) {
+  const [first, last] = drawing.points;
+  const startTime = Number(first.time);
+  const endTime = Number(last.time);
+  const lowTime = Math.min(startTime, endTime);
+  const highTime = Math.max(startTime, endTime);
+  const samples = data.filter((candle) => candle.time >= lowTime && candle.time <= highTime);
+  if (samples.length < 2 || lowTime === highTime) {
+    const coords = drawing.points.map((point) => ({
+      x: timeToCoordinate(point.time),
+      y: priceToCoordinate(point.price),
+    }));
+    return { lines: getExtendedLine(coords[0], coords[1], width, height, false, false) };
+  }
+
+  const meanX = samples.reduce((sum, candle) => sum + candle.time, 0) / samples.length;
+  const meanY = samples.reduce((sum, candle) => sum + candle.close, 0) / samples.length;
+  const denominator = samples.reduce((sum, candle) => sum + (candle.time - meanX) ** 2, 0);
+  if (!denominator) return { lines: [] };
+  const slope = samples.reduce((sum, candle) =>
+    sum + (candle.time - meanX) * (candle.close - meanY), 0
+  ) / denominator;
+  const intercept = meanY - slope * meanX;
+  const deviation = Math.max(...samples.map((candle) =>
+    Math.abs(candle.close - (intercept + slope * candle.time))
+  ));
+  const timeA = Math.min(first.time, last.time);
+  const timeB = Math.max(first.time, last.time);
+  const priceA = intercept + slope * timeA;
+  const priceB = intercept + slope * timeB;
+  const xA = timeToCoordinate(timeA);
+  const xB = timeToCoordinate(timeB);
+  const centerA = priceToCoordinate(priceA);
+  const centerB = priceToCoordinate(priceB);
+  const upperA = priceToCoordinate(priceA + deviation);
+  const upperB = priceToCoordinate(priceB + deviation);
+  const lowerA = priceToCoordinate(priceA - deviation);
+  const lowerB = priceToCoordinate(priceB - deviation);
+  if (![xA, xB, centerA, centerB, upperA, upperB, lowerA, lowerB].every(Number.isFinite)) {
+    return { lines: [] };
+  }
+  return {
+    lines: [
+      { start: { x: xA, y: centerA }, end: { x: xB, y: centerB } },
+      { start: { x: xA, y: upperA }, end: { x: xB, y: upperB } },
+      { start: { x: xA, y: lowerA }, end: { x: xB, y: lowerB } },
+    ],
+  };
+}
+
+function getDrawingGeometry(drawing, pointCoordinates, data, timeToCoordinate, priceToCoordinate, width, height) {
+  const [first, second, third] = pointCoordinates;
+  if (!first || !Number.isFinite(first.x) || !Number.isFinite(first.y)) return { lines: [] };
+  const fullWidth = Math.max(0, width - 72);
+  const fullHeight = Math.max(0, height - 28);
+
+  if (drawing.type === "horizontal-line") {
+    return { lines: [{ start: { x: 0, y: first.y }, end: { x: fullWidth, y: first.y } }] };
+  }
+  if (drawing.type === "horizontal-ray") {
+    return { lines: [{ start: first, end: { x: fullWidth, y: first.y } }] };
+  }
+  if (drawing.type === "vertical-line") {
+    return { lines: [{ start: { x: first.x, y: 0 }, end: { x: first.x, y: fullHeight } }] };
+  }
+  if (drawing.type === "cross-line") {
+    return {
+      lines: [
+        { start: { x: first.x, y: 0 }, end: { x: first.x, y: fullHeight } },
+        { start: { x: 0, y: first.y }, end: { x: fullWidth, y: first.y } },
+      ],
+    };
+  }
+  if (drawing.type === "fib-retracement" && second && Number.isFinite(second.y)) {
+    const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+    const priceRange = drawing.points[1].price - drawing.points[0].price;
+    return {
+      lines: levels.map((level) => {
+        const y = priceToCoordinate(drawing.points[0].price + priceRange * level);
+        return {
+          start: { x: Math.min(first.x, second.x), y },
+          end: { x: Math.max(first.x, second.x), y },
+        };
+      }).filter((line) => Number.isFinite(line.start.y)),
+      labels: levels.map((level) => {
+        const price = drawing.points[0].price + priceRange * level;
+        return {
+          x: Math.max(first.x, second.x) + 4,
+          y: priceToCoordinate(price),
+          text: `${(level * 100).toFixed(1)}%`,
+        };
+      }).filter((label) => Number.isFinite(label.y)),
+    };
+  }
+  if (drawing.type === "rectangle" && second && Number.isFinite(second.x) && Number.isFinite(second.y)) {
+    const left = Math.min(first.x, second.x);
+    const right = Math.max(first.x, second.x);
+    const top = Math.min(first.y, second.y);
+    const bottom = Math.max(first.y, second.y);
+    return {
+      lines: [
+        { start: { x: left, y: top }, end: { x: right, y: top } },
+        { start: { x: right, y: top }, end: { x: right, y: bottom } },
+        { start: { x: right, y: bottom }, end: { x: left, y: bottom } },
+        { start: { x: left, y: bottom }, end: { x: left, y: top } },
+      ],
+    };
+  }
+  if (!second || !Number.isFinite(second.x) || !Number.isFinite(second.y)) return { lines: [] };
+  if (drawing.type === "ray") {
+    return { lines: getExtendedLine(first, second, width, height, false, true) };
+  }
+  if (drawing.type === "extended-line") {
+    return { lines: getExtendedLine(first, second, width, height, true, true) };
+  }
+  if (drawing.type === "regression-trend") {
+    return getRegressionSegments(drawing, data, timeToCoordinate, priceToCoordinate, width, height);
+  }
+  if (drawing.type === "flat-top-bottom" && third && Number.isFinite(third.y)) {
+    const left = Math.min(first.x, second.x);
+    const right = Math.max(first.x, second.x);
+    return {
+      lines: [
+        { start: { x: left, y: first.y }, end: { x: right, y: first.y } },
+        { start: { x: left, y: third.y }, end: { x: right, y: third.y } },
+        { start: { x: left, y: first.y }, end: { x: left, y: third.y } },
+        { start: { x: right, y: first.y }, end: { x: right, y: third.y } },
+      ],
+    };
+  }
+  if (
+    ["parallel-channel", "disjoint-channel"].includes(drawing.type) &&
+    third &&
+    Number.isFinite(third.x) &&
+    Number.isFinite(third.y)
+  ) {
+    const dx = second.x - first.x;
+    const dy = second.y - first.y;
+    const length = Math.hypot(dx, dy);
+    if (!length) return { lines: [] };
+    const normal = { x: -dy / length, y: dx / length };
+    const offsetAmount = (third.x - first.x) * normal.x + (third.y - first.y) * normal.y;
+    const offset = { x: normal.x * offsetAmount, y: normal.y * offsetAmount };
+    const shiftedFirst = { x: first.x + offset.x, y: first.y + offset.y };
+    const shiftedSecond = { x: second.x + offset.x, y: second.y + offset.y };
+    const lines = [
+      { start: first, end: second },
+      { start: shiftedFirst, end: shiftedSecond },
+    ];
+    if (drawing.type === "parallel-channel") {
+      lines.push({ start: first, end: shiftedFirst }, { start: second, end: shiftedSecond });
+    }
+    return { lines };
+  }
+  if (
+    ["pitchfork", "schiff-pitchfork", "modified-schiff-pitchfork", "inside-pitchfork"].includes(drawing.type) &&
+    third &&
+    Number.isFinite(third.x) &&
+    Number.isFinite(third.y)
+  ) {
+    let pivot = first;
+    if (drawing.type === "schiff-pitchfork") {
+      pivot = { x: first.x, y: (first.y + second.y) / 2 };
+    } else if (drawing.type === "modified-schiff-pitchfork") {
+      pivot = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+    } else if (drawing.type === "inside-pitchfork") {
+      pivot = { x: first.x, y: first.y + (second.y - first.y) * 0.25 };
+    }
+    const median = { x: (second.x + third.x) / 2, y: (second.y + third.y) / 2 };
+    return {
+      lines: [
+        ...getExtendedLine(pivot, median, width, height, false, true),
+        ...getExtendedLine(second, { x: second.x + median.x - pivot.x, y: second.y + median.y - pivot.y }, width, height, false, true),
+        ...getExtendedLine(third, { x: third.x + median.x - pivot.x, y: third.y + median.y - pivot.y }, width, height, false, true),
+      ],
+    };
+  }
+  return { lines: getExtendedLine(first, second, width, height, false, false) };
+}
 const EXCHANGE_TIME_ZONES = {
   AUS200: "Australia/Sydney",
   GER40: "Europe/Berlin",
@@ -441,27 +983,46 @@ function useTradingSession() {
   positionsRef.current = positions;
   const confirmedPositionVersion = useRef(0);
   const confirmedPositions = useRef(new Map());
+  const closedPositionIds = useRef(new Set());
   const livePositionMarks = useRef(new Map());
   const loadedAccountId = useRef(null);
   const [trades, setTrades] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [error, setError] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const positionEventState = useRef({ positions, trades, account, closedIds: closedPositionIds.current });
+  positionEventState.current = {
+    ...positionEventState.current,
+    positions,
+    trades,
+    account,
+    closedIds: closedPositionIds.current,
+  };
 
   const clearPositionTracking = useCallback(() => {
     confirmedPositionVersion.current = 0;
     confirmedPositions.current.clear();
+    closedPositionIds.current.clear();
     livePositionMarks.current.clear();
   }, []);
 
   const reconcilePositions = useCallback((serverPositions, refreshVersionAtStart) => {
     const byId = new Map(
       serverPositions
-        .filter((position) => position && typeof position.id === "string")
+        .filter((position) =>
+          position &&
+          typeof position.id === "string" &&
+          !closedPositionIds.current.has(position.id)
+        )
         .map((position) => [position.id, position])
     );
 
     for (const [id, confirmed] of confirmedPositions.current) {
+      if (closedPositionIds.current.has(id)) {
+        confirmedPositions.current.delete(id);
+        livePositionMarks.current.delete(id);
+        continue;
+      }
       if (confirmed.version > refreshVersionAtStart) {
         byId.set(id, confirmed.position);
       } else if (byId.has(id)) {
@@ -496,6 +1057,7 @@ function useTradingSession() {
     if (!position || typeof position.id !== "string" || position.status !== "open") {
       throw new TradingRequestError("server_error", 502);
     }
+    if (closedPositionIds.current.has(position.id)) return;
     confirmedPositionVersion.current += 1;
     confirmedPositions.current.set(position.id, {
       position,
@@ -517,9 +1079,24 @@ function useTradingSession() {
   }, []);
 
   const removeClosedPosition = useCallback((positionId) => {
+    closedPositionIds.current.add(positionId);
     confirmedPositions.current.delete(positionId);
     livePositionMarks.current.delete(positionId);
     setPositions((current) => current.filter((position) => position.id !== positionId));
+  }, []);
+
+  const applyAuthoritativePositionEvent = useCallback((event) => {
+    const current = positionEventState.current;
+    const next = applyPositionEvent(current, event);
+    if (next === current) return;
+    closedPositionIds.current = next.closedIds;
+    positionEventState.current = next;
+    setPositions(next.positions || []);
+    if (next.trades !== current.trades) setTrades(next.trades || []);
+    if (next.account !== current.account) setAccount(next.account || null);
+    if (event.type === "POSITION_CLOSED") {
+      setRefreshVersion((version) => version + 1);
+    }
   }, []);
 
   const applyLiveTickToPositions = useCallback((tick) => {
@@ -707,6 +1284,49 @@ function useTradingSession() {
     };
   }, [user, selectedAccount?.id, canTrade, refreshVersion, clearPositionTracking, reconcilePositions]);
 
+  useEffect(() => {
+    if (!user || !selectedAccount) return undefined;
+    let disposed = false;
+    let retryTimer = null;
+    let socket = null;
+
+    const connect = async () => {
+      try {
+        const ticketResult = await getTradingJson("/trading/events/token", user, {
+          method: "POST",
+          body: JSON.stringify({ account_id: selectedAccount.id }),
+        });
+        if (disposed) return;
+        const ticket = encodeURIComponent(ticketResult.ticket);
+        const nextSocket = new WebSocket(`${TRADING_EVENTS_URL}?ticket=${ticket}`);
+        socket = nextSocket;
+        nextSocket.onmessage = (message) => {
+          try {
+            const event = JSON.parse(message.data);
+            if (event.account_id === selectedAccount.id) applyAuthoritativePositionEvent(event);
+          } catch (eventError) {
+            console.error("Unable to apply authoritative position event:", eventError);
+          }
+        };
+        nextSocket.onclose = () => {
+          if (!disposed) retryTimer = window.setTimeout(connect, 2000);
+        };
+        nextSocket.onerror = () => nextSocket.close();
+      } catch (connectionError) {
+        if (disposed) return;
+        console.error("Unable to connect to authoritative position events:", connectionError);
+        retryTimer = window.setTimeout(connect, 5000);
+      }
+    };
+
+    void connect();
+    return () => {
+      disposed = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      socket?.close();
+    };
+  }, [user, selectedAccount?.id, applyAuthoritativePositionEvent]);
+
   return {
     authStatus,
     user,
@@ -724,6 +1344,7 @@ function useTradingSession() {
     canTrade,
     addConfirmedPosition,
     removeClosedPosition,
+    applyAuthoritativePositionEvent,
     applyLiveTickToPositions,
     refresh: () => setRefreshVersion((current) => current + 1),
   };
@@ -1428,6 +2049,7 @@ function Watchlist({
   error,
   collapsed,
   onToggleCollapse,
+  drawingToolbarProps,
   open,
   onClose,
 }) {
@@ -1448,6 +2070,7 @@ function Watchlist({
           <button className="icon-button mobile-only" type="button" aria-label="Close watchlist" onClick={onClose}><X size={18} /></button>
           <button className="collapse-button desktop-only" type="button" title={collapsed ? "Expand watchlist" : "Collapse watchlist"} aria-label={collapsed ? "Expand watchlist" : "Collapse watchlist"} onClick={onToggleCollapse}>{collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}</button>
         </div>
+        {collapsed && <DrawingToolbar {...drawingToolbarProps} />}
         <label className="search-field">
           <Search size={15} />
           <input type="search" placeholder="Search markets" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search markets" />
@@ -1496,12 +2119,22 @@ function ChartView({
   candleDataKey,
   state,
   error,
+  loadingMore,
   hasMoreHistory,
   loadOlderHistory,
-  loadingMore,
   interval,
   onIntervalChange,
   onOpenWatchlist,
+  selectedDrawingTool,
+  drawings,
+  setDrawingsBySymbol,
+  onCreateDrawing,
+  onSelectDrawingTool,
+  drawingToolbarProps,
+  onRemoveDrawing,
+  magnetMode,
+  drawingsVisible,
+  positionsVisible,
   liveTickHandler,
   positions,
   canTrade,
@@ -1516,9 +2149,9 @@ function ChartView({
   const positionPriceLines = useRef(new Map());
   const pendingLiveTicks = useRef([]);
   const candleKeyRef = useRef("");
+  const baselineKeyRef = useRef("");
   const initialHistoryFitKeyRef = useRef("");
   const applyingHistoryRef = useRef(false);
-  const baselineKeyRef = useRef("");
   const applyLiveTickRef = useRef(null);
   const dragRef = useRef(null);
   const [hasLiveCandle, setHasLiveCandle] = useState(false);
@@ -1527,14 +2160,78 @@ function ChartView({
   const [latestTickTimestampMs, setLatestTickTimestampMs] = useState(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [chartTimeZone, setChartTimeZone] = useState(getInitialChartTimeZone);
+  const [pendingDrawingPoints, setPendingDrawingPoints] = useState([]);
+  const [drawingCursor, setDrawingCursor] = useState(null);
   const [draftPrices, setDraftPrices] = useState(new Map());
   const [closingIds, setClosingIds] = useState(new Set());
   const [modifyingIds, setModifyingIds] = useState(new Set());
   const [controlError, setControlError] = useState("");
   const [layoutVersion, setLayoutVersion] = useState(0);
-  const digits = getPriceDigits(symbol);
+  const [chartControlsVisible, setChartControlsVisible] = useState(false);
+  const [selectedDrawingId, setSelectedDrawingId] = useState(null);
+  const [drawingContextMenu, setDrawingContextMenu] = useState(null);
+  const drawingDragRef = useRef(null);
+  const chartControlsHideTimer = useRef(null);
   const chartTimeZoneRef = useRef(getResolvedTimeZone(chartTimeZone, symbol));
   chartTimeZoneRef.current = getResolvedTimeZone(chartTimeZone, symbol);
+  const digits = getPriceDigits(symbol);
+  const selectedDrawingToolbarStyle = useMemo(() => {
+    if (!selectedDrawingId || !chartHost.current || !chartRef.current || !candleSeries.current) return { left: 16, top: 16 };
+    const selectedDrawingData = drawings.find((drawing) => drawing.id === selectedDrawingId);
+    if (!selectedDrawingData) return { left: 16, top: 16 };
+    const timeScale = chartRef.current.timeScale();
+    const points = selectedDrawingData.points
+      .map((point) => ({
+        x: timeScale.timeToCoordinate(point.time),
+        y: candleSeries.current.priceToCoordinate(point.price),
+      }))
+      .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+    if (!points.length) return { left: 16, top: 16 };
+    const xAvg = points.reduce((total, point) => total + point.x, 0) / points.length;
+    const yAvg = points.reduce((total, point) => total + point.y, 0) / points.length;
+    const width = chartHost.current.clientWidth || 0;
+    const height = chartHost.current.clientHeight || 0;
+    return {
+      left: `${Math.min(Math.max(xAvg + 18, 16), Math.max(16, width - 260))}px`,
+      top: `${Math.min(Math.max(yAvg - 42, 16), Math.max(16, height - 155))}px`,
+    };
+  }, [chartHost, drawings, layoutVersion, selectedDrawingId]);
+
+  const handleChartControl = useCallback((action) => {
+    const timeScale = chartRef.current?.timeScale?.();
+    if (!timeScale) return;
+
+    const range = timeScale.getVisibleLogicalRange?.();
+    if (!range) {
+      if (action === "reset") timeScale.fitContent();
+      return;
+    }
+
+    const currentSpan = Math.max(2, range.to - range.from);
+    const moveStep = Math.max(2, currentSpan * 0.18);
+    const setRange = (from, span = currentSpan) => {
+      const rangeFrom = Math.max(0, from);
+      timeScale.setVisibleLogicalRange({ from: rangeFrom, to: rangeFrom + span });
+    };
+
+    if (action === "zoom-in") {
+      const nextSpan = Math.max(2, currentSpan * 0.8);
+      setRange((range.from + range.to - nextSpan) / 2, nextSpan);
+    } else if (action === "zoom-out") {
+      const dataCount = candleDataRef.current.length;
+      const nextSpan = Math.min(
+        currentSpan * 1.2,
+        Math.max(currentSpan, dataCount * 1.5),
+      );
+      setRange((range.from + range.to - nextSpan) / 2, nextSpan);
+    } else if (action === "prev") {
+      setRange(range.from - moveStep);
+    } else if (action === "next") {
+      setRange(range.from + moveStep);
+    } else if (action === "reset") {
+      timeScale.fitContent();
+    }
+  }, []);
   const dataKey = `${symbol}|${interval}`;
 
   useLayoutEffect(() => {
@@ -1601,11 +2298,36 @@ function ChartView({
     };
   }, []);
 
+  useEffect(() => {
+    const resolvedTimeZone = getResolvedTimeZone(chartTimeZone, symbol);
+    chartTimeZoneRef.current = resolvedTimeZone;
+    chartRef.current?.applyOptions({
+      timeScale: {
+        tickMarkFormatter: (time, tickMarkType) => formatChartTime(time, resolvedTimeZone, tickMarkType),
+      },
+      localization: {
+        timeFormatter: (time) => formatChartCrosshairTime(time, resolvedTimeZone),
+      },
+    });
+    try {
+      localStorage.setItem("df-terminal-chart-timezone", chartTimeZone);
+    } catch (error) {
+      console.warn("Unable to save the chart time zone preference.", error);
+    }
+  }, [chartTimeZone, symbol]);
+
+  useEffect(() => {
+    setPendingDrawingPoints([]);
+    setDrawingCursor(null);
+    setDrawingContextMenu(null);
+    setSelectedDrawingId((current) => drawings.some((drawing) => drawing.id === current) ? current : null);
+  }, [selectedDrawingTool, symbol, drawings]);
+
   useLayoutEffect(() => {
     if (candleKeyRef.current === dataKey) return;
     candleKeyRef.current = dataKey;
-    initialHistoryFitKeyRef.current = "";
     baselineKeyRef.current = "";
+    initialHistoryFitKeyRef.current = "";
     candleDataRef.current = [];
     liveCandlesRef.current = new Map();
     pendingLiveTicks.current = [];
@@ -1714,6 +2436,7 @@ function ChartView({
     const desiredLines = new Map();
     for (const position of positions) {
       if (
+        !positionsVisible ||
         position?.status !== "open" ||
         position.symbol?.toUpperCase() !== symbol ||
         typeof position.id !== "string"
@@ -1767,11 +2490,60 @@ function ChartView({
         existing.price = options.price;
       }
     }
-  }, [draftPrices, positions, symbol]);
+  }, [draftPrices, positions, positionsVisible, symbol]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const zoomIn = () => handleChartControl("zoom-in");
+    window.addEventListener("df-chart-zoom-in", zoomIn);
+    return () => window.removeEventListener("df-chart-zoom-in", zoomIn);
+  }, [handleChartControl]);
+
+  useEffect(() => {
+    const container = chartHost.current?.parentElement;
+    if (!container) return undefined;
+
+    const handlePointerMove = (event) => {
+      const bounds = container.getBoundingClientRect();
+      const isNearBottom = event.clientY >= bounds.bottom - 94;
+      setChartControlsVisible(isNearBottom);
+      if (event.pointerType === "touch" && isNearBottom) {
+        window.clearTimeout(chartControlsHideTimer.current);
+        chartControlsHideTimer.current = window.setTimeout(() => {
+          setChartControlsVisible(false);
+        }, 4500);
+      }
+    };
+    const handlePointerDown = (event) => {
+      if (event.pointerType !== "touch") return;
+      const bounds = container.getBoundingClientRect();
+      if (event.clientY < bounds.bottom - 94) return;
+      setChartControlsVisible(true);
+      window.clearTimeout(chartControlsHideTimer.current);
+      chartControlsHideTimer.current = window.setTimeout(() => {
+        setChartControlsVisible(false);
+      }, 4500);
+    };
+    const handlePointerLeave = (event) => {
+      if (event.pointerType === "touch") return;
+      setChartControlsVisible(false);
+      window.clearTimeout(chartControlsHideTimer.current);
+    };
+
+    container.addEventListener("pointermove", handlePointerMove);
+    container.addEventListener("pointerdown", handlePointerDown);
+    container.addEventListener("pointerleave", handlePointerLeave);
+
+    return () => {
+      window.clearTimeout(chartControlsHideTimer.current);
+      container.removeEventListener("pointermove", handlePointerMove);
+      container.removeEventListener("pointerdown", handlePointerDown);
+      container.removeEventListener("pointerleave", handlePointerLeave);
+    };
   }, []);
 
   const tickAgeMs = latestTickTimestampMs === null ? Infinity : clockNow - latestTickTimestampMs;
@@ -1814,6 +2586,372 @@ function ChartView({
     const price = candleSeries.current.coordinateToPrice(event.clientY - rect.top);
     if (price === null || price === undefined || !Number.isFinite(Number(price))) return null;
     return Number(price);
+  }
+
+  function chartPointFromPointer(event) {
+    const rect = chartHost.current?.getBoundingClientRect();
+    const timeScale = chartRef.current?.timeScale?.();
+    if (!rect || !timeScale || !candleSeries.current) return null;
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    if (x < 0 || x > rect.width - 72 || y < 0 || y > rect.height - 28) return null;
+    let time = timeScale.coordinateToTime(x);
+    let price = candleSeries.current.coordinateToPrice(y);
+    if (
+      time === null ||
+      time === undefined ||
+      price === null ||
+      price === undefined ||
+      !Number.isFinite(Number(price))
+    ) return null;
+    price = Number(price);
+    if (magnetMode !== "off" && candleDataRef.current.length) {
+      let nearestCandle = null;
+      let nearestDistance = Infinity;
+      for (const candle of candleDataRef.current) {
+        const candleX = timeScale.timeToCoordinate(candle.time);
+        if (!Number.isFinite(candleX)) continue;
+        const distance = Math.abs(candleX - x);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestCandle = candle;
+        }
+      }
+      const snapDistance = magnetMode === "strong" ? 28 : 14;
+      const snapPriceDistance = magnetMode === "strong" ? 24 : 12;
+      if (nearestCandle && nearestDistance <= snapDistance) {
+        const candlePrices = [nearestCandle.open, nearestCandle.high, nearestCandle.low, nearestCandle.close];
+        let nearestPrice = price;
+        let nearestPriceDistance = snapPriceDistance;
+        for (const candidate of candlePrices) {
+          const candidateY = candleSeries.current.priceToCoordinate(candidate);
+          if (!Number.isFinite(candidateY)) continue;
+          const distance = Math.abs(candidateY - y);
+          if (distance < nearestPriceDistance) {
+            nearestPriceDistance = distance;
+            nearestPrice = candidate;
+          }
+        }
+        if (nearestPriceDistance < snapPriceDistance) {
+          time = nearestCandle.time;
+          price = nearestPrice;
+        }
+      }
+    }
+    return { time, price };
+  }
+
+  function getDrawingHitTest(event, candidates = drawings) {
+    const point = chartPointFromPointer(event);
+    const timeScale = chartRef.current?.timeScale?.();
+    const series = candleSeries.current;
+    if (!point || !timeScale || !series) return null;
+    const click = {
+      x: timeScale.timeToCoordinate(point.time),
+      y: series.priceToCoordinate(point.price),
+    };
+    let closest = null;
+    let closestDistance = 10;
+    for (const drawing of [...candidates].reverse()) {
+      if (drawing.hidden) continue;
+      const pointCoordinates = drawing.points.map((drawingPoint) => ({
+        x: timeScale.timeToCoordinate(drawingPoint.time),
+        y: series.priceToCoordinate(drawingPoint.price),
+      }));
+      const geometry = getDrawingGeometry(
+        drawing,
+        pointCoordinates,
+        candleDataRef.current,
+        (time) => timeScale.timeToCoordinate(time),
+        (price) => series.priceToCoordinate(price),
+        chartHost.current?.clientWidth || 0,
+        chartHost.current?.clientHeight || 0,
+      );
+      for (const { start, end } of geometry.lines) {
+        if (![start.x, start.y, end.x, end.y, click.x, click.y].every(Number.isFinite)) continue;
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const lengthSquared = dx * dx + dy * dy;
+        const projection = lengthSquared ? Math.max(0, Math.min(1, ((click.x - start.x) * dx + (click.y - start.y) * dy) / lengthSquared)) : 0;
+        const distance = Math.hypot(click.x - (start.x + projection * dx), click.y - (start.y + projection * dy));
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closest = drawing;
+        }
+      }
+      for (const coordinate of pointCoordinates) {
+        if (![coordinate.x, coordinate.y].every(Number.isFinite)) continue;
+        const distance = Math.hypot(click.x - coordinate.x, click.y - coordinate.y);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closest = drawing;
+        }
+      }
+    }
+    return closest;
+  }
+
+  function updateSelectedDrawingStyle(updates) {
+    if (!selectedDrawingId) return;
+    setDrawingsBySymbol((current) => ({
+      ...current,
+      [symbol]: (current[symbol] || []).map((drawing) => drawing.id === selectedDrawingId
+        ? { ...drawing, ...updates }
+        : drawing),
+    }));
+  }
+
+  function duplicateSelectedDrawing() {
+    if (!selectedDrawingId) return;
+    const drawing = drawings.find((item) => item.id === selectedDrawingId);
+    if (!drawing) return;
+    const duplicate = {
+      ...drawing,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      points: drawing.points.map((point) => ({ ...point })),
+      hidden: false,
+      locked: false,
+    };
+    setDrawingsBySymbol((current) => ({
+      ...current,
+      [symbol]: [...(current[symbol] || []), duplicate],
+    }));
+    setSelectedDrawingId(duplicate.id);
+  }
+
+  function startSelectionDrag(event, drawingId, pointIndex = null) {
+    const drawing = drawings.find((item) => item.id === drawingId);
+    if (!drawing || drawing.locked) return;
+    const point = chartPointFromPointer(event);
+    if (!point) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedDrawingId(drawingId);
+    setDrawingContextMenu(null);
+    drawingDragRef.current = {
+      drawingId,
+      pointIndex,
+      startPointer: point,
+      startPoints: drawing.points.map((entry) => ({ ...entry })),
+    };
+    if (event.currentTarget?.setPointerCapture) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+  }
+
+  function handleDrawingPointerDown(event) {
+    if (event.button !== 0 && event.button !== 2) return;
+    if (!selectedDrawingTool && drawingToolbarProps.cursorMode === "eraser") {
+      const hit = getDrawingHitTest(event);
+      if (!hit || hit.locked) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onRemoveDrawing(symbol, hit.id);
+      return;
+    }
+    if (!selectedDrawingTool && drawingToolbarProps.cursorMode !== "dot") {
+      if (event.button === 2) {
+        const hit = getDrawingHitTest(event);
+        if (hit) {
+          const bounds = chartHost.current?.getBoundingClientRect();
+          event.preventDefault();
+          event.stopPropagation();
+          setSelectedDrawingId(hit.id);
+          setDrawingContextMenu({
+            drawingId: hit.id,
+            x: event.clientX - (bounds?.left || 0),
+            y: event.clientY - (bounds?.top || 0),
+          });
+        } else {
+          setSelectedDrawingId(null);
+          setDrawingContextMenu(null);
+        }
+        return;
+      }
+      const hit = getDrawingHitTest(event);
+      if (hit) {
+        setSelectedDrawingId(hit.id);
+        setDrawingContextMenu(null);
+        return;
+      }
+      setSelectedDrawingId(null);
+      setDrawingContextMenu(null);
+      return;
+    }
+    if (!selectedDrawingTool) return;
+    const tool = DRAWING_TOOL_BY_ID.get(selectedDrawingTool);
+    const point = chartPointFromPointer(event);
+    if (!tool || !point) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const nextPoints = [...pendingDrawingPoints, point];
+    setDrawingCursor(point);
+    if (nextPoints.length >= tool.points) {
+      onCreateDrawing(symbol, {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        type: tool.id,
+        points: nextPoints.slice(0, tool.points),
+        color: "#c8eb7b",
+        opacity: 1,
+        width: 2,
+        lineStyle: "solid",
+        hidden: false,
+        locked: false,
+      });
+      setPendingDrawingPoints([]);
+      setDrawingCursor(null);
+      setSelectedDrawingId(null);
+      return;
+    }
+    setPendingDrawingPoints(nextPoints);
+  }
+
+  function handleDrawingPointerMove(event) {
+    const drag = drawingDragRef.current;
+    if (drag) {
+      const point = chartPointFromPointer(event);
+      if (!point) return;
+      const timeScale = chartRef.current?.timeScale?.();
+      const priceScale = candleSeries.current?.priceScale?.();
+      if (!timeScale || !priceScale) return;
+      const deltaTime = Number(point.time) - Number(drag.startPointer.time);
+      const deltaPrice = point.price - drag.startPointer.price;
+      setDrawingsBySymbol((current) => ({
+        ...current,
+        [symbol]: (current[symbol] || []).map((drawing) => {
+          if (drawing.id !== drag.drawingId) return drawing;
+          if (drag.pointIndex === null) {
+            return {
+              ...drawing,
+              points: drawing.points.map((entry, index) => {
+                const original = drag.startPoints[index];
+                if (!original) return entry;
+                return {
+                  ...entry,
+                  time: Number(original.time) + deltaTime,
+                  price: Number(original.price) + deltaPrice,
+                };
+              }),
+            };
+          }
+          const next = drawing.points.map((entry, index) => ({ ...entry }));
+          next[drag.pointIndex] = {
+            ...next[drag.pointIndex],
+            time: Number(drag.startPoints[drag.pointIndex].time) + deltaTime,
+            price: Number(drag.startPoints[drag.pointIndex].price) + deltaPrice,
+          };
+          return { ...drawing, points: next };
+        }),
+      }));
+      return;
+    }
+    if (!selectedDrawingTool && drawingToolbarProps.cursorMode !== "dot") return;
+    const point = chartPointFromPointer(event);
+    setDrawingCursor(point);
+  }
+
+  function renderDrawing(drawing, preview = false) {
+    if (!chartRef.current || !candleSeries.current) return null;
+    if (drawing.hidden && !preview) return null;
+    const timeScale = chartRef.current.timeScale();
+    const pointCoordinates = drawing.points.map((point) => ({
+      x: timeScale.timeToCoordinate(point.time),
+      y: candleSeries.current.priceToCoordinate(point.price),
+    }));
+    const geometry = getDrawingGeometry(
+      drawing,
+      pointCoordinates,
+      candleDataRef.current,
+      (time) => timeScale.timeToCoordinate(time),
+      (price) => candleSeries.current.priceToCoordinate(price),
+      chartHost.current?.clientWidth || 0,
+      chartHost.current?.clientHeight || 0,
+    );
+    if (!geometry.lines.length) return null;
+    const label = DRAWING_TOOL_BY_ID.get(drawing.type)?.label || "Chart drawing";
+    const stroke = preview ? "#d4ed94" : drawing.color || "#c8eb7b";
+    const strokeWidth = preview ? 1.5 : Number(drawing.width) || 2;
+    const dashArray = preview ? "5 4" : getDrawingLineDash(drawing.lineStyle || "solid");
+    const opacity = preview ? 0.72 : Number(drawing.opacity ?? 1);
+    const isSelected = !preview && selectedDrawingId === drawing.id;
+    const selectionHandles = pointCoordinates.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+    return (
+      <g
+        className={`chart-drawing chart-drawing-${drawing.type}`}
+        key={drawing.id}
+        opacity={opacity}
+        onPointerDown={
+          !preview && !selectedDrawingTool && drawingToolbarProps.cursorMode !== "eraser" && isSelected
+            ? (event) => startSelectionDrag(event, drawing.id, null)
+            : undefined
+        }
+      >
+        <title>{label}</title>
+        {geometry.lines.map(({ start, end }, index) =>
+          Number.isFinite(start.x) && Number.isFinite(start.y) &&
+          Number.isFinite(end.x) && Number.isFinite(end.y)
+            ? <line
+              key={index}
+              x1={start.x}
+              y1={start.y}
+              x2={end.x}
+              y2={end.y}
+              stroke={isSelected ? "#f3f3b8" : stroke}
+              strokeWidth={isSelected ? strokeWidth + 1 : strokeWidth}
+              strokeDasharray={dashArray}
+              vectorEffect="non-scaling-stroke"
+              strokeLinecap="round"
+              pointerEvents="stroke"
+            />
+            : null
+        )}
+        {(geometry.labels || []).map((label, index) => (
+          <text
+            key={`label-${index}`}
+            x={label.x}
+            y={label.y - 3}
+            fill={isSelected ? "#f3f3b8" : stroke}
+            className="chart-drawing-label"
+          >{label.text}</text>
+        ))}
+        {drawing.type === "info-line" && pointCoordinates.length >= 2 &&
+          pointCoordinates.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)) &&
+          <text
+            x={(pointCoordinates[0].x + pointCoordinates[1].x) / 2}
+            y={(pointCoordinates[0].y + pointCoordinates[1].y) / 2 - 8}
+            fill={isSelected ? "#f3f3b8" : stroke}
+            className="chart-drawing-label"
+          >{formatPrice(Math.abs(drawing.points[1].price - drawing.points[0].price), digits)} · {Math.abs(Math.round((Number(drawing.points[1].time) - Number(drawing.points[0].time)) / INTERVAL_SECONDS[interval]))} bars</text>}
+        {drawing.type === "trend-angle" && pointCoordinates.length >= 2 &&
+          pointCoordinates.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)) &&
+          <text
+            x={(pointCoordinates[0].x + pointCoordinates[1].x) / 2}
+            y={(pointCoordinates[0].y + pointCoordinates[1].y) / 2 - 8}
+            fill={isSelected ? "#f3f3b8" : stroke}
+            className="chart-drawing-label"
+          >{`${(Math.atan2(
+            pointCoordinates[0].y - pointCoordinates[1].y,
+            pointCoordinates[1].x - pointCoordinates[0].x,
+          ) * 180 / Math.PI).toFixed(1)}°`}</text>}
+        {!preview && isSelected && selectionHandles.map((point, index) => (
+          <circle
+            key={`handle-${index}`}
+            cx={point.x}
+            cy={point.y}
+            r={5}
+            fill="#202d2e"
+            stroke="#f4f3d5"
+            strokeWidth={1.5}
+            pointerEvents="all"
+            data-drawing-id={drawing.id}
+            data-point-index={index}
+            className="chart-drawing-anchor"
+            onPointerDown={(event) => startSelectionDrag(event, drawing.id, index)}
+          />
+        ))}
+      </g>
+    );
   }
 
   function handleProtectionPointerDown(event, position, field) {
@@ -1937,7 +3075,7 @@ function ChartView({
     low: Math.min(range.low, candle.low),
   }), { high: -Infinity, low: Infinity }) : null;
   const visiblePositions = positions.filter((position) =>
-    position.status === "open" && position.symbol?.toUpperCase() === symbol
+    positionsVisible && position.status === "open" && position.symbol?.toUpperCase() === symbol
   );
   const latestCandle = candleDataRef.current[candleDataRef.current.length - 1]
     || candles[candles.length - 1];
@@ -1981,8 +3119,144 @@ function ChartView({
           <button className="icon-button chart-tool" type="button" title="Chart style" aria-label="Chart style"><CandlestickChart size={17} /></button>
         </div>
       </div>
-      <div className="chart-canvas-wrap" data-layout-version={layoutVersion} onWheelCapture={() => setLayoutVersion((version) => version + 1)}>
-        <div className="chart-canvas" ref={chartHost} aria-label={`${symbol} candlestick chart`} />
+      <div className={`chart-canvas-wrap chart-cursor-mode-${drawingToolbarProps.cursorMode}`} data-layout-version={layoutVersion} onWheelCapture={() => setLayoutVersion((version) => version + 1)}>
+        <div className="chart-mobile-drawing-toolbar">
+          <DrawingToolbar {...drawingToolbarProps} />
+        </div>
+      <div
+        className="chart-canvas"
+        ref={chartHost}
+        onPointerDown={handleDrawingPointerDown}
+        onPointerMove={handleDrawingPointerMove}
+        onPointerLeave={() => setDrawingCursor(null)}
+        aria-label={`${symbol} candlestick chart`}
+      />
+      <div
+        className={`chart-drawing-overlay ${selectedDrawingTool || drawingToolbarProps.cursorMode === "eraser" ? "chart-drawing-overlay-active" : ""}`}
+        onPointerDown={handleDrawingPointerDown}
+        onPointerMove={handleDrawingPointerMove}
+        onPointerLeave={() => setDrawingCursor(null)}
+        style={{ cursor: selectedDrawingTool ? "crosshair" : drawingToolbarProps.cursorMode === "eraser" ? "cell" : "default" }}
+          aria-label={selectedDrawingTool
+            ? `${DRAWING_TOOL_BY_ID.get(selectedDrawingTool)?.label || "Drawing"} active. Click on the chart to place points. Press Escape to cancel.`
+            : "Saved chart drawings"}
+        >
+          <svg className="chart-drawings-svg" aria-hidden="true">
+            {drawingsVisible && drawings.map((drawing) => renderDrawing(drawing))}
+            {!selectedDrawingTool && drawingToolbarProps.cursorMode === "dot" && drawingCursor &&
+              <circle cx={chartRef.current?.timeScale().timeToCoordinate(drawingCursor.time) ?? -1}
+                cy={candleSeries.current?.priceToCoordinate(drawingCursor.price) ?? -1}
+                r="3" fill="#d4ed94" pointerEvents="none" />}
+            {selectedDrawingTool && (() => {
+              const tool = DRAWING_TOOL_BY_ID.get(selectedDrawingTool);
+              const previewPoints = pendingDrawingPoints.length
+                ? [...pendingDrawingPoints, ...(drawingCursor ? [drawingCursor] : [])]
+                : tool?.points === 1 && drawingCursor ? [drawingCursor] : [];
+              return tool && previewPoints.length
+                ? renderDrawing({
+                  id: "drawing-preview",
+                  type: tool.id,
+                  points: previewPoints.slice(0, tool.points),
+                  color: "#d4ed94",
+                  opacity: 1,
+                  width: 2,
+                  lineStyle: "solid",
+                  hidden: false,
+                  locked: false,
+                }, true)
+                : null;
+            })()}
+          </svg>
+          {drawingContextMenu && (() => {
+            const targetDrawing = drawings.find((drawing) => drawing.id === drawingContextMenu.drawingId);
+            if (!targetDrawing) return null;
+            const menuStyle = {
+              left: `${Math.min(Math.max(drawingContextMenu.x + 12, 12), (chartHost.current?.clientWidth || 0) - 160)}px`,
+              top: `${Math.min(Math.max(drawingContextMenu.y + 12, 12), (chartHost.current?.clientHeight || 0) - 240)}px`,
+            };
+            return (
+              <div className="chart-drawing-context-menu" style={menuStyle} onPointerDown={(event) => event.stopPropagation()}>
+                <button type="button" onClick={() => { setSelectedDrawingId(targetDrawing.id); setDrawingContextMenu(null); }}>Settings</button>
+                <button type="button" onClick={() => {
+                  const coordinates = targetDrawing.points.map((point) => `${formatPrice(point.price, digits)} @ ${String(point.time)}`).join(" | ");
+                  navigator.clipboard?.writeText(coordinates).catch(() => undefined);
+                  setDrawingContextMenu(null);
+                }}>Coordinates</button>
+                <button type="button" onClick={() => {
+                  updateSelectedDrawingStyle({ hidden: !targetDrawing.hidden });
+                  setDrawingContextMenu(null);
+                }}>{targetDrawing.hidden ? "Show" : "Hide"}</button>
+                <button type="button" onClick={() => { duplicateSelectedDrawing(); setDrawingContextMenu(null); }}>Duplicate</button>
+                <button type="button" onClick={() => {
+                  updateSelectedDrawingStyle({ locked: !targetDrawing.locked });
+                  setDrawingContextMenu(null);
+                }}>{targetDrawing.locked ? "Unlock" : "Lock"}</button>
+                <button type="button" className="danger" onClick={() => {
+                  onRemoveDrawing(symbol, targetDrawing.id);
+                  setSelectedDrawingId(null);
+                  setDrawingContextMenu(null);
+                }}>Remove</button>
+              </div>
+            );
+          })()}
+          {selectedDrawingId && (() => {
+            const targetDrawing = drawings.find((drawing) => drawing.id === selectedDrawingId);
+            if (!targetDrawing) return null;
+            return (
+              <div className="chart-drawing-floating-toolbar" style={selectedDrawingToolbarStyle} onPointerDown={(event) => event.stopPropagation()}>
+                <div className="chart-drawing-floating-toolbar-section">
+                  <span>Color</span>
+                  <div className="chart-drawing-palette">
+                    {['#c8eb7b','#f3c969','#f4806a','#7ed6ff','#b597ff','#ffffff'].map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        className={targetDrawing.color === color ? 'active' : ''}
+                        style={{ background: color }}
+                        onClick={() => updateSelectedDrawingStyle({ color })}
+                        aria-label={`Set drawing color to ${color}`}
+                      />
+                    ))}
+                  </div>
+                  <input type="color" value={targetDrawing.color || '#c8eb7b'} onChange={(event) => updateSelectedDrawingStyle({ color: event.target.value })} />
+                </div>
+                <div className="chart-drawing-floating-toolbar-section">
+                  <label>
+                    <span>Opacity</span>
+                    <input type="range" min="0.1" max="1" step="0.05" value={targetDrawing.opacity ?? 1} onChange={(event) => updateSelectedDrawingStyle({ opacity: Number(event.target.value) })} />
+                  </label>
+                  <label>
+                    <span>Width</span>
+                    <select value={targetDrawing.width ?? 2} onChange={(event) => updateSelectedDrawingStyle({ width: Number(event.target.value) })}>
+                      {[1,2,3,4,5].map((width) => <option key={width} value={width}>{width}px</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Style</span>
+                    <select value={targetDrawing.lineStyle || 'solid'} onChange={(event) => updateSelectedDrawingStyle({ lineStyle: event.target.value })}>
+                      <option value="solid">Solid</option>
+                      <option value="dashed">Dashed</option>
+                      <option value="dotted">Dotted</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="chart-drawing-floating-toolbar-actions">
+                  <button type="button" onClick={() => updateSelectedDrawingStyle({ locked: !targetDrawing.locked })}>{targetDrawing.locked ? 'Unlock' : 'Lock'}</button>
+                  <button type="button" onClick={() => updateSelectedDrawingStyle({ hidden: !targetDrawing.hidden })}>{targetDrawing.hidden ? 'Show' : 'Hide'}</button>
+                  <button type="button" onClick={duplicateSelectedDrawing}>Duplicate</button>
+                  <button type="button" className="danger" onClick={() => { onRemoveDrawing(symbol, targetDrawing.id); setSelectedDrawingId(null); }}>Delete</button>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+        <div className={`chart-controls-floating ${chartControlsVisible ? "chart-controls-visible" : ""}`} aria-label="Chart controls" aria-hidden={!chartControlsVisible}>
+          <button type="button" tabIndex={chartControlsVisible ? 0 : -1} aria-label="Zoom out" title="Zoom out" className="chart-control-button" onClick={() => handleChartControl("zoom-out")}><Minus size={14} /></button>
+          <button type="button" tabIndex={chartControlsVisible ? 0 : -1} aria-label="Zoom in" title="Zoom in" className="chart-control-button" onClick={() => handleChartControl("zoom-in")}><Plus size={14} /></button>
+          <button type="button" tabIndex={chartControlsVisible ? 0 : -1} aria-label="Previous range" title="Previous range" className="chart-control-button" onClick={() => handleChartControl("prev")}><ChevronLeft size={14} /></button>
+          <button type="button" tabIndex={chartControlsVisible ? 0 : -1} aria-label="Next range" title="Next range" className="chart-control-button" onClick={() => handleChartControl("next")}><ChevronRight size={14} /></button>
+          <button type="button" tabIndex={chartControlsVisible ? 0 : -1} aria-label="Reset chart" title="Reset chart" className="chart-control-button chart-control-button-reset" onClick={() => handleChartControl("reset")}><RotateCcw size={14} /></button>
+        </div>
         <div className="chart-position-controls" aria-label="Open position chart controls">
           {Number.isFinite(livePriceY) && <div
             className={`live-price-countdown ${priceDirection}`}
@@ -2382,6 +3656,16 @@ function App() {
   const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
   const [interval, setInterval] = useState("1m");
   const [watchCollapsed, setWatchCollapsed] = useState(false);
+  const [selectedDrawingTool, setSelectedDrawingTool] = useState("");
+  const [cursorMode, setCursorMode] = useState("cross");
+  const [magnetMode, setMagnetMode] = useState("off");
+  const [drawingsVisible, setDrawingsVisible] = useState(true);
+  const [positionsVisible, setPositionsVisible] = useState(true);
+  const [alwaysRemoveLocked, setAlwaysRemoveLocked] = useState(false);
+  const [drawingsBySymbol, setDrawingsBySymbol] = useState(readStoredDrawings);
+  const activeDrawings = drawingsBySymbol[selectedSymbol] || [];
+  const hiddenDrawings = activeDrawings.filter((drawing) => drawing.hidden);
+  const lockedDrawingCount = activeDrawings.filter((drawing) => drawing.locked).length;
   const [favorites, setFavorites] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("df-terminal-favorites") || "[\"XAUUSD\"]");
@@ -2393,6 +3677,111 @@ function App() {
   const [orderOpen, setOrderOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(true);
   const [actionError, setActionError] = useState("");
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DRAWINGS_STORAGE_KEY, JSON.stringify(drawingsBySymbol));
+    } catch (error) {
+      console.warn("Unable to save chart drawings.", error);
+    }
+  }, [drawingsBySymbol]);
+
+  useEffect(() => {
+    const handleDrawingShortcut = (event) => {
+      if (event.key === "Escape" && (selectedDrawingTool || cursorMode !== "cross")) {
+        setSelectedDrawingTool("");
+        setCursorMode("cross");
+        return;
+      }
+      if (!event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) return;
+      const shortcut = `alt${event.shiftKey ? "shift" : ""}${event.key.toLowerCase()}`;
+      const toolId = DRAWING_SHORTCUTS.get(shortcut);
+      if (!toolId) return;
+      event.preventDefault();
+      setCursorMode("cross");
+      setSelectedDrawingTool(toolId);
+    };
+    window.addEventListener("keydown", handleDrawingShortcut);
+    return () => window.removeEventListener("keydown", handleDrawingShortcut);
+  }, [cursorMode, selectedDrawingTool]);
+
+  const addChartDrawing = useCallback((symbol, drawing) => {
+    setDrawingsBySymbol((current) => ({
+      ...current,
+      [symbol]: [...(current[symbol] || []), drawing],
+    }));
+  }, []);
+
+  const clearChartDrawings = useCallback(() => {
+    setDrawingsBySymbol((current) => {
+      const drawings = current[selectedSymbol] || [];
+      const remaining = alwaysRemoveLocked ? [] : drawings.filter((drawing) => drawing.locked);
+      if (remaining.length === drawings.length) return current;
+      return { ...current, [selectedSymbol]: remaining };
+    });
+  }, [alwaysRemoveLocked, selectedSymbol]);
+  const removeDrawing = useCallback((symbol, drawingId) => {
+    setDrawingsBySymbol((current) => {
+      const drawings = current[symbol] || [];
+      const drawing = drawings.find((item) => item.id === drawingId);
+      if (!drawing || (drawing.locked && !alwaysRemoveLocked)) return current;
+      return { ...current, [symbol]: drawings.filter((item) => item.id !== drawingId) };
+    });
+  }, [alwaysRemoveLocked]);
+  const removeLatestDrawing = useCallback(() => {
+    const drawings = activeDrawings;
+    const target = [...drawings].reverse().find((drawing) => alwaysRemoveLocked || !drawing.locked);
+    if (target) removeDrawing(selectedSymbol, target.id);
+  }, [activeDrawings, alwaysRemoveLocked, removeDrawing, selectedSymbol]);
+  const toggleDrawingLocks = useCallback(() => {
+    setDrawingsBySymbol((current) => {
+      const drawings = current[selectedSymbol] || [];
+      if (!drawings.length) return current;
+      const shouldLock = !drawings.every((drawing) => drawing.locked);
+      return {
+        ...current,
+        [selectedSymbol]: drawings.map((drawing) => ({ ...drawing, locked: shouldLock })),
+      };
+    });
+  }, [selectedSymbol]);
+  const drawingToolbarProps = {
+    selectedTool: selectedDrawingTool,
+    onSelectTool: setSelectedDrawingTool,
+    cursorMode,
+    onSetCursorMode: setCursorMode,
+    onToggleLock: toggleDrawingLocks,
+    onRemoveLatestDrawing: removeLatestDrawing,
+    onClearDrawings: clearChartDrawings,
+    drawingCount: activeDrawings.length,
+    lockedDrawingCount,
+    alwaysRemoveLocked,
+    onToggleAlwaysRemoveLocked: (event) => setAlwaysRemoveLocked(event.target.checked),
+    magnetMode,
+    onSetMagnetMode: setMagnetMode,
+    drawingsVisible,
+    onToggleVisibility: () => setDrawingsVisible((current) => !current),
+    positionsVisible,
+    onTogglePositionsVisibility: () => setPositionsVisible((current) => !current),
+    onHideAll: () => {
+      const currentlyVisible = drawingsVisible || positionsVisible;
+      setDrawingsVisible(!currentlyVisible);
+      setPositionsVisible(!currentlyVisible);
+    },
+    hiddenDrawings,
+    onShowDrawing: (drawingId) => {
+      setDrawingsBySymbol((current) => ({
+        ...current,
+        [selectedSymbol]: (current[selectedSymbol] || []).map((drawing) =>
+          drawing.id === drawingId ? { ...drawing, hidden: false } : drawing),
+      }));
+    },
+    onZoomIn: () => window.dispatchEvent(new Event("df-chart-zoom-in")),
+  };
   const selected = symbols.find((item) => item.symbol === selectedSymbol) || null;
   const quote = quotes[selectedSymbol] || null;
   const quoteError = quoteErrors[selectedSymbol] || null;
@@ -2468,13 +3857,22 @@ function App() {
   async function closePosition(position) {
     if (!trading.canTrade || !trading.selectedAccount) return false;
     try {
-      await getTradingJson("/trading/positions/close", trading.user, {
+      const result = await getTradingJson("/trading/positions/close", trading.user, {
         method: "POST",
         body: JSON.stringify({ position_id: position.id }),
       });
-      trading.removeClosedPosition(position.id);
+      if (result.position?.id !== position.id || result.position.status !== "closed") {
+        throw new TradingRequestError("server_response_invalid", 502);
+      }
+      trading.applyAuthoritativePositionEvent({
+        type: "POSITION_CLOSED",
+        position_id: position.id,
+        account_id: position.account_id,
+        position: result.position,
+        trade: result.trade,
+        account: result.account,
+      });
       setActionError("");
-      trading.refresh();
       return true;
     } catch (error) {
       setActionError(error.message || TRADING_ERROR_MESSAGES.server_error);
@@ -2545,7 +3943,22 @@ function App() {
         selectedAccount={trading.selectedAccount}
       />
       <div className={`terminal-workspace ${watchCollapsed ? "workspace-watchlist-collapsed" : ""}`}>
-        <Watchlist symbols={symbols} quotes={quotes} quoteErrors={quoteErrors} selectedSymbol={selectedSymbol} favorites={favorites} onSelect={selectSymbol} onFavorite={toggleFavorite} loading={symbolState === "loading"} error={symbolState === "error" ? symbolError : ""} collapsed={watchCollapsed} onToggleCollapse={() => setWatchCollapsed((current) => !current)} open={watchOpen} onClose={() => setWatchOpen(false)} />
+        <Watchlist
+          symbols={symbols}
+          quotes={quotes}
+          quoteErrors={quoteErrors}
+          selectedSymbol={selectedSymbol}
+          favorites={favorites}
+          onSelect={selectSymbol}
+          onFavorite={toggleFavorite}
+          loading={symbolState === "loading"}
+          error={symbolState === "error" ? symbolError : ""}
+          collapsed={watchCollapsed}
+          onToggleCollapse={() => setWatchCollapsed((current) => !current)}
+          drawingToolbarProps={drawingToolbarProps}
+          open={watchOpen}
+          onClose={() => setWatchOpen(false)}
+        />
         <main className="terminal-main">
           <ChartView
             symbol={selectedSymbol}
@@ -2562,6 +3975,16 @@ function App() {
             interval={interval}
             onIntervalChange={setInterval}
             onOpenWatchlist={() => setWatchOpen(true)}
+            selectedDrawingTool={selectedDrawingTool}
+            drawings={activeDrawings}
+            setDrawingsBySymbol={setDrawingsBySymbol}
+            onCreateDrawing={addChartDrawing}
+            onSelectDrawingTool={setSelectedDrawingTool}
+            drawingToolbarProps={drawingToolbarProps}
+            onRemoveDrawing={removeDrawing}
+            magnetMode={magnetMode}
+            drawingsVisible={drawingsVisible}
+            positionsVisible={positionsVisible}
             liveTickHandler={liveTickHandler}
             positions={trading.positions}
             canTrade={trading.canTrade}

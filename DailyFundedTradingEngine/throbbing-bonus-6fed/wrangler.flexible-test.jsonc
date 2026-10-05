@@ -9,5 +9,19 @@
       "database_name": "daily-funded-trading-db",
       "database_id": "8a9d052f-451c-4348-86d8-4a58556ce797"
     }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "POSITION_EVENTS",
+        "class_name": "PositionEventsDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-position-events",
+      "new_sqlite_classes": ["PositionEventsDO"]
+    }
   ]
 }

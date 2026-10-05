@@ -1010,6 +1010,19 @@ def trading_modify_position_proxy():
     )
 
 
+@app.post("/api/trading/events/token")
+@firebase_auth_required
+def trading_position_events_token_proxy():
+    payload = filtered_trading_request_payload(("account_id",))
+    if payload is None:
+        return jsonify(error="Request body must be a JSON object."), 400
+    return cloudflare_trading_proxy_response(
+        "/events/token",
+        method="POST",
+        payload=payload,
+    )
+
+
 @app.get("/api/trading/trades")
 @firebase_auth_required
 def trading_trades_proxy():

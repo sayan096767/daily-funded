@@ -1,3 +1,9 @@
+import {
+  protectionPrice,
+  tickIsAfterPositionOpen,
+  triggeredProtection,
+} from "./positionProtection.js";
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -294,7 +300,7 @@ async function calculateOpenPositionsPnlUsd(env, accountId, priceOverrides = {},
     .prepare(`
       SELECT *
       FROM positions
-      WHERE account_id = ?
+      WHERE account_id = ? AND status = 'open'
     `)
     .bind(accountId)
     .all();
@@ -1577,6 +1583,562 @@ function tradingError(code, message, status) {
   return json({ success: false, code, error: message }, status);
 }
 
+function encodeBase64Url(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function decodeBase64Url(value) {
+  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+async function eventSigningKey(env) {
+  const secret = typeof env.TRADING_EVENTS_SIGNING_SECRET === "string"
+    ? env.TRADING_EVENTS_SIGNING_SECRET.trim()
+    : "";
+  if (secret.length < 32) throw new Error("Trading event signing secret is not configured");
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
+
+async function createEventTicket(env, userId, accountId) {
+  const payload = encodeBase64Url(new TextEncoder().encode(JSON.stringify({
+    user_id: userId,
+    account_id: accountId,
+    expires_at: Date.now() + 15 * 60 * 1000,
+  })));
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    await eventSigningKey(env),
+    new TextEncoder().encode(payload)
+  );
+  return `${payload}.${encodeBase64Url(new Uint8Array(signature))}`;
+}
+
+async function verifyEventTicket(env, ticket) {
+  const [payload, signature, extra] = String(ticket || "").split(".");
+  if (!payload || !signature || extra !== undefined) return null;
+  try {
+    const key = await eventSigningKey(env);
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      decodeBase64Url(signature),
+      new TextEncoder().encode(payload)
+    );
+    if (!valid) return null;
+    const value = JSON.parse(new TextDecoder().decode(decodeBase64Url(payload)));
+    if (
+      typeof value.user_id !== "string" ||
+      typeof value.account_id !== "string" ||
+      !Number.isFinite(value.expires_at) ||
+      value.expires_at <= Date.now()
+    ) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+async function sendPositionEvent(env, userId, accountId, event) {
+  if (!env.POSITION_EVENTS) throw new Error("Position event delivery is not configured");
+  const id = env.POSITION_EVENTS.idFromName(`user:${userId}`);
+  const response = await env.POSITION_EVENTS.get(id).fetch("https://position-events/publish", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ account_id: accountId, event }),
+  });
+  if (!response.ok) throw new Error(`Position event delivery failed (${response.status})`);
+}
+
+async function publishPositionEvent(env, userId, accountId, event) {
+  try {
+    await sendPositionEvent(env, userId, accountId, event);
+  } catch (error) {
+    console.error("Unable to publish authoritative position event:", error);
+  }
+}
+
+async function withAccountQueue(state, accountId, callback) {
+  const key = String(accountId);
+  const previous = state.accountQueues?.get(key) || Promise.resolve();
+  let release;
+  const turn = new Promise((resolve) => { release = resolve; });
+  const queued = previous.then(() => turn);
+  if (!state.accountQueues) state.accountQueues = new Map();
+  state.accountQueues.set(key, queued);
+  await previous;
+  try {
+    return await callback();
+  } finally {
+    release();
+    if (state.accountQueues.get(key) === queued) state.accountQueues.delete(key);
+  }
+}
+
+async function settlePosition(env, positionId, userId, { source, tick, reason } = {}) {
+  const db = env.daily_funded_trading_db;
+  const position = await db.prepare(`
+    SELECT p.*, a.user_id
+    FROM positions p
+    INNER JOIN trading_accounts a ON a.id = p.account_id
+    WHERE p.id = ? AND a.user_id = ? AND p.status = 'open'
+  `).bind(positionId, userId).first();
+  if (!position) return { error: "position_not_found", status: 404 };
+  const accountContext = await getAccountRuleContext(env, position.account_id, userId);
+  if (accountContext.error) {
+    return { error: "trading_account_not_found", message: accountContext.error, status: accountContext.status };
+  }
+
+  let closePrice;
+  let protectionReason = null;
+  let protectionTickTimestamp = null;
+  if (source === "tick") {
+    const triggered = triggeredProtection(position, tick);
+    if (!triggered || (reason && reason !== triggered.reason)) return { skipped: true };
+    closePrice = triggered.price;
+    protectionReason = triggered.reason;
+    protectionTickTimestamp = new Date(Number(tick.timestamp_ms)).toISOString();
+  } else {
+    try {
+      closePrice = (await requireExecutionQuote(
+        env,
+        position.symbol,
+        position.side === "BUY" ? "SELL" : "BUY"
+      )).price;
+    } catch (error) {
+      return {
+        error: error.code || "market_unavailable",
+        message: error.message,
+        status: error.status || 503,
+      };
+    }
+  }
+
+  let metadata;
+  let realizedPnl;
+  try {
+    metadata = await getPositionCalculationSnapshot(env, position.id);
+    realizedPnl = calculatePnlUsd(position, closePrice, metadata);
+  } catch (error) {
+    return { error: "server_error", message: error.message, status: 500 };
+  }
+
+  let remainingFloatingPnl = 0;
+  let remainingUsedMargin = 0;
+  let marginDataComplete = Number(accountContext.snapshot.leverage) > 0;
+  const remainingResult = await db.prepare(`
+    SELECT p.*
+    FROM positions p
+    WHERE p.account_id = ? AND p.status = 'open' AND p.id != ?
+  `).bind(position.account_id, position.id).all();
+  const remainingPositions = remainingResult.results || [];
+
+  if (source === "tick") {
+    for (const item of remainingPositions) {
+      remainingFloatingPnl += Number.isFinite(Number(item.floating_pnl)) ? Number(item.floating_pnl) : 0;
+      try {
+        remainingUsedMargin += marginForPosition(
+          item,
+          Number(item.current_price),
+          await getPositionCalculationSnapshot(env, item.id),
+          Number(accountContext.snapshot.leverage)
+        );
+      } catch {
+        marginDataComplete = false;
+      }
+    }
+  } else {
+    const quotes = await getMarketQuotesForSymbols(env, remainingPositions.map((item) => item.symbol));
+    const quoteBySymbol = new Map((quotes.quotes || []).map((quote) => [quote.symbol, quote]));
+    try {
+      for (const remaining of remainingPositions) {
+        const quote = quoteBySymbol.get(remaining.symbol);
+        const markPrice = remaining.side === "BUY" ? quote?.bid : quote?.ask;
+        if (!quote || quote.stale || quote.market_state?.toLowerCase() === "closed" ||
+          !Number.isFinite(Number(markPrice)) || Number(markPrice) <= 0) {
+          throw new Error("Live market data is required to close this position safely");
+        }
+        remainingFloatingPnl += calculatePnlUsd(
+          remaining,
+          markPrice,
+          await getPositionCalculationSnapshot(env, remaining.id)
+        );
+        try {
+          remainingUsedMargin += marginForPosition(
+            remaining,
+            markPrice,
+            await getPositionCalculationSnapshot(env, remaining.id),
+            Number(accountContext.snapshot.leverage)
+          );
+        } catch {
+          marginDataComplete = false;
+        }
+      }
+    } catch {
+      return {
+        error: "market_unavailable",
+        message: "Live market data is required to close this position safely",
+        status: 503,
+      };
+    }
+  }
+
+  const tradeId = generateId("TRD");
+  const results = await db.batch([
+    db.prepare(`
+      UPDATE positions SET status = 'closing'
+      WHERE id = ? AND account_id = ? AND status = 'open'
+        AND (? != 'tick' OR strftime('%Y-%m-%dT%H:%M:%fZ', opened_at) < ?)
+    `).bind(position.id, position.account_id, source, protectionTickTimestamp),
+    db.prepare(`
+      INSERT INTO trades (
+        id, account_id, order_id, symbol, side, volume, open_price, close_price, realized_pnl, opened_at
+      )
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE EXISTS (
+        SELECT 1 FROM positions WHERE id = ? AND account_id = ? AND status = 'closing'
+      )
+    `).bind(
+      tradeId, position.account_id, position.order_id, position.symbol, position.side,
+      Number(position.volume), Number(position.open_price), closePrice, realizedPnl, position.opened_at,
+      position.id, position.account_id
+    ),
+    db.prepare(`
+      UPDATE trading_accounts
+      SET balance = balance + ?,
+          equity = balance + ? + ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ? AND EXISTS (
+        SELECT 1 FROM positions WHERE id = ? AND account_id = ? AND status = 'closing'
+      )
+    `).bind(
+      realizedPnl, realizedPnl, remainingFloatingPnl,
+      position.account_id, userId, position.id, position.account_id
+    ),
+    db.prepare(`
+      UPDATE orders SET status = 'closed'
+      WHERE id = ? AND account_id = ? AND EXISTS (
+        SELECT 1 FROM positions WHERE id = ? AND account_id = ? AND status = 'closing'
+      )
+    `).bind(position.order_id, position.account_id, position.id, position.account_id),
+    db.prepare(`
+      UPDATE positions
+      SET status = 'closed',
+          current_price = ?,
+          floating_pnl = 0,
+          close_price = ?,
+          realized_pnl = ?,
+          closed_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND account_id = ? AND status = 'closing'
+    `).bind(closePrice, closePrice, realizedPnl, position.id, position.account_id),
+  ]);
+
+  if (Number(results?.[0]?.meta?.changes || 0) !== 1) {
+    return source === "tick" ? { skipped: true } : { error: "position_not_found", status: 404 };
+  }
+
+  const trade = {
+    id: tradeId,
+    account_id: position.account_id,
+    symbol: position.symbol,
+    side: position.side,
+    volume: Number(position.volume),
+    open_price: Number(position.open_price),
+    close_price: closePrice,
+    realized_pnl: realizedPnl,
+    closed_at: new Date().toISOString(),
+    ...(protectionReason ? { close_reason: protectionReason } : {}),
+  };
+  const accountAfterClose = await db.prepare(`
+    SELECT balance, equity FROM trading_accounts WHERE id = ? AND user_id = ?
+  `).bind(position.account_id, userId).first();
+  const account = {
+    ...accountContext.account,
+    balance: Number(accountAfterClose.balance),
+    equity: Number(accountAfterClose.equity),
+    open_pnl: remainingFloatingPnl,
+    used_margin: marginDataComplete ? remainingUsedMargin : null,
+    free_margin: marginDataComplete
+      ? Number(accountAfterClose.equity) - remainingUsedMargin
+      : null,
+    available_margin: marginDataComplete
+      ? Number(accountAfterClose.equity) - remainingUsedMargin
+      : null,
+  };
+  const closedPosition = {
+    ...position,
+    status: "closed",
+    close_price: closePrice,
+    current_price: closePrice,
+    floating_pnl: 0,
+  };
+  await publishPositionEvent(env, userId, position.account_id, {
+    type: "POSITION_CLOSED",
+    position_id: position.id,
+    account_id: position.account_id,
+    position: closedPosition,
+    trade,
+    account,
+  });
+  return { trade, account, position: closedPosition };
+}
+
+async function processBiquoteTick(env, tick) {
+  const db = env.daily_funded_trading_db;
+  if (!Number.isInteger(Number(tick.timestamp_ms)) || Number(tick.timestamp_ms) <= 0) {
+    return { accepted: false, reason: "invalid_timestamp" };
+  }
+  const symbolRows = await getConfiguredMarketSymbols(env);
+  const symbol = symbolRows.find((item) => item.symbol === tick.symbol);
+  if (!symbol || symbol.provider !== "biquote" || symbol.provider_symbol !== tick.provider_symbol) {
+    return { accepted: false, reason: "symbol_mismatch" };
+  }
+  const previous = await db.prepare(`
+    SELECT timestamp_ms FROM market_tick_cursors WHERE symbol = ?
+  `).bind(tick.symbol).first();
+  if (previous && Number(tick.timestamp_ms) <= Number(previous.timestamp_ms)) {
+    return { accepted: false, reason: "duplicate_or_out_of_order" };
+  }
+
+  const positionsResult = await db.prepare(`
+    SELECT p.*, a.user_id
+    FROM positions p
+    INNER JOIN trading_accounts a ON a.id = p.account_id
+    WHERE p.symbol = ? AND p.status = 'open'
+  `).bind(tick.symbol).all();
+  const positions = positionsResult.results || [];
+  const markUpdates = [];
+  for (const position of positions) {
+    if (!tickIsAfterPositionOpen(position, tick)) continue;
+    const mark = protectionPrice(position, tick);
+    if (mark === null) continue;
+    const pnl = calculatePnlUsd(
+      position,
+      mark,
+      await getPositionCalculationSnapshot(env, position.id)
+    );
+    markUpdates.push(db.prepare(`
+      UPDATE positions SET current_price = ?, floating_pnl = ?
+      WHERE id = ? AND account_id = ? AND status = 'open'
+    `).bind(mark, pnl, position.id, position.account_id));
+  }
+  if (markUpdates.length) await db.batch(markUpdates);
+
+  const accounts = [...new Set(positions.map((position) => position.account_id))];
+  for (const accountId of accounts) {
+    const triggered = positions.filter((position) =>
+      position.account_id === accountId && triggeredProtection(position, tick)
+    );
+    for (const position of triggered) {
+      const actorId = env.POSITION_EVENTS.idFromName(`account:${accountId}`);
+      const actorResponse = await env.POSITION_EVENTS.get(actorId).fetch("https://position-events/settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "tick",
+          tick,
+          position_id: position.id,
+          account_id: accountId,
+          user_id: position.user_id,
+        }),
+      });
+      if (!actorResponse.ok) throw new Error(`Protection settlement failed (${actorResponse.status})`);
+    }
+  }
+
+  await db.prepare(`
+    INSERT INTO market_tick_cursors (symbol, timestamp_ms, bid, ask)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(symbol) DO UPDATE SET
+      timestamp_ms = excluded.timestamp_ms,
+      bid = excluded.bid,
+      ask = excluded.ask
+    WHERE excluded.timestamp_ms > market_tick_cursors.timestamp_ms
+  `).bind(tick.symbol, tick.timestamp_ms, tick.bid, tick.ask).run();
+  return { accepted: true, evaluated_positions: positions.length };
+}
+
+async function evaluatePositionAtLatestTick(env, positionId, userId, accountId, symbol) {
+  const db = env.daily_funded_trading_db;
+  const position = await db.prepare(`
+    SELECT p.* FROM positions p
+    INNER JOIN trading_accounts a ON a.id = p.account_id
+    WHERE p.id = ? AND p.account_id = ? AND a.user_id = ? AND p.status = 'open'
+  `).bind(positionId, accountId, userId).first();
+  if (!position) return { skipped: true };
+
+  const cursor = await db.prepare(`
+    SELECT timestamp_ms, bid, ask FROM market_tick_cursors WHERE symbol = ?
+  `).bind(symbol).first();
+  if (!cursor || Date.now() - Number(cursor.timestamp_ms) > MARKET_DATA_MAX_AGE_MS) {
+    return { skipped: true };
+  }
+  const records = await getConfiguredMarketSymbols(env);
+  const mapping = records.find((item) => item.symbol === symbol);
+  if (!mapping || mapping.provider !== "biquote") return { skipped: true };
+  const tick = {
+    symbol,
+    provider_symbol: mapping.provider_symbol,
+    timestamp_ms: Number(cursor.timestamp_ms),
+    bid: Number(cursor.bid),
+    ask: Number(cursor.ask),
+  };
+  const trigger = triggeredProtection(position, tick);
+  if (!trigger) return { skipped: true };
+  const actorId = env.POSITION_EVENTS.idFromName(`account:${accountId}`);
+  const response = await env.POSITION_EVENTS.get(actorId).fetch("https://position-events/settle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: "tick",
+      tick,
+      reason: trigger.reason,
+      position_id: positionId,
+      account_id: accountId,
+      user_id: userId,
+    }),
+  });
+  const result = await response.json();
+  return response.ok ? result : {
+    error: result.error || "Protection settlement failed",
+    status: response.status,
+  };
+}
+
+export class PositionEventsDO {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.accountQueues = new Map();
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/publish") {
+      const { account_id: accountId, event } = await readJson(request);
+      if (!accountId || !event || typeof event.position_id !== "string") {
+        return json({ success: false, error: "Invalid position event" }, 400);
+      }
+      const message = JSON.stringify(event);
+      for (const socket of this.state.getWebSockets(String(accountId))) {
+        try { socket.send(message); } catch { socket.close(1011, "Event delivery failed"); }
+      }
+      return json({ success: true });
+    }
+    if (request.method === "GET" && url.pathname === "/connect") {
+      const accountId = request.headers.get("X-Event-Account-Id");
+      if (!accountId || request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+        return json({ success: false, error: "WebSocket upgrade required" }, 400);
+      }
+      const pair = new WebSocketPair();
+      this.state.acceptWebSocket(pair[1], [accountId]);
+      return new Response(null, { status: 101, webSocket: pair[0] });
+    }
+    if (request.method === "POST" && url.pathname === "/settle") {
+      const body = await readJson(request);
+      const accountId = normalizeText(body.account_id);
+      if (!accountId || !body.position_id || !body.user_id ||
+        !["manual", "tick"].includes(body.source)) {
+        return json({ success: false, error: "Invalid settlement request" }, 400);
+      }
+      return withAccountQueue(this, accountId, async () => {
+        const result = await settlePosition(this.env, body.position_id, body.user_id, {
+          source: body.source,
+          tick: body.tick,
+          reason: body.reason,
+        });
+        if (result.error) return tradingError(result.error, result.message || "Position could not be closed", result.status);
+        return json({ success: true, ...result });
+      });
+    }
+    if (request.method === "POST" && url.pathname === "/modify") {
+      const body = await readJson(request);
+      return withAccountQueue(this, body.account_id, async () => {
+        const assignments = [];
+        const values = [];
+        if (body.has_stop_loss) {
+          assignments.push("stop_loss = ?");
+          values.push(body.stop_loss);
+        }
+        if (body.has_take_profit) {
+          assignments.push("take_profit = ?");
+          values.push(body.take_profit);
+        }
+        const updateResult = await this.env.daily_funded_trading_db.prepare(`
+          UPDATE positions SET ${assignments.join(", ")}
+          WHERE id = ? AND account_id = ? AND status = 'open'
+            AND EXISTS (SELECT 1 FROM trading_accounts WHERE id = ? AND user_id = ?)
+        `).bind(
+          ...values, body.position_id, body.account_id, body.account_id, body.user_id
+        ).run();
+        if (Number(updateResult?.meta?.changes || 0) !== 1) {
+          return tradingError("position_not_found", "Position not found", 404);
+        }
+        const position = await this.env.daily_funded_trading_db.prepare(`
+          SELECT p.* FROM positions p
+          INNER JOIN trading_accounts a ON a.id = p.account_id
+          WHERE p.id = ? AND a.user_id = ? AND p.status = 'open'
+        `).bind(body.position_id, body.user_id).first();
+        if (!position) return tradingError("position_not_found", "Position not found", 404);
+        const authoritativePosition = { ...position, pnl_metadata: body.pnl_metadata };
+        await publishPositionEvent(
+          this.env,
+          body.user_id,
+          body.account_id,
+          {
+            type: "POSITION_MODIFIED",
+            position_id: position.id,
+            account_id: body.account_id,
+            position: authoritativePosition,
+          }
+        );
+        return json({ success: true, position: authoritativePosition });
+      });
+    }
+    if (request.method === "POST" && url.pathname === "/tick") {
+      const tick = await readJson(request);
+      return withAccountQueue(this, `tick:${tick.symbol}`, async () => {
+        try {
+          return json({ success: true, ...await processBiquoteTick(this.env, tick) });
+        } catch (error) {
+          console.error("Unable to evaluate Biquote protection tick:", error);
+          return json({ success: false, error: "Protection tick evaluation failed" }, 503);
+        }
+      });
+    }
+    if (request.method === "POST" && url.pathname === "/evaluate-position") {
+      const body = await readJson(request);
+      return withAccountQueue(this, `tick:${body.symbol}`, async () => {
+        const result = await evaluatePositionAtLatestTick(
+          this.env,
+          body.position_id,
+          body.user_id,
+          body.account_id,
+          body.symbol
+        );
+        if (result.error) {
+          return tradingError("protection_settlement_failed", result.error, result.status || 503);
+        }
+        return json({ success: true, ...result });
+      });
+    }
+    return json({ success: false, error: "Route not found" }, 404);
+  }
+
+  webSocketMessage() {}
+  webSocketClose() {}
+  webSocketError() {}
+}
+
 async function getMarketCandles(env, url) {
   const symbol = normalizeText(url.searchParams.get("symbol")).toUpperCase();
   const interval = normalizeText(url.searchParams.get("interval")).toLowerCase();
@@ -1678,6 +2240,49 @@ export default {
     }
 
     try {
+      if (request.method === "POST" && url.pathname === "/internal/market-tick") {
+        const expectedToken = typeof env.MARKET_TICK_INGEST_TOKEN === "string"
+          ? env.MARKET_TICK_INGEST_TOKEN.trim()
+          : "";
+        const bearer = /^Bearer\s+(.+)$/i.exec(request.headers.get("Authorization") || "");
+        if (!expectedToken) {
+          return json({ success: false, error: "Market tick ingestion is not configured" }, 503);
+        }
+        if (!bearer || !(await timingSafeTokenMatches(bearer[1].trim(), expectedToken))) {
+          return json({ success: false, error: "Market tick ingestion is unauthorized" }, 401);
+        }
+        const body = await readJson(request);
+        const symbol = normalizeText(body.symbol).toUpperCase();
+        const providerSymbol = normalizeText(body.provider_symbol).toUpperCase();
+        const timestampMs = parseProviderTimestamp(body.timestamp);
+        let bid;
+        let ask;
+        try {
+          bid = optionalPositivePrice(body.bid);
+          ask = optionalPositivePrice(body.ask);
+        } catch {
+          return json({ success: false, error: "Tick prices are invalid" }, 400);
+        }
+        if (
+          !symbol || !providerSymbol || timestampMs === null ||
+          bid === null || ask === null || ask < bid ||
+          timestampMs > Date.now() + 60_000 ||
+          Date.now() - timestampMs > MARKET_DATA_MAX_AGE_MS
+        ) {
+          return json({ success: false, error: "Tick is invalid or stale" }, 400);
+        }
+        if (!env.POSITION_EVENTS) {
+          return json({ success: false, error: "Server-side protection is not configured" }, 503);
+        }
+        const tick = { symbol, provider_symbol: providerSymbol, timestamp_ms: timestampMs, bid, ask };
+        const id = env.POSITION_EVENTS.idFromName(`tick:${symbol}`);
+        return env.POSITION_EVENTS.get(id).fetch("https://position-events/tick", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(tick),
+        });
+      }
+
       // =====================================================
       // HEALTH
       // =====================================================
@@ -1702,6 +2307,43 @@ export default {
             provider_symbol,
           })),
         }), request);
+      }
+
+      if (request.method === "POST" && url.pathname === "/events/token") {
+        const tradingAuth = await authenticateTradingRequest(request, env);
+        if (tradingAuth.response) return tradingAuth.response;
+        const body = await readJson(request);
+        const accountId = normalizeText(body.account_id);
+        if (!accountId || !(await findAccountForUser(env, accountId, tradingAuth.userId))) {
+          return tradingError("trading_account_not_found", "Trading account not found", 404);
+        }
+        try {
+          return json({
+            success: true,
+            ticket: await createEventTicket(env, tradingAuth.userId, accountId),
+          });
+        } catch (error) {
+          console.error("Unable to issue position event ticket:", error);
+          return json({ success: false, error: "Position event delivery is not configured" }, 503);
+        }
+      }
+
+      if (request.method === "GET" && url.pathname === "/trading/events") {
+        if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+          return json({ success: false, error: "WebSocket upgrade required" }, 426);
+        }
+        const ticket = await verifyEventTicket(env, url.searchParams.get("ticket"));
+        if (!ticket || !env.POSITION_EVENTS) {
+          return json({ success: false, error: "Position event ticket is invalid or expired" }, 401);
+        }
+        const id = env.POSITION_EVENTS.idFromName(`user:${ticket.user_id}`);
+        return env.POSITION_EVENTS.get(id).fetch("https://position-events/connect", {
+          method: "GET",
+          headers: {
+            Upgrade: "websocket",
+            "X-Event-Account-Id": ticket.account_id,
+          },
+        });
       }
 
       if (request.method === "GET" && url.pathname === "/market/quotes") {
@@ -3212,9 +3854,20 @@ export default {
         if (completeMarketData) {
           positionUpdates.push(env.daily_funded_trading_db.prepare(`
             UPDATE trading_accounts
-            SET equity = ?, updated_at = CURRENT_TIMESTAMP
+            SET equity = (
+              SELECT balance FROM trading_accounts WHERE id = ? AND user_id = ?
+            ) + COALESCE((
+              SELECT SUM(floating_pnl) FROM positions
+              WHERE account_id = ? AND status = 'open'
+            ), 0), updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND user_id = ?
-          `).bind(account.equity, accountId, tradingAuth.userId));
+          `).bind(
+            accountId,
+            tradingAuth.userId,
+            accountId,
+            accountId,
+            tradingAuth.userId
+          ));
           if (positionUpdates.length) await env.daily_funded_trading_db.batch(positionUpdates);
         }
 
@@ -3367,6 +4020,7 @@ export default {
 
         const orderId = generateId("ORD");
         const positionId = generateId("POS");
+        const openedAt = new Date().toISOString();
         const symbolMetadata = snapshotSymbolCalculationMetadata(symbolRecord);
         const existingResult = await env.daily_funded_trading_db.prepare(`
           SELECT p.*
@@ -3499,9 +4153,10 @@ export default {
               floating_pnl,
               take_profit,
               stop_loss,
-              status
+              status,
+              opened_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `)
           .bind(
             positionId,
@@ -3515,7 +4170,8 @@ export default {
             0,
             takeProfit,
             stopLoss,
-            "open"
+            "open",
+            openedAt
           ),
           env.daily_funded_trading_db
             .prepare(`
@@ -3528,42 +4184,64 @@ export default {
             .bind(positionId, JSON.stringify(symbolMetadata)),
         ]);
 
-        return json(
-          {
-            success: true,
-            order: {
-              id: orderId,
-              account_id: accountId,
-              symbol,
-              side,
-              volume,
-              order_type: orderType,
-              requested_price: openPrice,
-              status: "filled",
-            },
-            position: {
-              id: positionId,
-              account_id: accountId,
-              symbol,
-              side,
-              volume,
-              open_price: openPrice,
-              current_price: openPrice,
-              floating_pnl: 0,
-              pnl_metadata: {
-                base_currency: symbolMetadata.base_currency,
-                quote_currency: symbolMetadata.quote_currency,
-                contract_size: symbolMetadata.contract_size,
-                price_decimals: symbolMetadata.price_decimals,
-                pip_size: symbolMetadata.pip_size,
-              },
-              take_profit: takeProfit,
-              stop_loss: stopLoss,
-              status: "open",
-            },
+        const position = {
+          id: positionId,
+          account_id: accountId,
+          symbol,
+          side,
+          volume,
+          open_price: openPrice,
+          opened_at: openedAt,
+          current_price: openPrice,
+          floating_pnl: 0,
+          pnl_metadata: {
+            base_currency: symbolMetadata.base_currency,
+            quote_currency: symbolMetadata.quote_currency,
+            contract_size: symbolMetadata.contract_size,
+            price_decimals: symbolMetadata.price_decimals,
+            pip_size: symbolMetadata.pip_size,
           },
-          201
-        );
+          take_profit: takeProfit,
+          stop_loss: stopLoss,
+          status: "open",
+        };
+        await publishPositionEvent(env, tradingAuth.userId, accountId, {
+          type: "POSITION_OPENED",
+          position_id: positionId,
+          account_id: accountId,
+          position,
+        });
+        if (env.POSITION_EVENTS) {
+          const tickActorId = env.POSITION_EVENTS.idFromName(`tick:${symbol}`);
+          const evaluation = await env.POSITION_EVENTS.get(tickActorId).fetch(
+            "https://position-events/evaluate-position",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                position_id: positionId,
+                account_id: accountId,
+                user_id: tradingAuth.userId,
+                symbol,
+              }),
+            }
+          );
+          if (!evaluation.ok) console.error("Unable to apply the latest server tick to the new position");
+        }
+        return json({
+          success: true,
+          order: {
+            id: orderId,
+            account_id: accountId,
+            symbol,
+            side,
+            volume,
+            order_type: orderType,
+            requested_price: openPrice,
+            status: "filled",
+          },
+          position,
+        }, 201);
       }
 
       // =====================================================
@@ -3710,37 +4388,56 @@ export default {
           return tradingError("invalid_tp", "Take profit is not on the profitable side of the current executable price", 400);
         }
 
-        const assignments = [];
-        const values = [];
-        if (hasStopLoss) {
-          assignments.push("stop_loss = ?");
-          values.push(stopLoss);
+        const latestTick = await env.daily_funded_trading_db.prepare(`
+          SELECT timestamp_ms, bid, ask FROM market_tick_cursors WHERE symbol = ?
+        `).bind(position.symbol).first();
+        if (latestTick && Date.now() - Number(latestTick.timestamp_ms) <= MARKET_DATA_MAX_AGE_MS) {
+          executablePrice = position.side === "BUY" ? Number(latestTick.bid) : Number(latestTick.ask);
         }
-        if (hasTakeProfit) {
-          assignments.push("take_profit = ?");
-          values.push(takeProfit);
+        if (
+          (stopLoss !== null && (position.side === "BUY" ? stopLoss >= executablePrice : stopLoss <= executablePrice)) ||
+          (takeProfit !== null && (position.side === "BUY" ? takeProfit <= executablePrice : takeProfit >= executablePrice))
+        ) {
+          return tradingError("invalid_protection_level", "Protection level is not valid at the latest server quote", 400);
         }
-        const updateResult = await env.daily_funded_trading_db
-          .prepare(`
-            UPDATE positions
-            SET ${assignments.join(", ")}
-            WHERE id = ? AND account_id = ? AND status = 'open'
-          `)
-          .bind(...values, positionId, position.account_id)
-          .run();
-        if (Number(updateResult?.meta?.changes || 0) !== 1) {
-          return tradingError("position_not_found", "Position not found", 404);
+        if (!env.POSITION_EVENTS) {
+          return json({ success: false, error: "Position event delivery is not configured" }, 503);
         }
-
-        return json({
-          success: true,
-          position: {
-            ...position,
-            stop_loss: hasStopLoss ? stopLoss : position.stop_loss,
-            take_profit: hasTakeProfit ? takeProfit : position.take_profit,
+        const actorId = env.POSITION_EVENTS.idFromName(`account:${position.account_id}`);
+        const result = await env.POSITION_EVENTS.get(actorId).fetch("https://position-events/modify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            position_id: positionId,
+            account_id: position.account_id,
+            user_id: tradingAuth.userId,
+            has_stop_loss: hasStopLoss,
+            stop_loss: stopLoss,
+            has_take_profit: hasTakeProfit,
+            take_profit: takeProfit,
             pnl_metadata: pnlMetadata,
-          },
+          }),
         });
+        if (!result.ok) return result;
+        const resultPayload = await result.json();
+        const tickActorId = env.POSITION_EVENTS.idFromName(`tick:${position.symbol}`);
+        const evaluation = await env.POSITION_EVENTS.get(tickActorId).fetch(
+          "https://position-events/evaluate-position",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              position_id: positionId,
+              account_id: position.account_id,
+              user_id: tradingAuth.userId,
+              symbol: position.symbol,
+            }),
+          }
+        );
+        if (!evaluation.ok) {
+          return json({ success: false, error: "Protection update succeeded but latest tick evaluation failed" }, 503);
+        }
+        return json(resultPayload);
       }
 
       // =====================================================
@@ -3906,162 +4603,19 @@ export default {
         if (!position) {
           return tradingError("position_not_found", "Position not found", 404);
         }
-
-        const context = await getAccountRuleContext(
-          env,
-          position.account_id,
-          tradingAuth.userId
-        );
-
-        if (context.error) {
-          return json({ success: false, error: context.error }, context.status);
+        if (!env.POSITION_EVENTS) {
+          return json({ success: false, error: "Position event delivery is not configured" }, 503);
         }
-
-        let closePrice;
-        let realizedPnl;
-        let remainingFloatingPnl = 0;
-        try {
-          const execution = await requireExecutionQuote(env, position.symbol, position.side === "BUY" ? "SELL" : "BUY");
-          closePrice = execution.price;
-          const metadata = await getPositionCalculationSnapshot(env, positionId);
-          realizedPnl = calculatePnlUsd(position, closePrice, metadata);
-        } catch (error) {
-          return tradingError(error.code || "market_unavailable", error.code ? error.message : "Position close could not be calculated", error.status || 400);
-        }
-
-        const remainingResult = await env.daily_funded_trading_db.prepare(`
-          SELECT p.*
-          FROM positions p
-          INNER JOIN trading_accounts a ON a.id = p.account_id
-          WHERE p.account_id = ? AND a.user_id = ? AND p.status = 'open' AND p.id != ?
-        `).bind(position.account_id, tradingAuth.userId, positionId).all();
-        const remainingPositions = remainingResult.results || [];
-        const remainingQuotes = await getMarketQuotesForSymbols(
-          env,
-          remainingPositions.map((item) => item.symbol)
-        );
-        const remainingQuoteBySymbol = new Map(
-          (remainingQuotes.quotes || []).map((quote) => [quote.symbol, quote])
-        );
-        try {
-          for (const remaining of remainingPositions) {
-            const quote = remainingQuoteBySymbol.get(remaining.symbol);
-            const markPrice = remaining.side === "BUY" ? quote?.bid : quote?.ask;
-            if (
-              !quote ||
-              quote.stale ||
-              quote.market_state?.toLowerCase() === "closed" ||
-              !Number.isFinite(Number(markPrice)) ||
-              Number(markPrice) <= 0
-            ) {
-              throw new Error("Live market data is required to close this position safely");
-            }
-            const metadata = await getPositionCalculationSnapshot(env, remaining.id);
-            remainingFloatingPnl += calculatePnlUsd(remaining, markPrice, metadata);
-          }
-        } catch {
-          return tradingError("market_unavailable", "Live market data is required to close this position safely", 503);
-        }
-
-        const openPrice = Number(position.open_price);
-        const volume = Number(position.volume);
-        const account = context.account;
-        const newBalance = Number(account.balance) + realizedPnl;
-        const newEquity = newBalance + remainingFloatingPnl;
-
-        const tradeId = generateId("TRD");
-
-        const closeResults = await env.daily_funded_trading_db.batch([
-          env.daily_funded_trading_db.prepare(`
-            UPDATE positions
-            SET status = 'closing'
-            WHERE id = ? AND account_id = ? AND status = 'open'
-          `).bind(positionId, position.account_id),
-          env.daily_funded_trading_db.prepare(`
-            INSERT INTO trades (
-              id,
-              account_id,
-              order_id,
-              symbol,
-              side,
-              volume,
-              open_price,
-              close_price,
-              realized_pnl,
-              opened_at
-            )
-            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            WHERE EXISTS (
-              SELECT 1 FROM positions
-              WHERE id = ? AND account_id = ? AND status = 'closing'
-            )
-          `).bind(
-            tradeId,
-            position.account_id,
-            position.order_id,
-            position.symbol,
-            position.side,
-            volume,
-            openPrice,
-            closePrice,
-            realizedPnl,
-            position.opened_at,
-            positionId,
-            position.account_id
-          ),
-          env.daily_funded_trading_db.prepare(`
-            UPDATE trading_accounts
-            SET
-              balance = ?,
-              equity = ?,
-              updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND user_id = ?
-              AND EXISTS (
-                SELECT 1 FROM positions
-                WHERE id = ? AND account_id = ? AND status = 'closing'
-              )
-          `).bind(
-            newBalance,
-            newEquity,
-            position.account_id,
-            tradingAuth.userId,
-            positionId,
-            position.account_id
-          ),
-          env.daily_funded_trading_db.prepare(`
-            UPDATE orders
-            SET status = 'closed'
-            WHERE id = ? AND account_id = ?
-              AND EXISTS (
-                SELECT 1 FROM positions
-                WHERE id = ? AND account_id = ? AND status = 'closing'
-              )
-          `).bind(position.order_id, position.account_id, positionId, position.account_id),
-          env.daily_funded_trading_db.prepare(`
-            DELETE FROM positions
-            WHERE id = ? AND account_id = ? AND status = 'closing'
-          `).bind(positionId, position.account_id),
-        ]);
-        if (Number(closeResults?.[0]?.meta?.changes || 0) !== 1) {
-          return tradingError("position_not_found", "Position not found", 404);
-        }
-
-        return json({
-          success: true,
-          trade: {
-            id: tradeId,
+        const actorId = env.POSITION_EVENTS.idFromName(`account:${position.account_id}`);
+        return env.POSITION_EVENTS.get(actorId).fetch("https://position-events/settle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source: "manual",
+            position_id: positionId,
             account_id: position.account_id,
-            symbol: position.symbol,
-            side: position.side,
-            volume,
-            open_price: openPrice,
-            close_price: closePrice,
-            realized_pnl: realizedPnl,
-          },
-          account: {
-            balance: newBalance,
-            equity: newEquity,
-          },
+            user_id: tradingAuth.userId,
+          }),
         });
       }
 

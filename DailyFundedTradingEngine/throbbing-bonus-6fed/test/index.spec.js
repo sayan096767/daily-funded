@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import worker from "../src/index.flexible.js";
+import worker, { PositionEventsDO } from "../src/index.flexible.js";
+import {
+	protectionPrice,
+	tickIsAfterPositionOpen,
+	triggeredProtection,
+} from "../src/positionProtection.js";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -110,6 +115,8 @@ function mockDb({
 		trades: [...existingTrades],
 		candles: [],
 		snapshotBindingCounts: [],
+		tickCursors: [],
+		positionEvents: [],
 	};
 
 	const db = {
@@ -183,6 +190,9 @@ function mockDb({
 					if (lower.includes("from account_rule_snapshots")) {
 						return state.snapshots.find((row) => row.account_id === this.values[0]) ?? null;
 					}
+					if (lower.includes("from market_tick_cursors")) {
+						return state.tickCursors.find((row) => row.symbol === this.values[0]) ?? null;
+					}
 					return null;
 				},
 				async all() {
@@ -209,14 +219,21 @@ function mockDb({
 						};
 					}
 					if (lower.includes("from positions")) {
-						let positions = state.positions.filter((row) => row.account_id === this.values[0]);
+						let positions = lower.includes("p.symbol = ?")
+							? state.positions.filter((row) => row.symbol === this.values[0])
+							: state.positions.filter((row) => row.account_id === this.values[0]);
 						if (lower.includes("p.id != ?")) {
 							positions = positions.filter((row) => row.id !== this.values.at(-1));
 						}
 						if (lower.includes("p.status = 'open'")) {
 							positions = positions.filter((row) => row.status === "open");
 						}
-						return { results: positions };
+						return {
+							results: positions.map((row) => ({
+								...row,
+								user_id: state.accounts.find((account) => account.id === row.account_id)?.user_id,
+							})),
+						};
 					}
 					if (lower.includes("from trades")) {
 						return { results: state.trades.filter((row) => row.account_id === this.values[0]) };
@@ -230,8 +247,8 @@ function mockDb({
 						state.orders.push({ id, account_id: accountId, symbol, side, volume, requested_price: requestedPrice, order_type: orderType, status });
 					}
 					if (lower.includes("insert into positions")) {
-						const [id, accountId, orderId, symbol, side, volume, openPrice, currentPrice, floatingPnl, takeProfit, stopLoss, status] = this.values;
-						state.positions.push({ id, account_id: accountId, order_id: orderId, symbol, side, volume, open_price: openPrice, current_price: currentPrice, floating_pnl: floatingPnl, take_profit: takeProfit, stop_loss: stopLoss, status });
+						const [id, accountId, orderId, symbol, side, volume, openPrice, currentPrice, floatingPnl, takeProfit, stopLoss, status, openedAt] = this.values;
+						state.positions.push({ id, account_id: accountId, order_id: orderId, symbol, side, volume, open_price: openPrice, current_price: currentPrice, floating_pnl: floatingPnl, take_profit: takeProfit, stop_loss: stopLoss, status, opened_at: openedAt });
 					}
 					if (lower.includes("insert into position_calculation_snapshots")) {
 						const [positionId, metadataJson] = this.values;
@@ -242,6 +259,21 @@ function mockDb({
 						state.candles.push({ symbol, interval, open_time: openTime, open, high, low, close, volume: null, source: "worker_generated" });
 					}
 					if (lower.includes("update positions")) {
+						if (lower.includes("stop_loss = ?")) {
+							const positionId = this.values.at(-4);
+							const accountId = this.values.at(-3);
+							const position = state.positions.find((row) =>
+								row.id === positionId && row.account_id === accountId && row.status === "open"
+							);
+							if (position) position.stop_loss = this.values[0];
+						} else if (lower.includes("take_profit = ?") && !lower.includes("floating_pnl = ?")) {
+							const positionId = this.values.at(-4);
+							const accountId = this.values.at(-3);
+							const position = state.positions.find((row) =>
+								row.id === positionId && row.account_id === accountId && row.status === "open"
+							);
+							if (position) position.take_profit = this.values[0];
+						} else {
 						const [currentPrice, floatingPnl, positionId, accountId] = this.values;
 						const position = state.positions.find((row) =>
 							row.id === positionId && (!accountId || row.account_id === accountId)
@@ -250,17 +282,28 @@ function mockDb({
 							current_price: currentPrice,
 							floating_pnl: floatingPnl,
 						});
+						}
 					}
 					if (lower.includes("update trading_accounts")) {
 						const accountId = lower.includes("user_id = ?")
 							? this.values.at(-2)
 							: this.values.at(-1);
 						const account = state.accounts.find((row) => row.id === accountId);
-						if (lower.includes("balance = ?")) {
+						if (lower.includes("balance = balance + ?")) {
+							const previousBalance = Number(account.balance);
+							account.balance = previousBalance + Number(this.values[0]);
+							account.equity = previousBalance + Number(this.values[1]) + Number(this.values[2]);
+						} else if (lower.includes("balance = ?")) {
 							[account.balance, account.equity] = this.values;
 						} else {
 							account.equity = this.values[0];
 						}
+					}
+					if (lower.includes("insert into market_tick_cursors")) {
+						const [symbol, timestampMs, bid, ask] = this.values;
+						const existing = state.tickCursors.find((row) => row.symbol === symbol);
+						if (existing) Object.assign(existing, { timestamp_ms: timestampMs, bid, ask });
+						else state.tickCursors.push({ symbol, timestamp_ms: timestampMs, bid, ask });
 					}
 					if (lower.includes("insert into trades")) {
 						const [id, accountId, orderId, symbol, side, volume, openPrice, closePrice, realizedPnl, openedAt] = this.values;
@@ -297,9 +340,12 @@ function mockDb({
 					const result = await statement.run();
 					changes = Number(result?.meta?.changes || 1);
 				} else if (lower.includes("update positions") && lower.includes("set status = 'closing'")) {
-					const [positionId, accountId] = statement.values;
+					const [positionId, accountId, source, tickTimestamp] = statement.values;
 					const position = state.positions.find((row) =>
-						row.id === positionId && row.account_id === accountId && row.status === "open"
+						row.id === positionId &&
+						row.account_id === accountId &&
+						row.status === "open" &&
+						(source !== "tick" || Date.parse(row.opened_at) < Date.parse(tickTimestamp))
 					);
 					if (position) {
 						position.status = "closing";
@@ -314,13 +360,17 @@ function mockDb({
 						state.trades.push({ id, account_id: tradeAccountId, order_id: orderId, symbol, side, volume, open_price: openPrice, close_price: closePrice, realized_pnl: realizedPnl, opened_at: openedAt, closed_at: new Date().toISOString() });
 						changes = 1;
 					}
-				} else if (lower.includes("update trading_accounts") && lower.includes("balance = ?")) {
-					const [balance, equity, accountId] = statement.values;
+				} else if (lower.includes("update trading_accounts") &&
+					(lower.includes("balance = ?") || lower.includes("balance = balance + ?"))) {
+					const accountId = lower.includes("user_id = ?")
+						? statement.values.at(-4)
+						: statement.values[2];
 					const closingId = statement.values.at(-2);
 					const account = state.accounts.find((row) => row.id === accountId);
 					if (account && state.positions.some((row) => row.id === closingId && row.status === "closing")) {
-						account.balance = balance;
-						account.equity = equity;
+						const previousBalance = Number(account.balance);
+						account.balance = previousBalance + Number(statement.values[0]);
+						account.equity = previousBalance + Number(statement.values[1]) + Number(statement.values[2]);
 						changes = 1;
 					}
 				} else if (lower.includes("update orders") && lower.includes("status = 'closed'")) {
@@ -330,12 +380,17 @@ function mockDb({
 						order.status = "closed";
 						changes = 1;
 					}
-				} else if (lower.includes("delete from positions") && lower.includes("status = 'closing'")) {
-					const [positionId, accountId] = statement.values;
+				} else if (lower.includes("update positions") && lower.includes("set status = 'closed'")) {
+					const [closePrice, , realizedPnl, positionId, accountId] = statement.values;
 					const position = state.positions.find((row) => row.id === positionId && row.account_id === accountId && row.status === "closing");
 					if (position) {
-						state.positions = state.positions.filter((row) => row.id !== positionId);
-						state.positionSnapshots = state.positionSnapshots.filter((row) => row.position_id !== positionId);
+						Object.assign(position, {
+							status: "closed",
+							current_price: closePrice,
+							floating_pnl: 0,
+							close_price: closePrice,
+							realized_pnl: realizedPnl,
+						});
 						changes = 1;
 					}
 				} else if (lower.includes("update positions") || lower.includes("update trading_accounts")) {
@@ -373,6 +428,46 @@ function mockDb({
 	};
 
 	return { db, state, catalog };
+}
+
+const positionEventNamespaces = new WeakMap();
+
+function mockPositionEventsNamespace(env) {
+	if (positionEventNamespaces.has(env.daily_funded_trading_db)) {
+		return positionEventNamespaces.get(env.daily_funded_trading_db);
+	}
+	const instances = new Map();
+	const namespace = {
+		idFromName: (name) => name,
+		get(id) {
+			if (!instances.has(id)) {
+				const sockets = [];
+				const state = {
+					getWebSockets(tag) {
+						return sockets.filter((socket) => socket.tag === tag);
+					},
+					acceptWebSocket(socket, tags) {
+						socket.tag = tags[0];
+						sockets.push(socket);
+					},
+					addTestSocket(socket, tag) {
+						socket.tag = tag;
+						sockets.push(socket);
+					},
+				};
+				instances.set(id, new PositionEventsDO(state, env));
+			}
+			const instance = instances.get(id);
+			return {
+				fetch: (url, init) => instance.fetch(new Request(url, init)),
+				addSocket(accountId, socket) {
+					instance.state.addTestSocket(socket, accountId);
+				},
+			};
+		},
+	};
+	positionEventNamespaces.set(env.daily_funded_trading_db, namespace);
+	return namespace;
 }
 
 function requestProvisioning(body, token = provisioningToken) {
@@ -428,6 +523,9 @@ function tradingRequest(path, {
 async function callTrading(db, path, options = {}) {
 	const { request, env } = tradingRequest(path, options);
 	env.daily_funded_trading_db = db;
+	env.POSITION_EVENTS = mockPositionEventsNamespace(env);
+	env.TRADING_EVENTS_SIGNING_SECRET = "test-event-signing-secret-long-enough-32";
+	env.MARKET_TICK_INGEST_TOKEN = "test-market-tick-ingest-token";
 	return worker.fetch(request, env);
 }
 
@@ -533,6 +631,44 @@ async function openPosition(db, symbol, { side = "BUY", volume = 0.1, price = 1.
 			order_type: "MARKET",
 		},
 	});
+}
+
+async function openProtectedPosition(db, symbol, { side, take_profit, stop_loss }) {
+	stubTradingQuotes(1.25);
+	return callTrading(db, "/positions", {
+		method: "POST",
+		body: {
+			account_id: "ACC_TRADE",
+			symbol,
+			side,
+			volume: 0.1,
+			order_type: "MARKET",
+			take_profit,
+			stop_loss,
+		},
+	});
+}
+
+async function ingestBiquoteTick(db, { symbol = "EURUSD", bid, ask, timestamp = new Date().toISOString() } = {}, token = "test-market-tick-ingest-token") {
+	const env = {
+		daily_funded_trading_db: db,
+		MARKET_TICK_INGEST_TOKEN: "test-market-tick-ingest-token",
+		POSITION_EVENTS: null,
+	};
+	env.POSITION_EVENTS = mockPositionEventsNamespace(env);
+	const request = new Request("http://example.com/internal/market-tick", {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${token}`,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({ symbol, provider_symbol: symbol, bid, ask, timestamp }),
+	});
+	return worker.fetch(request, env);
+}
+
+function tickTimeFromOpen(position, offsetMs) {
+	return new Date(Date.parse(position.opened_at) + offsetMs).toISOString();
 }
 
 async function markPosition(db, positionId, currentPrice) {
@@ -1211,6 +1347,533 @@ describe("Worker error and CORS safety", () => {
 });
 
 describe("Flexible provisioning worker", () => {
+	it.each([
+		["BUY", { bid: 1.19, ask: 1.20 }, 1.19],
+		["SELL", { bid: 1.29, ask: 1.30 }, 1.30],
+	])("uses the executable %s protection side from the provider tick", (side, tick, expectedPrice) => {
+		expect(protectionPrice({ side }, tick)).toBe(expectedPrice);
+	});
+
+	it.each([
+		["BUY", 1.2, 1.3, { bid: 1.2, ask: 1.2002, timestamp_ms: Date.parse("2026-10-05T00:00:00.001Z") }, "STOP_LOSS"],
+		["BUY", 1.2, 1.3, { bid: 1.3, ask: 1.3002, timestamp_ms: Date.parse("2026-10-05T00:00:00.001Z") }, "TAKE_PROFIT"],
+		["SELL", 1.3, 1.2, { bid: 1.2998, ask: 1.3, timestamp_ms: Date.parse("2026-10-05T00:00:00.001Z") }, "STOP_LOSS"],
+		["SELL", 1.3, 1.2, { bid: 1.1998, ask: 1.2, timestamp_ms: Date.parse("2026-10-05T00:00:00.001Z") }, "TAKE_PROFIT"],
+	])("detects %s protection trigger from the correct side", (side, stop_loss, take_profit, tick, reason) => {
+		expect(triggeredProtection({
+			side,
+			stop_loss,
+			take_profit,
+			opened_at: "2026-10-05T00:00:00.000Z",
+		}, tick)).toEqual({
+			reason,
+			price: side === "BUY" ? tick.bid : tick.ask,
+		});
+	});
+
+	it("does not allow a tick at or before the exact position open timestamp to trigger protection", () => {
+		const position = {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+			opened_at: "2026-10-05T00:00:00.250Z",
+		};
+		expect(tickIsAfterPositionOpen(position, {
+			timestamp_ms: Date.parse("2026-10-05T00:00:00.249Z"),
+		})).toBe(false);
+		expect(tickIsAfterPositionOpen(position, {
+			timestamp_ms: Date.parse("2026-10-05T00:00:00.250Z"),
+		})).toBe(false);
+		expect(triggeredProtection(position, {
+			bid: 1.19,
+			ask: 1.1902,
+			timestamp_ms: Date.parse("2026-10-05T00:00:00.250Z"),
+		})).toBeNull();
+		expect(triggeredProtection(position, {
+			bid: 1.19,
+			ask: 1.1902,
+			timestamp_ms: Date.parse("2026-10-05T00:00:00.251Z"),
+		})).toMatchObject({ reason: "STOP_LOSS", price: 1.19 });
+	});
+
+	it("does not trigger protection from invalid or missing provider prices", () => {
+		expect(triggeredProtection(
+			{ side: "BUY", stop_loss: 1.2, opened_at: "2026-10-05T00:00:00.000Z" },
+			{ bid: null, ask: 1.19, timestamp_ms: Date.parse("2026-10-05T00:00:00.001Z") }
+		)).toBeNull();
+		expect(triggeredProtection(
+			{ side: "BUY", stop_loss: 1.2, opened_at: "2026-10-05T00:00:00.000Z" },
+			{ bid: -1, ask: 1.19, timestamp_ms: Date.parse("2026-10-05T00:00:00.001Z") }
+		)).toBeNull();
+	});
+
+	it("rejects client-originated, invalid, and stale market ticks", async () => {
+		const { db } = positionHarness({
+			symbols: [{ ...positionSymbol("EURUSD"), provider: "biquote", provider_symbol: "EURUSD", market_data_enabled: 1 }],
+			allowedSymbols: ["EURUSD"],
+		});
+		const missingAuth = await ingestBiquoteTick(db, { bid: 1.2, ask: 1.2002 }, "client-token");
+		expect(missingAuth.status).toBe(401);
+		const invalidPrices = await ingestBiquoteTick(db, { bid: 0, ask: 1.2 });
+		expect(invalidPrices.status).toBe(400);
+		const stale = await ingestBiquoteTick(db, {
+			bid: 1.2,
+			ask: 1.2002,
+			timestamp: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+		});
+		expect(stale.status).toBe(400);
+	});
+
+	it.each([
+		["SL", { stop_loss: 1.2, take_profit: null }],
+		["TP", { stop_loss: null, take_profit: 1.3 }],
+	])("does not trigger a BUY %s from a tick timestamped before position open", async (_name, protection) => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", { side: "BUY", ...protection });
+		const position = state.positions[0];
+		const price = protection.stop_loss ?? protection.take_profit;
+		const tick = await ingestBiquoteTick(db, {
+			bid: price,
+			ask: price + 0.0002,
+			timestamp: tickTimeFromOpen(position, -1),
+		});
+		const result = await tick.json();
+
+		expect(tick.status).toBe(200);
+		expect(result).toMatchObject({ success: true, accepted: true, evaluated_positions: 1 });
+		expect(position.status).toBe("open");
+		expect(state.trades).toHaveLength(0);
+		expect(state.accounts[0].balance).toBe(10000);
+	});
+
+	it.each([
+		["SL", { stop_loss: 1.2, take_profit: null }],
+		["TP", { stop_loss: null, take_profit: 1.3 }],
+	])("allows a strictly post-open BUY %s tick to trigger protection without a browser", async (_name, protection) => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", { side: "BUY", ...protection });
+		const position = state.positions[0];
+		const price = protection.stop_loss ?? protection.take_profit;
+		const tick = await ingestBiquoteTick(db, {
+			bid: price,
+			ask: price + 0.0002,
+			timestamp: tickTimeFromOpen(position, 10),
+		});
+
+		expect(tick.status).toBe(200);
+		expect(position.status).toBe("closed");
+		expect(position.close_price).toBe(price);
+		expect(state.trades).toHaveLength(1);
+	});
+
+	it("drops a failed pre-open tick retry and processes the next newer tick", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		const oldTimestamp = new Date(Date.now() - 1000).toISOString();
+		const originalPrepare = db.prepare.bind(db);
+		let failCursorWrite = true;
+		db.prepare = (sql) => {
+			const statement = originalPrepare(sql);
+			if (sql.toLowerCase().includes("insert into market_tick_cursors")) {
+				const originalRun = statement.run;
+				statement.run = async () => {
+					if (failCursorWrite) {
+						failCursorWrite = false;
+						throw new Error("simulated temporary local Worker failure");
+					}
+					return originalRun.call(statement);
+				};
+			}
+			return statement;
+		};
+		const failed = await ingestBiquoteTick(db, {
+			bid: 1.2,
+			ask: 1.2002,
+			timestamp: oldTimestamp,
+		});
+		expect(failed.status).toBe(503);
+
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		const retry = await ingestBiquoteTick(db, {
+			bid: 1.2,
+			ask: 1.2002,
+			timestamp: oldTimestamp,
+		});
+		expect(retry.status).toBe(200);
+		expect(state.positions[0].status).toBe("open");
+		expect(state.trades).toHaveLength(0);
+
+		const newer = await ingestBiquoteTick(db, {
+			bid: 1.2,
+			ask: 1.2002,
+			timestamp: tickTimeFromOpen(state.positions[0], 10),
+		});
+		expect(newer.status).toBe(200);
+		expect(state.positions[0].status).toBe("closed");
+		expect(state.trades).toHaveLength(1);
+	});
+
+	it("does not settle if the position becomes newer between evaluation and the atomic D1 close transition", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		const position = state.positions[0];
+		const originalBatch = db.batch.bind(db);
+		db.batch = async (statements) => {
+			if (statements.some((statement) =>
+				statement.sql.toLowerCase().includes("set status = 'closing'")
+			)) {
+				position.opened_at = tickTimeFromOpen(position, 1000);
+			}
+			return originalBatch(statements);
+		};
+		const response = await ingestBiquoteTick(db, {
+			bid: 1.2,
+			ask: 1.2002,
+			timestamp: tickTimeFromOpen(position, 100),
+		});
+
+		expect(response.status).toBe(200);
+		expect(position.status).toBe("open");
+		expect(state.trades).toHaveLength(0);
+		expect(state.accounts[0].balance).toBe(10000);
+	});
+
+	it("rejects duplicate and out-of-order provider ticks", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		const position = state.positions[0];
+		const timestamp = tickTimeFromOpen(position, 100);
+		const first = await ingestBiquoteTick(db, {
+			bid: 1.25,
+			ask: 1.2502,
+			timestamp,
+		});
+		expect(first.status).toBe(200);
+		const duplicate = await ingestBiquoteTick(db, {
+			bid: 1.2,
+			ask: 1.2002,
+			timestamp,
+		});
+		expect(duplicate.status).toBe(200);
+		expect(await duplicate.json()).toMatchObject({
+			success: true,
+			accepted: false,
+			reason: "duplicate_or_out_of_order",
+		});
+		const older = await ingestBiquoteTick(db, {
+			bid: 1.2,
+			ask: 1.2002,
+			timestamp: tickTimeFromOpen(position, 50),
+		});
+		expect(await older.json()).toMatchObject({
+			success: true,
+			accepted: false,
+			reason: "duplicate_or_out_of_order",
+		});
+		expect(position.status).toBe("open");
+		expect(state.trades).toHaveLength(0);
+	});
+
+	it("keeps an open position when an old pre-open tick is delivered with no browser", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		const position = state.positions[0];
+		const response = await ingestBiquoteTick(db, {
+			bid: 1.2,
+			ask: 1.2002,
+			timestamp: tickTimeFromOpen(position, -1),
+		});
+
+		expect(response.status).toBe(200);
+		expect(position.status).toBe("open");
+		expect(state.trades).toHaveLength(0);
+	});
+
+	it("settles a manual close once when racing a pre-open protection tick", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		const position = state.positions[0];
+		const [manual, staleTick] = await Promise.all([
+			closePosition(db, position.id, 1.249),
+			ingestBiquoteTick(db, {
+				bid: 1.2,
+				ask: 1.2002,
+				timestamp: tickTimeFromOpen(position, -1),
+			}),
+		]);
+
+		expect(manual.status === 200 || staleTick.status === 200).toBe(true);
+		expect(position.status).toBe("closed");
+		expect(state.trades).toHaveLength(1);
+		expect(state.accounts[0].balance).not.toBe(10000);
+	});
+
+	it("evaluates protection timestamps independently for positions opened at different times", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		const earlierPosition = state.positions[0];
+		earlierPosition.opened_at = new Date(Date.now() - 5000).toISOString();
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		const laterPosition = state.positions[1];
+		const betweenOpenTimes = new Date(Date.parse(laterPosition.opened_at) - 1000).toISOString();
+		const firstTick = await ingestBiquoteTick(db, {
+			bid: 1.2,
+			ask: 1.2002,
+			timestamp: betweenOpenTimes,
+		});
+
+		expect(firstTick.status).toBe(200);
+		expect(earlierPosition.status).toBe("closed");
+		expect(laterPosition.status).toBe("open");
+		expect(state.trades).toHaveLength(1);
+
+		const secondTick = await ingestBiquoteTick(db, {
+			bid: 1.2,
+			ask: 1.2002,
+			timestamp: tickTimeFromOpen(laterPosition, 1000),
+		});
+		expect(secondTick.status).toBe(200);
+		expect(laterPosition.status).toBe("closed");
+		expect(state.trades).toHaveLength(2);
+	});
+
+	it("closes a BUY at the accepted Bid tick when server-side SL is reached while no browser is connected", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		const opened = await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		expect(opened.status).toBe(201);
+		const tick = await ingestBiquoteTick(db, { bid: 1.2, ask: 1.2002 });
+		const result = await tick.json();
+
+		expect(tick.status).toBe(200);
+		expect(result).toMatchObject({ success: true, accepted: true, evaluated_positions: 1 });
+		expect(state.positions[0]).toMatchObject({ status: "closed", close_price: 1.2 });
+		expect(state.trades).toHaveLength(1);
+		expect(state.trades[0].close_price).toBe(1.2);
+		expect(state.trades[0].realized_pnl).toBeCloseTo(-500, 8);
+		expect(state.accounts[0].balance).toBeCloseTo(9500, 8);
+	});
+
+	it("closes an XAUUSD BUY from the Biquote Bid tick and publishes the settled trade and account", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("XAUUSD", {
+				category: "METALS",
+				base_currency: "XAU",
+				quote_currency: "USD",
+				contract_size: 100,
+				price_decimals: 2,
+				pip_size: 0.01,
+			})],
+			allowedSymbols: ["XAUUSD"],
+		});
+		stubTradingQuotes(2000, { XAUUSD: { bid: 2000, ask: 2002 } });
+		const opened = await callTrading(db, "/positions", {
+			method: "POST",
+			body: {
+				account_id: "ACC_TRADE",
+				symbol: "XAUUSD",
+				side: "BUY",
+				volume: 0.1,
+				order_type: "MARKET",
+				stop_loss: 1990,
+				take_profit: 2010,
+			},
+		});
+		const openResult = await opened.json();
+		expect(opened.status).toBe(201);
+		expect(openResult.position.open_price).toBe(2002);
+
+		const messages = [];
+		mockPositionEventsNamespace({ daily_funded_trading_db: db })
+			.get("user:user-123")
+			.addSocket("ACC_TRADE", { send: (message) => messages.push(JSON.parse(message)) });
+		const tick = await ingestBiquoteTick(db, {
+			symbol: "XAUUSD",
+			bid: 1989.99,
+			ask: 1990.1,
+		});
+		const tickResult = await tick.json();
+
+		expect(tick.status).toBe(200);
+		expect(tickResult).toMatchObject({ success: true, accepted: true, evaluated_positions: 1 });
+		expect(state.positions[0]).toMatchObject({
+			status: "closed",
+			close_price: 1989.99,
+		});
+		expect(state.positions[0].realized_pnl).toBeCloseTo(-120.1, 8);
+		expect(state.trades).toHaveLength(1);
+		expect(state.trades[0]).toMatchObject({
+			symbol: "XAUUSD",
+			open_price: 2002,
+			close_price: 1989.99,
+		});
+		expect(state.trades[0].realized_pnl).toBeCloseTo(-120.1, 8);
+		expect(state.accounts[0].balance).toBeCloseTo(9879.9, 8);
+		expect(state.accounts[0].equity).toBeCloseTo(9879.9, 8);
+		expect(messages).toHaveLength(1);
+		expect(messages[0]).toMatchObject({
+			type: "POSITION_CLOSED",
+			position_id: openResult.position.id,
+			trade: {
+				symbol: "XAUUSD",
+				close_price: 1989.99,
+				close_reason: "STOP_LOSS",
+			},
+			account: { balance: 9879.9, equity: 9879.9 },
+		});
+		expect(messages[0].trade.realized_pnl).toBeCloseTo(-120.1, 8);
+	});
+
+	it("closes a SELL at the accepted Ask tick when server-side TP is reached", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "SELL",
+			stop_loss: 1.3,
+			take_profit: 1.2,
+		});
+		const tick = await ingestBiquoteTick(db, { bid: 1.1998, ask: 1.2 });
+
+		expect(tick.status).toBe(200);
+		expect(state.positions[0]).toMatchObject({ status: "closed", close_price: 1.2 });
+		expect(state.trades).toHaveLength(1);
+		expect(state.trades[0].close_price).toBe(1.2);
+		expect(state.trades[0].realized_pnl).toBeCloseTo(500, 8);
+		expect(state.accounts[0].balance).toBeCloseTo(10500, 8);
+	});
+
+	it("makes repeated close ticks harmless and keeps separate positions independent", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.1,
+			take_profit: 1.4,
+		});
+		const firstTick = { bid: 1.2, ask: 1.2002 };
+		await ingestBiquoteTick(db, firstTick);
+		await ingestBiquoteTick(db, firstTick);
+
+		expect(state.positions.filter((position) => position.status === "open")).toHaveLength(1);
+		expect(state.trades).toHaveLength(1);
+		expect(state.accounts[0].balance).toBeCloseTo(9500, 8);
+
+		await ingestBiquoteTick(db, {
+			bid: 1.1,
+			ask: 1.1002,
+			timestamp: new Date(Date.now() + 1).toISOString(),
+		});
+		expect(state.positions.filter((position) => position.status === "open")).toHaveLength(0);
+		expect(state.trades).toHaveLength(2);
+		expect(state.accounts[0].balance).toBeCloseTo(8000, 8);
+	});
+
+	it("serializes a manual close against an automatic trigger with one trade and one balance effect", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		const outcomes = await Promise.all([
+			closePosition(db, state.positions[0].id, 1.249),
+			ingestBiquoteTick(db, { bid: 1.2, ask: 1.2002 }),
+		]);
+
+		expect(outcomes.some((outcome) => outcome.status === 200)).toBe(true);
+		expect(state.positions[0].status).toBe("closed");
+		expect(state.trades).toHaveLength(1);
+		expect(state.accounts[0].balance).toBeGreaterThan(9000);
+		expect(state.accounts[0].balance).toBeLessThan(10000);
+	});
+
+	it("broadcasts a closed position event to connected browser sockets", async () => {
+		const messages = [];
+		const socket = { send: (message) => messages.push(JSON.parse(message)) };
+		const actor = new PositionEventsDO({
+			getWebSockets: (accountId) => accountId === "ACC_TRADE" ? [socket] : [],
+		}, {});
+		const response = await actor.fetch(new Request("https://position-events/publish", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				account_id: "ACC_TRADE",
+				event: { type: "POSITION_CLOSED", position_id: "POS_1" },
+			}),
+		}));
+
+		expect(response.status).toBe(200);
+		expect(messages).toEqual([{ type: "POSITION_CLOSED", position_id: "POS_1" }]);
+	});
 	it("rejects a missing provisioning token with 401", async () => {
 		const { db } = mockDb();
 		const response = await provision(db, payloadFor("1step"), null);
@@ -1529,6 +2192,34 @@ describe("Flexible provisioning worker", () => {
 		const response = await openPosition(db, "EURUSD");
 		expect(response.status).toBe(201);
 		expect(state.positions).toHaveLength(1);
+		const payload = await response.json();
+		expect(payload.position).toMatchObject({
+			id: state.positions[0].id,
+			account_id: "ACC_TRADE",
+			status: "open",
+		});
+	});
+
+	it("persists and returns a server-authoritative SL modification", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openPosition(db, "EURUSD");
+		stubTradingQuotes(1.25);
+		const response = await callTrading(db, "/positions/modify", {
+			method: "POST",
+			body: { position_id: state.positions[0].id, stop_loss: 1.2 },
+		});
+		const payload = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(payload.position).toMatchObject({
+			id: state.positions[0].id,
+			stop_loss: 1.2,
+			status: "open",
+		});
+		expect(state.positions[0].stop_loss).toBe(1.2);
 	});
 
 	it.each([
@@ -1860,8 +2551,9 @@ describe("Flexible provisioning worker", () => {
 		expect(closed.status).toBe(200);
 		expect(payload.trade.realized_pnl).toBeCloseTo(100, 8);
 		expect(payload.account).toMatchObject({ balance: 10100, equity: 10200 });
-		expect(state.positions).toHaveLength(1);
-		expect(state.positions[0].floating_pnl).toBeCloseTo(100, 8);
+		const openPositions = state.positions.filter((position) => position.status === "open");
+		expect(openPositions).toHaveLength(1);
+		expect(openPositions[0].floating_pnl).toBeCloseTo(100, 8);
 		expect(state.accounts[0]).toMatchObject({ balance: 10100, equity: 10200 });
 	});
 
@@ -2004,13 +2696,18 @@ describe("Flexible provisioning worker", () => {
 				CREATE TABLE positions (id TEXT PRIMARY KEY, account_id TEXT NOT NULL);
 			`);
 			database.exec(readFileSync(new URL("../migration_007_trading_execution.sql", import.meta.url), "utf8"));
+			database.exec(readFileSync(new URL("../migration_008_server_position_protection.sql", import.meta.url), "utf8"));
 
 			const orderColumns = database.prepare("PRAGMA table_info(orders)").all().map((column) => column.name);
 			const positionColumns = database.prepare("PRAGMA table_info(positions)").all().map((column) => column.name);
 			const indexes = database.prepare("PRAGMA index_list(positions)").all().map((index) => index.name);
+			const cursorColumns = database.prepare("PRAGMA table_info(market_tick_cursors)").all().map((column) => column.name);
 			expect(orderColumns).toContain("order_type");
-			expect(positionColumns).toEqual(expect.arrayContaining(["take_profit", "stop_loss", "status"]));
+			expect(positionColumns).toEqual(expect.arrayContaining([
+				"take_profit", "stop_loss", "status", "close_price", "realized_pnl", "closed_at",
+			]));
 			expect(indexes).toContain("idx_positions_account_status");
+			expect(cursorColumns).toEqual(expect.arrayContaining(["symbol", "timestamp_ms", "bid", "ask"]));
 		} finally {
 			database.close();
 		}

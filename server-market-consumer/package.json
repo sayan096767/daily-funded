@@ -1,0 +1,12 @@
+{
+  "name": "daily-funded-market-consumer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@microsoft/signalr": "^10.0.11"
+  }
+}
