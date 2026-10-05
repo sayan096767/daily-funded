@@ -3,6 +3,12 @@ import {
   tickIsAfterPositionOpen,
   triggeredProtection,
 } from "./positionProtection.js";
+import {
+  BIQUOTE_HUB_URL,
+  negotiateBiquoteSignalR,
+  parseSignalRFrames,
+  signalRRecord,
+} from "./biquoteSignalR.js";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -1138,6 +1144,9 @@ async function createRuleSnapshot(
 
 const MARKET_DATA_MAX_AGE_MS = 5 * 60 * 1000;
 const MARKET_DATA_CACHE_TTL_SECONDS = 5;
+const MARKET_FEED_ALARM_MS = 60 * 1000;
+const MARKET_FEED_REFRESH_MS = 10 * 60 * 1000;
+const MARKET_FEED_HEALTH_TIMEOUT_MS = 45 * 1000;
 const MARKET_CANDLE_INTERVALS = {
   "1m": 60_000,
   "5m": 5 * 60_000,
@@ -1684,7 +1693,12 @@ async function withAccountQueue(state, accountId, callback) {
   }
 }
 
-async function settlePosition(env, positionId, userId, { source, tick, reason } = {}) {
+async function settlePosition(env, positionId, userId, {
+  source,
+  tick,
+  reason,
+  latestTicks,
+} = {}) {
   const db = env.daily_funded_trading_db;
   const position = await db.prepare(`
     SELECT p.*, a.user_id
@@ -1735,6 +1749,7 @@ async function settlePosition(env, positionId, userId, { source, tick, reason } 
   let remainingFloatingPnl = 0;
   let remainingUsedMargin = 0;
   let marginDataComplete = Number(accountContext.snapshot.leverage) > 0;
+  const remainingPositionMarkUpdates = [];
   const remainingResult = await db.prepare(`
     SELECT p.*
     FROM positions p
@@ -1744,17 +1759,31 @@ async function settlePosition(env, positionId, userId, { source, tick, reason } 
 
   if (source === "tick") {
     for (const item of remainingPositions) {
-      remainingFloatingPnl += Number.isFinite(Number(item.floating_pnl)) ? Number(item.floating_pnl) : 0;
+      const currentTick = latestTicks?.get(item.symbol);
+      const currentMark = currentTick &&
+        Date.now() - Number(currentTick.timestamp_ms) <= MARKET_DATA_MAX_AGE_MS &&
+        tickIsAfterPositionOpen(item, currentTick)
+        ? protectionPrice(item, currentTick)
+        : null;
+      let markPrice = Number(item.current_price);
+      let floatingPnl = Number.isFinite(Number(item.floating_pnl)) ? Number(item.floating_pnl) : 0;
       try {
+        const positionMetadata = await getPositionCalculationSnapshot(env, item.id);
+        if (currentMark !== null) {
+          markPrice = currentMark;
+          floatingPnl = calculatePnlUsd(item, currentMark, positionMetadata);
+          remainingPositionMarkUpdates.push(db.prepare(`
+            UPDATE positions SET current_price = ?, floating_pnl = ?
+            WHERE id = ? AND account_id = ? AND status = 'open'
+          `).bind(currentMark, floatingPnl, item.id, item.account_id));
+        }
         remainingUsedMargin += marginForPosition(
-          item,
-          Number(item.current_price),
-          await getPositionCalculationSnapshot(env, item.id),
-          Number(accountContext.snapshot.leverage)
+          item, markPrice, positionMetadata, Number(accountContext.snapshot.leverage)
         );
       } catch {
         marginDataComplete = false;
       }
+      remainingFloatingPnl += floatingPnl;
     }
   } else {
     const quotes = await getMarketQuotesForSymbols(env, remainingPositions.map((item) => item.symbol));
@@ -1793,12 +1822,13 @@ async function settlePosition(env, positionId, userId, { source, tick, reason } 
   }
 
   const tradeId = generateId("TRD");
-  const results = await db.batch([
+  const settlementStatements = [
     db.prepare(`
       UPDATE positions SET status = 'closing'
       WHERE id = ? AND account_id = ? AND status = 'open'
         AND (? != 'tick' OR strftime('%Y-%m-%dT%H:%M:%fZ', opened_at) < ?)
     `).bind(position.id, position.account_id, source, protectionTickTimestamp),
+    ...remainingPositionMarkUpdates,
     db.prepare(`
       INSERT INTO trades (
         id, account_id, order_id, symbol, side, volume, open_price, close_price, realized_pnl, opened_at
@@ -1840,11 +1870,16 @@ async function settlePosition(env, positionId, userId, { source, tick, reason } 
           closed_at = CURRENT_TIMESTAMP
       WHERE id = ? AND account_id = ? AND status = 'closing'
     `).bind(closePrice, closePrice, realizedPnl, position.id, position.account_id),
-  ]);
+  ];
+  const results = await db.batch(settlementStatements);
 
   if (Number(results?.[0]?.meta?.changes || 0) !== 1) {
     return source === "tick" ? { skipped: true } : { error: "position_not_found", status: 404 };
   }
+  const settlementRowsWritten = results.reduce(
+    (total, result) => total + Number(result?.meta?.changes || 0),
+    0
+  );
 
   const trade = {
     id: tradeId,
@@ -1889,129 +1924,593 @@ async function settlePosition(env, positionId, userId, { source, tick, reason } 
     trade,
     account,
   });
-  return { trade, account, position: closedPosition };
+  return {
+    trade,
+    account,
+    position: closedPosition,
+    _settlementRowsWritten: settlementRowsWritten,
+  };
 }
 
-async function processBiquoteTick(env, tick) {
-  const db = env.daily_funded_trading_db;
-  if (!Number.isInteger(Number(tick.timestamp_ms)) || Number(tick.timestamp_ms) <= 0) {
-    return { accepted: false, reason: "invalid_timestamp" };
-  }
-  const symbolRows = await getConfiguredMarketSymbols(env);
-  const symbol = symbolRows.find((item) => item.symbol === tick.symbol);
-  if (!symbol || symbol.provider !== "biquote" || symbol.provider_symbol !== tick.provider_symbol) {
-    return { accepted: false, reason: "symbol_mismatch" };
-  }
-  const previous = await db.prepare(`
-    SELECT timestamp_ms FROM market_tick_cursors WHERE symbol = ?
-  `).bind(tick.symbol).first();
-  if (previous && Number(tick.timestamp_ms) <= Number(previous.timestamp_ms)) {
-    return { accepted: false, reason: "duplicate_or_out_of_order" };
+function freshProviderTick(tick, now = Date.now()) {
+  return Number.isInteger(Number(tick?.timestamp_ms)) &&
+    Number(tick.timestamp_ms) > 0 &&
+    Number(tick.timestamp_ms) <= now + 60_000 &&
+    now - Number(tick.timestamp_ms) <= MARKET_DATA_MAX_AGE_MS &&
+    Number.isFinite(Number(tick.bid)) && Number(tick.bid) > 0 &&
+    Number.isFinite(Number(tick.ask)) && Number(tick.ask) >= Number(tick.bid);
+}
+
+function feedTickFromSignalR(message, providerToCanonical) {
+  if (!message || typeof message !== "object") return null;
+  const providerSymbol = normalizeText(message.symbol ?? message.Symbol).toUpperCase();
+  const symbol = providerToCanonical.get(providerSymbol);
+  const timestamp = message.timestamp ?? message.Timestamp ?? message.time ?? message.Time;
+  const timestampMs = parseProviderTimestamp(timestamp);
+  const bid = numberOrNull(message.bid ?? message.Bid);
+  const ask = numberOrNull(message.ask ?? message.Ask);
+  if (!symbol || timestampMs === null || bid === null || ask === null) return null;
+  return { symbol, provider_symbol: providerSymbol, timestamp_ms: timestampMs, bid, ask };
+}
+
+export class MarketFeedDO {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.positionsById = new Map();
+    this.positionIdsBySymbol = new Map();
+    this.pendingSettlements = new Map();
+    this.pendingAccountSyncs = new Set();
+    this.symbolByProvider = new Map();
+    this.symbolRecords = [];
+    this.latestTicks = new Map();
+    this.safeAfterTimestamp = new Map();
+    this.trustedSymbols = new Set();
+    this.connections = new Set();
+    this.activeConnection = null;
+    this.connectionGeneration = 0;
+    this.connecting = null;
+    this.nextInvocationId = 1;
+    this.initialized = state.blockConcurrencyWhile
+      ? state.blockConcurrencyWhile(() => this.loadInitialState())
+      : this.loadInitialState();
+    this.metrics = {
+      startedAt: Date.now(),
+      webSocketMessages: 0,
+      reconnects: 0,
+      ticksByMinute: new Map(),
+      d1PositionLifecycleReads: 0,
+      d1SettlementRowsWritten: 0,
+      protectionEvaluations: 0,
+      protectionTicks: 0,
+      protectionLatencyTotalMs: 0,
+      protectionLatencyMaxMs: 0,
+      lastMetricsLogAt: 0,
+    };
   }
 
-  const positionsResult = await db.prepare(`
-    SELECT p.*, a.user_id
-    FROM positions p
-    INNER JOIN trading_accounts a ON a.id = p.account_id
-    WHERE p.symbol = ? AND p.status = 'open'
-  `).bind(tick.symbol).all();
-  const positions = positionsResult.results || [];
-  const markUpdates = [];
-  for (const position of positions) {
-    if (!tickIsAfterPositionOpen(position, tick)) continue;
-    const mark = protectionPrice(position, tick);
-    if (mark === null) continue;
-    const pnl = calculatePnlUsd(
-      position,
-      mark,
-      await getPositionCalculationSnapshot(env, position.id)
-    );
-    markUpdates.push(db.prepare(`
-      UPDATE positions SET current_price = ?, floating_pnl = ?
-      WHERE id = ? AND account_id = ? AND status = 'open'
-    `).bind(mark, pnl, position.id, position.account_id));
-  }
-  if (markUpdates.length) await db.batch(markUpdates);
-
-  const accounts = [...new Set(positions.map((position) => position.account_id))];
-  for (const accountId of accounts) {
-    const triggered = positions.filter((position) =>
-      position.account_id === accountId && triggeredProtection(position, tick)
-    );
-    for (const position of triggered) {
-      const actorId = env.POSITION_EVENTS.idFromName(`account:${accountId}`);
-      const actorResponse = await env.POSITION_EVENTS.get(actorId).fetch("https://position-events/settle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source: "tick",
-          tick,
-          position_id: position.id,
-          account_id: accountId,
-          user_id: position.user_id,
-        }),
-      });
-      if (!actorResponse.ok) throw new Error(`Protection settlement failed (${actorResponse.status})`);
+  async loadInitialState() {
+    const [records, checkpoints] = await Promise.all([
+      getConfiguredMarketSymbols(this.env),
+      this.state.storage?.get("tick-checkpoints") || Promise.resolve(null),
+    ]);
+    this.symbolRecords = records.filter((record) => record.provider === "biquote");
+    this.symbolByProvider = new Map(this.symbolRecords.map((record) => [
+      String(record.provider_symbol).toUpperCase(),
+      record.symbol,
+    ]));
+    for (const [symbol, timestamp] of Object.entries(checkpoints || {})) {
+      if (Number.isFinite(Number(timestamp)) && Number(timestamp) > 0) {
+        this.safeAfterTimestamp.set(symbol, Number(timestamp));
+      }
+    }
+    const openPositions = await this.env.daily_funded_trading_db.prepare(`
+      SELECT p.*, a.user_id
+      FROM positions p
+      INNER JOIN trading_accounts a ON a.id = p.account_id
+      WHERE p.status = 'open'
+    `).all();
+    this.metrics.d1PositionLifecycleReads += 1;
+    for (const position of openPositions.results || []) {
+      if (this.symbolRecords.some((record) => record.symbol === position.symbol)) {
+        this.putPosition(position);
+      }
     }
   }
 
-  await db.prepare(`
-    INSERT INTO market_tick_cursors (symbol, timestamp_ms, bid, ask)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(symbol) DO UPDATE SET
-      timestamp_ms = excluded.timestamp_ms,
-      bid = excluded.bid,
-      ask = excluded.ask
-    WHERE excluded.timestamp_ms > market_tick_cursors.timestamp_ms
-  `).bind(tick.symbol, tick.timestamp_ms, tick.bid, tick.ask).run();
-  return { accepted: true, evaluated_positions: positions.length };
+  putPosition(position) {
+    this.positionsById.set(position.id, position);
+    const ids = this.positionIdsBySymbol.get(position.symbol) || new Set();
+    ids.add(position.id);
+    this.positionIdsBySymbol.set(position.symbol, ids);
+  }
+
+  removePosition(positionId) {
+    const position = this.positionsById.get(positionId);
+    this.pendingSettlements.delete(positionId);
+    if (!position) return;
+    this.positionsById.delete(positionId);
+    const ids = this.positionIdsBySymbol.get(position.symbol);
+    ids?.delete(positionId);
+    if (ids?.size === 0) this.positionIdsBySymbol.delete(position.symbol);
+  }
+
+  async refreshAccountPositions(accountId) {
+    const result = await this.env.daily_funded_trading_db.prepare(`
+      SELECT p.*, a.user_id
+      FROM positions p
+      INNER JOIN trading_accounts a ON a.id = p.account_id
+      WHERE p.account_id = ? AND p.status = 'open'
+    `).bind(accountId).all();
+    this.metrics.d1PositionLifecycleReads += 1;
+    for (const position of [...this.positionsById.values()]) {
+      if (position.account_id === accountId) this.removePosition(position.id);
+    }
+    for (const position of result.results || []) {
+      if (this.symbolRecords.some((record) => record.symbol === position.symbol)) {
+        this.putPosition(position);
+      }
+    }
+    return result.results || [];
+  }
+
+  async refreshProviderBaselines() {
+    const quotes = await fetchBiquoteQuotes(this.symbolRecords);
+    for (const record of this.symbolRecords) {
+      const quote = quotes.get(record.symbol)?.quote;
+      const timestampMs = quote ? parseProviderTimestamp(quote.timestamp) : null;
+      const bid = numberOrNull(quote?.bid);
+      const ask = numberOrNull(quote?.ask);
+      if (!quote || quote.stale || timestampMs === null ||
+        bid === null || bid <= 0 || ask === null || ask < bid) {
+        this.trustedSymbols.delete(record.symbol);
+        continue;
+      }
+      const previous = this.safeAfterTimestamp.get(record.symbol) || 0;
+      const highWater = Math.max(previous, timestampMs);
+      this.safeAfterTimestamp.set(record.symbol, highWater);
+      this.trustedSymbols.add(record.symbol);
+    }
+  }
+
+  async ensureConnection({ refresh = false } = {}) {
+    await this.initialized;
+    if (this.connecting) return this.connecting;
+    if (!refresh && this.activeConnection?.socket.readyState === WebSocket.OPEN) {
+      return { connected: true };
+    }
+    this.connecting = this.openSignalRConnection()
+      .finally(() => { this.connecting = null; });
+    return this.connecting;
+  }
+
+  async openSignalRConnection() {
+    const previousConnection = this.activeConnection;
+    const generation = ++this.connectionGeneration;
+    let candidateConnection = null;
+    try {
+      await this.refreshProviderBaselines();
+      const { socketUrl } = await negotiateBiquoteSignalR(fetch);
+      const response = await fetch(socketUrl, {
+        headers: { Upgrade: "websocket" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const socket = response.webSocket;
+      if (response.status !== 101 || !socket) {
+        throw new Error(`Biquote WebSocket upgrade failed (${response.status})`);
+      }
+      socket.accept();
+      const connection = {
+        socket,
+        generation,
+        active: false,
+        buffer: "",
+        handshakeComplete: false,
+        subscriptionInvocationId: `subscribe-${this.nextInvocationId++}`,
+        connectedAt: Date.now(),
+        lastMessageAt: Date.now(),
+        intentionalClose: false,
+        ready: null,
+        resolveReady: null,
+        rejectReady: null,
+      };
+      candidateConnection = connection;
+      connection.ready = new Promise((resolve, reject) => {
+        connection.resolveReady = resolve;
+        connection.rejectReady = reject;
+      });
+      this.connections.add(connection);
+      socket.addEventListener("message", (event) => {
+        void this.handleSocketMessage(connection, event.data);
+      });
+      socket.addEventListener("close", () => this.handleSocketClosed(connection, "close"));
+      socket.addEventListener("error", () => this.handleSocketClosed(connection, "error"));
+      socket.send(signalRRecord({ protocol: "json", version: 1 }));
+      let handshakeTimeout;
+      try {
+        await Promise.race([
+          connection.ready,
+          new Promise((_, reject) => {
+            handshakeTimeout = setTimeout(
+              () => reject(new Error("Biquote SignalR handshake or subscription timed out")),
+              15_000
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(handshakeTimeout);
+      }
+      connection.active = true;
+      this.activeConnection = connection;
+      this.metrics.reconnects += 1;
+      if (previousConnection && previousConnection !== connection) {
+        previousConnection.active = false;
+        previousConnection.intentionalClose = true;
+        previousConnection.socket.close(1000, "SignalR connection refreshed");
+      }
+      console.info(JSON.stringify({
+        event: "biquote_connected",
+        hub: BIQUOTE_HUB_URL,
+        subscribed_symbols: this.symbolRecords.length,
+        generation,
+      }));
+      return { connected: true };
+    } catch (error) {
+      if (candidateConnection) {
+        candidateConnection.intentionalClose = true;
+        candidateConnection.rejectReady?.(error);
+        this.connections.delete(candidateConnection);
+        candidateConnection.socket.close(1011, "Biquote connection setup failed");
+      }
+      console.error("Biquote SignalR connection failed:", error);
+      if (this.activeConnection === previousConnection &&
+        previousConnection?.socket.readyState === WebSocket.OPEN) {
+        return { connected: true, refresh_failed: true };
+      }
+      return { connected: false, error: error.message };
+    }
+  }
+
+  async handleSocketMessage(connection, data) {
+    try {
+      connection.lastMessageAt = Date.now();
+      this.metrics.webSocketMessages += 1;
+      const parsed = parseSignalRFrames(connection.buffer, data);
+      connection.buffer = parsed.buffer;
+      for (const message of parsed.frames) {
+        if (!connection.handshakeComplete) {
+          if (message.error) throw new Error(`SignalR handshake rejected: ${message.error}`);
+          connection.handshakeComplete = true;
+          connection.socket.send(signalRRecord({
+            type: 1,
+            target: "Subscribe",
+            arguments: [this.symbolRecords.map((record) => record.provider_symbol)],
+            invocationId: connection.subscriptionInvocationId,
+          }));
+          continue;
+        }
+        if (message.type === 6) {
+          connection.socket.send(signalRRecord({ type: 6 }));
+          continue;
+        }
+        if (message.type === 7) throw new Error(message.error || "Biquote closed the SignalR connection");
+        if (message.type === 3 && message.invocationId === connection.subscriptionInvocationId) {
+          if (message.error) throw new Error(`Biquote Subscribe failed: ${message.error}`);
+          connection.resolveReady();
+          console.info(JSON.stringify({
+            event: "biquote_subscribed",
+            method: "Subscribe",
+            symbols: this.symbolRecords.length,
+          }));
+          continue;
+        }
+        if (this.activeConnection === connection && message.type === 1 &&
+          String(message.target).toLowerCase() === "receivetick") {
+          for (const providerTick of message.arguments || []) {
+            const tick = feedTickFromSignalR(providerTick, this.symbolByProvider);
+            if (tick) await this.acceptTick(tick);
+          }
+        }
+      }
+    } catch (error) {
+      connection.rejectReady?.(error);
+      console.error("Biquote SignalR message processing failed:", error);
+      connection.socket.close(1011, "SignalR message processing failed");
+    }
+  }
+
+  handleSocketClosed(connection, reason) {
+    this.connections.delete(connection);
+    connection.rejectReady?.(new Error(`Biquote WebSocket ${reason}`));
+    if (!connection.intentionalClose && this.activeConnection === connection) {
+      this.activeConnection = null;
+      console.error(`Biquote WebSocket ${reason}; scheduling reconnect`);
+      this.state.waitUntil?.(this.ensureConnection());
+    }
+  }
+
+  recordTick(tick) {
+    const minute = Math.floor(Date.now() / 60_000);
+    let counts = this.metrics.ticksByMinute.get(minute);
+    if (!counts) {
+      counts = new Map();
+      this.metrics.ticksByMinute.set(minute, counts);
+    }
+    counts.set(tick.symbol, (counts.get(tick.symbol) || 0) + 1);
+    for (const key of this.metrics.ticksByMinute.keys()) {
+      if (key < minute - 60) this.metrics.ticksByMinute.delete(key);
+    }
+  }
+
+  async acceptTick(tick) {
+    await this.initialized;
+    const startedAt = performance.now();
+    if (!freshProviderTick(tick)) return { accepted: false, reason: "invalid_or_stale_tick" };
+    if (this.symbolByProvider.get(String(tick.provider_symbol).toUpperCase()) !== tick.symbol) {
+      return { accepted: false, reason: "symbol_mismatch" };
+    }
+    const previous = this.latestTicks.get(tick.symbol);
+    if (previous && Number(tick.timestamp_ms) <= Number(previous.timestamp_ms)) {
+      return { accepted: false, reason: "duplicate_or_out_of_order" };
+    }
+    const safeAfter = this.safeAfterTimestamp.get(tick.symbol);
+    if (!this.trustedSymbols.has(tick.symbol) || safeAfter === undefined ||
+      Number(tick.timestamp_ms) <= safeAfter) {
+      return { accepted: false, reason: "before_fresh_provider_baseline" };
+    }
+    this.safeAfterTimestamp.set(tick.symbol, Number(tick.timestamp_ms));
+    this.latestTicks.set(tick.symbol, tick);
+    this.recordTick(tick);
+
+    const positionIds = [...(this.positionIdsBySymbol.get(tick.symbol) || [])];
+    this.metrics.protectionTicks += 1;
+    this.metrics.protectionEvaluations += positionIds.length;
+    for (const positionId of positionIds) {
+      const position = this.positionsById.get(positionId);
+      if (!position || !tickIsAfterPositionOpen(position, tick)) continue;
+      const trigger = triggeredProtection(position, tick);
+      if (!trigger) continue;
+      await this.settleTriggeredPosition(position.id, tick, trigger.reason);
+    }
+    const elapsed = performance.now() - startedAt;
+    this.metrics.protectionLatencyTotalMs += elapsed;
+    this.metrics.protectionLatencyMaxMs = Math.max(this.metrics.protectionLatencyMaxMs, elapsed);
+    return { accepted: true, evaluated_positions: positionIds.length };
+  }
+
+  async settleTriggeredPosition(positionId, tick, reason) {
+    const position = this.positionsById.get(positionId);
+    if (!position) {
+      this.pendingSettlements.delete(positionId);
+      return;
+    }
+    try {
+      await withAccountQueue(this, position.account_id, async () => {
+        const result = await settlePosition(this.env, position.id, position.user_id, {
+          source: "tick",
+          tick,
+          reason,
+          latestTicks: this.latestTicks,
+        });
+        if (result.error && result.error !== "position_not_found") {
+          throw new Error(result.message || result.error);
+        }
+        if (result._settlementRowsWritten) {
+          this.metrics.d1SettlementRowsWritten += result._settlementRowsWritten;
+        }
+        if (result.skipped || result.error === "position_not_found") {
+          this.pendingSettlements.delete(position.id);
+          if (result.error === "position_not_found") this.removePosition(position.id);
+          await this.refreshAccountPositions(position.account_id);
+          return;
+        }
+        this.pendingSettlements.delete(position.id);
+        this.removePosition(position.id);
+        await this.refreshAccountPositions(position.account_id);
+      });
+    } catch (error) {
+      this.pendingSettlements.set(positionId, { tick, reason });
+      console.error(`Protection settlement failed for position ${position.id}; retrying on feed alarm:`, error);
+    }
+  }
+
+  async retryPendingSettlements() {
+    for (const [positionId, pending] of this.pendingSettlements) {
+      await this.settleTriggeredPosition(positionId, pending.tick, pending.reason);
+    }
+  }
+
+  async retryPendingAccountSyncs() {
+    for (const accountId of this.pendingAccountSyncs) {
+      try {
+        await withAccountQueue(this, accountId, async () => {
+          const positions = await this.refreshAccountPositions(accountId);
+          if (positions.some((position) => !this.trustedSymbols.has(position.symbol))) {
+            await this.refreshProviderBaselines();
+          }
+          await this.evaluateLatestForAccount(accountId, positions);
+          this.pendingAccountSyncs.delete(accountId);
+        });
+      } catch (error) {
+        console.error(`Market-feed position synchronization failed for account ${accountId}:`, error);
+      }
+    }
+  }
+
+  async evaluateLatestForAccount(accountId, positions) {
+    for (const position of positions) {
+      const tick = this.latestTicks.get(position.symbol);
+      if (!tick || !tickIsAfterPositionOpen(position, tick)) continue;
+      const trigger = triggeredProtection(position, tick);
+      if (!trigger) continue;
+      const result = await settlePosition(this.env, position.id, position.user_id, {
+        source: "tick",
+        tick,
+        reason: trigger.reason,
+        latestTicks: this.latestTicks,
+      });
+      if (result._settlementRowsWritten) {
+        this.metrics.d1SettlementRowsWritten += result._settlementRowsWritten;
+      }
+      if (result.error && result.error !== "position_not_found") {
+        throw new Error(result.message || result.error);
+      }
+      if (result.skipped) {
+        await this.refreshAccountPositions(accountId);
+        continue;
+      }
+      this.removePosition(position.id);
+      await this.refreshAccountPositions(accountId);
+    }
+  }
+
+  metricsSnapshot() {
+    const currentMinute = Math.floor(Date.now() / 60_000);
+    const current = this.metrics.ticksByMinute.get(currentMinute) || new Map();
+    const uptimeMinutes = Math.max(1, (Date.now() - this.metrics.startedAt) / 60_000);
+    return {
+      ticks_per_symbol_current_minute: Object.fromEntries(current),
+      estimated_ticks_per_day_by_symbol: Object.fromEntries(
+        [...current].map(([symbol, count]) => [symbol, Math.round(count * 1440)])
+      ),
+      do_incoming_websocket_messages: this.metrics.webSocketMessages,
+      position_lifecycle_d1_reads: this.metrics.d1PositionLifecycleReads,
+      settlement_d1_rows_written: this.metrics.d1SettlementRowsWritten,
+      reconnects: this.metrics.reconnects,
+      protection_evaluations: this.metrics.protectionEvaluations,
+      protection_latency_average_ms: this.metrics.protectionEvaluations
+        ? this.metrics.protectionLatencyTotalMs / Math.max(1, this.metrics.protectionTicks)
+        : 0,
+      protection_latency_max_ms: this.metrics.protectionLatencyMaxMs,
+      uptime_minutes: uptimeMinutes,
+      connected: Boolean(this.activeConnection),
+    };
+  }
+
+  async scheduleNextAlarm() {
+    await this.state.storage?.setAlarm?.(Date.now() + MARKET_FEED_ALARM_MS);
+  }
+
+  async persistCheckpoints() {
+    await this.state.storage?.put?.(
+      "tick-checkpoints",
+      Object.fromEntries([...this.safeAfterTimestamp])
+    );
+  }
+
+  logMetricsIfDue() {
+    if (Date.now() - this.metrics.lastMetricsLogAt < 60_000) return;
+    this.metrics.lastMetricsLogAt = Date.now();
+    console.info(JSON.stringify({ event: "market_feed_metrics", ...this.metricsSnapshot() }));
+  }
+
+  async alarm() {
+    await this.initialized;
+    await this.scheduleNextAlarm();
+    await this.persistCheckpoints();
+    this.logMetricsIfDue();
+    await this.retryPendingSettlements();
+    await this.retryPendingAccountSyncs();
+    if ([...this.positionsById.values()].some(
+      (position) => !this.trustedSymbols.has(position.symbol)
+    )) {
+      await this.refreshProviderBaselines();
+    }
+    const active = this.activeConnection;
+    if (active && Date.now() - active.lastMessageAt > MARKET_FEED_HEALTH_TIMEOUT_MS) {
+      active.intentionalClose = true;
+      active.socket.close(4000, "Biquote SignalR heartbeat timed out");
+      this.activeConnection = null;
+    }
+    const refresh = this.activeConnection &&
+      Date.now() - this.activeConnection.connectedAt >= MARKET_FEED_REFRESH_MS;
+    if (!this.activeConnection || refresh) {
+      await this.ensureConnection({ refresh: Boolean(refresh) });
+    }
+  }
+
+  async fetch(request) {
+    await this.initialized;
+    const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/ensure") {
+      await this.scheduleNextAlarm();
+      const result = await this.ensureConnection();
+      this.logMetricsIfDue();
+      return json({
+        success: result.connected,
+        connected: result.connected,
+        symbols: this.symbolRecords.length,
+        error: result.error,
+      }, result.connected ? 200 : 503);
+    }
+    if (request.method === "POST" && url.pathname === "/sync-account") {
+      const body = await readJson(request);
+      const accountId = normalizeText(body.account_id);
+      if (!accountId) return json({ success: false, error: "account_id is required" }, 400);
+      return withAccountQueue(this, accountId, async () => {
+        try {
+          const positions = await this.refreshAccountPositions(accountId);
+          const connection = await this.ensureConnection();
+          if (positions.some((position) => !this.trustedSymbols.has(position.symbol))) {
+            await this.refreshProviderBaselines();
+          }
+          await this.evaluateLatestForAccount(accountId, positions);
+          const stillOpen = [...this.positionsById.values()].filter(
+            (position) => position.account_id === accountId
+          );
+          const baselineReady = stillOpen.every((position) =>
+            this.trustedSymbols.has(position.symbol) && this.safeAfterTimestamp.has(position.symbol)
+          );
+          const ready = connection.connected && baselineReady;
+          this.pendingAccountSyncs.delete(accountId);
+          return json({
+            success: ready,
+            ready,
+            open_positions: stillOpen.length,
+            error: ready ? undefined : connection.error || "A fresh provider baseline is unavailable",
+          }, ready ? 200 : 503);
+        } catch (error) {
+          this.pendingAccountSyncs.add(accountId);
+          throw error;
+        }
+      });
+    }
+    if (request.method === "POST" && url.pathname === "/tick") {
+      const tick = await readJson(request);
+      const result = await this.acceptTick(tick);
+      return json({ success: true, ...result });
+    }
+    if (request.method === "GET" && url.pathname === "/metrics") {
+      return json({ success: true, ...this.metricsSnapshot() });
+    }
+    return json({ success: false, error: "Route not found" }, 404);
+  }
 }
 
-async function evaluatePositionAtLatestTick(env, positionId, userId, accountId, symbol) {
-  const db = env.daily_funded_trading_db;
-  const position = await db.prepare(`
-    SELECT p.* FROM positions p
-    INNER JOIN trading_accounts a ON a.id = p.account_id
-    WHERE p.id = ? AND p.account_id = ? AND a.user_id = ? AND p.status = 'open'
-  `).bind(positionId, accountId, userId).first();
-  if (!position) return { skipped: true };
+function marketFeedStub(env) {
+  if (!env.MARKET_FEED) throw new Error("Biquote market feed Durable Object is not configured");
+  return env.MARKET_FEED.get(env.MARKET_FEED.idFromName("biquote-market-feed"));
+}
 
-  const cursor = await db.prepare(`
-    SELECT timestamp_ms, bid, ask FROM market_tick_cursors WHERE symbol = ?
-  `).bind(symbol).first();
-  if (!cursor || Date.now() - Number(cursor.timestamp_ms) > MARKET_DATA_MAX_AGE_MS) {
-    return { skipped: true };
-  }
-  const records = await getConfiguredMarketSymbols(env);
-  const mapping = records.find((item) => item.symbol === symbol);
-  if (!mapping || mapping.provider !== "biquote") return { skipped: true };
-  const tick = {
-    symbol,
-    provider_symbol: mapping.provider_symbol,
-    timestamp_ms: Number(cursor.timestamp_ms),
-    bid: Number(cursor.bid),
-    ask: Number(cursor.ask),
-  };
-  const trigger = triggeredProtection(position, tick);
-  if (!trigger) return { skipped: true };
-  const actorId = env.POSITION_EVENTS.idFromName(`account:${accountId}`);
-  const response = await env.POSITION_EVENTS.get(actorId).fetch("https://position-events/settle", {
+async function syncMarketFeedAccount(env, accountId) {
+  const response = await marketFeedStub(env).fetch("https://market-feed/sync-account", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      source: "tick",
-      tick,
-      reason: trigger.reason,
-      position_id: positionId,
-      account_id: accountId,
-      user_id: userId,
-    }),
+    body: JSON.stringify({ account_id: accountId }),
   });
-  const result = await response.json();
-  return response.ok ? result : {
-    error: result.error || "Protection settlement failed",
-    status: response.status,
-  };
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error || `Market feed position refresh failed (${response.status})`);
+  }
+  return response.json();
+}
+
+async function ensureMarketFeed(env) {
+  const response = await marketFeedStub(env).fetch("https://market-feed/ensure", {
+    method: "POST",
+  });
+  const result = await response.json().catch(() => ({}));
+  return response.ok && result.connected === true;
 }
 
 export class PositionEventsDO {
@@ -2057,7 +2556,15 @@ export class PositionEventsDO {
           reason: body.reason,
         });
         if (result.error) return tradingError(result.error, result.message || "Position could not be closed", result.status);
-        return json({ success: true, ...result });
+        const { _settlementRowsWritten, ...publicResult } = result;
+        if (body.source === "manual") {
+          try {
+            await syncMarketFeedAccount(this.env, accountId);
+          } catch (error) {
+            console.error("Manual close settled, but market-feed state refresh failed:", error);
+          }
+        }
+        return json({ success: true, ...publicResult });
       });
     }
     if (request.method === "POST" && url.pathname === "/modify") {
@@ -2089,6 +2596,12 @@ export class PositionEventsDO {
           WHERE p.id = ? AND a.user_id = ? AND p.status = 'open'
         `).bind(body.position_id, body.user_id).first();
         if (!position) return tradingError("position_not_found", "Position not found", 404);
+        try {
+          await syncMarketFeedAccount(this.env, body.account_id);
+        } catch (error) {
+          console.error("Position protection changed, but market-feed state refresh failed:", error);
+          return tradingError("protection_state_sync_failed", error.message, 503);
+        }
         const authoritativePosition = { ...position, pnl_metadata: body.pnl_metadata };
         await publishPositionEvent(
           this.env,
@@ -2102,33 +2615,6 @@ export class PositionEventsDO {
           }
         );
         return json({ success: true, position: authoritativePosition });
-      });
-    }
-    if (request.method === "POST" && url.pathname === "/tick") {
-      const tick = await readJson(request);
-      return withAccountQueue(this, `tick:${tick.symbol}`, async () => {
-        try {
-          return json({ success: true, ...await processBiquoteTick(this.env, tick) });
-        } catch (error) {
-          console.error("Unable to evaluate Biquote protection tick:", error);
-          return json({ success: false, error: "Protection tick evaluation failed" }, 503);
-        }
-      });
-    }
-    if (request.method === "POST" && url.pathname === "/evaluate-position") {
-      const body = await readJson(request);
-      return withAccountQueue(this, `tick:${body.symbol}`, async () => {
-        const result = await evaluatePositionAtLatestTick(
-          this.env,
-          body.position_id,
-          body.user_id,
-          body.account_id,
-          body.symbol
-        );
-        if (result.error) {
-          return tradingError("protection_settlement_failed", result.error, result.status || 503);
-        }
-        return json({ success: true, ...result });
       });
     }
     return json({ success: false, error: "Route not found" }, 404);
@@ -2240,6 +2726,21 @@ export default {
     }
 
     try {
+      if (
+        (request.method === "POST" && url.pathname === "/internal/market-feed/ensure") ||
+        (request.method === "GET" && url.pathname === "/internal/market-feed/metrics")
+      ) {
+        const expectedToken = typeof env.MARKET_TICK_INGEST_TOKEN === "string"
+          ? env.MARKET_TICK_INGEST_TOKEN.trim()
+          : "";
+        const bearer = /^Bearer\s+(.+)$/i.exec(request.headers.get("Authorization") || "");
+        if (!expectedToken || !bearer ||
+          !(await timingSafeTokenMatches(bearer[1].trim(), expectedToken))) {
+          return json({ success: false, error: "Market feed diagnostics are unauthorized" }, 401);
+        }
+        const route = request.method === "POST" ? "/ensure" : "/metrics";
+        return marketFeedStub(env).fetch(`https://market-feed${route}`, { method: request.method });
+      }
       if (request.method === "POST" && url.pathname === "/internal/market-tick") {
         const expectedToken = typeof env.MARKET_TICK_INGEST_TOKEN === "string"
           ? env.MARKET_TICK_INGEST_TOKEN.trim()
@@ -2271,12 +2772,11 @@ export default {
         ) {
           return json({ success: false, error: "Tick is invalid or stale" }, 400);
         }
-        if (!env.POSITION_EVENTS) {
-          return json({ success: false, error: "Server-side protection is not configured" }, 503);
+        if (!env.MARKET_FEED) {
+          return json({ success: false, error: "Server-side market feed is not configured" }, 503);
         }
         const tick = { symbol, provider_symbol: providerSymbol, timestamp_ms: timestampMs, bid, ask };
-        const id = env.POSITION_EVENTS.idFromName(`tick:${symbol}`);
-        return env.POSITION_EVENTS.get(id).fetch("https://position-events/tick", {
+        return marketFeedStub(env).fetch("https://market-feed/tick", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(tick),
@@ -3964,6 +4464,16 @@ export default {
         if (!symbolRecord) {
           return tradingError("rule_violation", `Symbol ${symbol} is not available for trading`, 400);
         }
+        if (symbolRecord.provider === "biquote") {
+          try {
+            if (!await ensureMarketFeed(env)) {
+              return tradingError("protection_unavailable", "The server-side Biquote protection feed is not ready", 503);
+            }
+          } catch (error) {
+            console.error("Unable to verify the server-side Biquote protection feed:", error);
+            return tradingError("protection_unavailable", error.message, 503);
+          }
+        }
 
         const symbolConfigurationError = getSymbolConfigurationError(symbolRecord);
         if (symbolConfigurationError) {
@@ -4205,29 +4715,25 @@ export default {
           stop_loss: stopLoss,
           status: "open",
         };
+        if (symbolRecord.provider === "biquote") {
+          try {
+            await syncMarketFeedAccount(env, accountId);
+          } catch (error) {
+            console.error(`Position ${positionId} opened, but the market-feed coordinator did not synchronize it:`, error);
+            return json({
+              success: false,
+              error: "Position was opened but server-side protection state synchronization failed",
+              code: "protection_state_sync_failed",
+              position_id: positionId,
+            }, 503);
+          }
+        }
         await publishPositionEvent(env, tradingAuth.userId, accountId, {
           type: "POSITION_OPENED",
           position_id: positionId,
           account_id: accountId,
           position,
         });
-        if (env.POSITION_EVENTS) {
-          const tickActorId = env.POSITION_EVENTS.idFromName(`tick:${symbol}`);
-          const evaluation = await env.POSITION_EVENTS.get(tickActorId).fetch(
-            "https://position-events/evaluate-position",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                position_id: positionId,
-                account_id: accountId,
-                user_id: tradingAuth.userId,
-                symbol,
-              }),
-            }
-          );
-          if (!evaluation.ok) console.error("Unable to apply the latest server tick to the new position");
-        }
         return json({
           success: true,
           order: {
@@ -4388,18 +4894,6 @@ export default {
           return tradingError("invalid_tp", "Take profit is not on the profitable side of the current executable price", 400);
         }
 
-        const latestTick = await env.daily_funded_trading_db.prepare(`
-          SELECT timestamp_ms, bid, ask FROM market_tick_cursors WHERE symbol = ?
-        `).bind(position.symbol).first();
-        if (latestTick && Date.now() - Number(latestTick.timestamp_ms) <= MARKET_DATA_MAX_AGE_MS) {
-          executablePrice = position.side === "BUY" ? Number(latestTick.bid) : Number(latestTick.ask);
-        }
-        if (
-          (stopLoss !== null && (position.side === "BUY" ? stopLoss >= executablePrice : stopLoss <= executablePrice)) ||
-          (takeProfit !== null && (position.side === "BUY" ? takeProfit <= executablePrice : takeProfit >= executablePrice))
-        ) {
-          return tradingError("invalid_protection_level", "Protection level is not valid at the latest server quote", 400);
-        }
         if (!env.POSITION_EVENTS) {
           return json({ success: false, error: "Position event delivery is not configured" }, 503);
         }
@@ -4420,23 +4914,6 @@ export default {
         });
         if (!result.ok) return result;
         const resultPayload = await result.json();
-        const tickActorId = env.POSITION_EVENTS.idFromName(`tick:${position.symbol}`);
-        const evaluation = await env.POSITION_EVENTS.get(tickActorId).fetch(
-          "https://position-events/evaluate-position",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              position_id: positionId,
-              account_id: position.account_id,
-              user_id: tradingAuth.userId,
-              symbol: position.symbol,
-            }),
-          }
-        );
-        if (!evaluation.ok) {
-          return json({ success: false, error: "Protection update succeeded but latest tick evaluation failed" }, 503);
-        }
         return json(resultPayload);
       }
 
@@ -4745,5 +5222,19 @@ export default {
         500
       ), request);
     }
+  },
+  async scheduled(_controller, env, context) {
+    context.waitUntil((async () => {
+      try {
+        const response = await marketFeedStub(env).fetch("https://market-feed/ensure", {
+          method: "POST",
+        });
+        if (!response.ok) {
+          console.error(`Scheduled Biquote feed activation failed (${response.status})`);
+        }
+      } catch (error) {
+        console.error("Scheduled Biquote feed activation failed:", error);
+      }
+    })());
   },
 };

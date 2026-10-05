@@ -23,6 +23,10 @@
 			{
 				"name": "POSITION_EVENTS",
 				"class_name": "PositionEventsDO"
+			},
+			{
+				"name": "MARKET_FEED",
+				"class_name": "MarketFeedDO"
 			}
 		]
 	},
@@ -30,8 +34,15 @@
 		{
 			"tag": "v1-position-events",
 			"new_sqlite_classes": ["PositionEventsDO"]
+		},
+		{
+			"tag": "v2-market-feed",
+			"new_sqlite_classes": ["MarketFeedDO"]
 		}
-	]
+	],
+	"triggers": {
+		"crons": ["*/5 * * * *"]
+	}
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
