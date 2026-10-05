@@ -1977,6 +1977,7 @@ export class MarketFeedDO {
     this.pendingAccountSyncs = new Set();
     this.symbolByProvider = new Map();
     this.symbolRecords = [];
+    this.baselineTimestamps = new Map();
     this.latestTicks = new Map();
     this.safeAfterTimestamp = new Map();
     this.trustedSymbols = new Set();
@@ -2083,6 +2084,7 @@ export class MarketFeedDO {
       const previous = this.safeAfterTimestamp.get(record.symbol) || 0;
       const highWater = Math.max(previous, timestampMs);
       this.safeAfterTimestamp.set(record.symbol, highWater);
+      this.baselineTimestamps.set(record.symbol, highWater);
       this.trustedSymbols.add(record.symbol);
     }
   }
@@ -2457,17 +2459,38 @@ export class MarketFeedDO {
     if (request.method === "POST" && url.pathname === "/ensure") {
       await this.scheduleNextAlarm();
       const result = await this.ensureConnection();
+      const requiredSymbol = normalizeText(url.searchParams.get("symbol")).toUpperCase();
+      let connected = result.connected;
+      let reason = result.reason;
+      if (connected && requiredSymbol) {
+        if (!this.symbolRecords.some((record) => record.symbol === requiredSymbol)) {
+          connected = false;
+        } else {
+          if (!this.trustedSymbols.has(requiredSymbol) ||
+            !this.safeAfterTimestamp.has(requiredSymbol)) {
+            await this.refreshProviderBaselines();
+          }
+          const latestTick = this.latestTicks.get(requiredSymbol);
+          const baselineTimestamp = this.baselineTimestamps.get(requiredSymbol);
+          connected = this.trustedSymbols.has(requiredSymbol) &&
+            this.safeAfterTimestamp.has(requiredSymbol) &&
+            baselineTimestamp !== undefined &&
+            freshProviderTick(latestTick) &&
+            Number(latestTick.timestamp_ms) > baselineTimestamp;
+        }
+        if (!connected) reason = "feed_not_connected";
+      }
       this.logMetricsIfDue();
       return json({
-        success: result.connected,
-        connected: result.connected,
+        success: connected,
+        connected,
         symbols: this.symbolRecords.length,
-        ...(result.connected ? {} : {
-          reason: MARKET_FEED_FAILURE_REASONS.has(result.reason)
-            ? result.reason
+        ...(connected ? {} : {
+          reason: MARKET_FEED_FAILURE_REASONS.has(reason)
+            ? reason
             : "feed_not_connected",
         }),
-      }, result.connected ? 200 : 503);
+      }, connected ? 200 : 503);
     }
     if (request.method === "POST" && url.pathname === "/sync-account") {
       const body = await readJson(request);
@@ -2531,9 +2554,11 @@ async function syncMarketFeedAccount(env, accountId) {
   return response.json();
 }
 
-async function ensureMarketFeed(env) {
+async function ensureMarketFeed(env, symbol) {
   try {
-    const response = await marketFeedStub(env).fetch("https://market-feed/ensure", {
+    const ensureUrl = new URL("https://market-feed/ensure");
+    ensureUrl.searchParams.set("symbol", symbol);
+    const response = await marketFeedStub(env).fetch(ensureUrl, {
       method: "POST",
     });
     const result = await response.json().catch(() => ({}));
@@ -4501,7 +4526,7 @@ export default {
           return tradingError("rule_violation", `Symbol ${symbol} is not available for trading`, 400);
         }
         if (symbolRecord.provider === "biquote") {
-          const feed = await ensureMarketFeed(env);
+          const feed = await ensureMarketFeed(env, symbol);
           if (!feed.connected) {
             const reason = MARKET_FEED_FAILURE_REASONS.has(feed.reason)
               ? feed.reason
