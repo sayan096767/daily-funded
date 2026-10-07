@@ -189,7 +189,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   #dashboard{display:none;}
   #dashboard.active{display:grid; grid-template-columns:248px minmax(0,1fr); min-height:100vh; background:var(--bg);}
   body.dashboard-open>header{display:none;}
-  .dashboard-sidebar{position:sticky; top:0; display:flex; flex-direction:column; height:100vh; padding:22px 14px 16px; border-right:1px solid var(--panel-b); background:#0d1310; z-index:5;}
+  .dashboard-sidebar{position:fixed; top:0; bottom:0; left:0; display:flex; flex-direction:column; width:248px; height:100vh; padding:22px 14px 16px; border-right:1px solid var(--panel-b); background:#0d1310; z-index:5;}
   .dashboard-brand{display:flex; align-items:center; gap:10px; padding:2px 9px 23px; color:var(--text); font-size:13px; font-weight:800; white-space:nowrap;}
   .dashboard-brand b{color:var(--green);}
   .dashboard-brand-mark{display:grid; place-items:center; width:34px; height:34px; flex:0 0 34px; overflow:hidden; border:1px solid rgba(62,207,126,.36); border-radius:8px; background:linear-gradient(145deg,#1b3024,#0e1711); box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 3px 9px rgba(0,0,0,.25);}
@@ -216,6 +216,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .dashboard-sidebar-status{display:flex; align-items:center; gap:7px;}
   .dashboard-sidebar-status::before{content:''; width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 0 3px rgba(62,207,126,.1);}
   #dashboard .dashboard-main.wrap{width:100%; max-width:1280px; margin:0 auto; padding:32px 34px;}
+  #dashboard .dashboard-main{grid-column:2;}
   .rewards-view,.competitions-view{min-width:0;}
   .competition-empty{display:grid; place-items:center; min-height:250px; padding:28px; text-align:center;}
   .competition-empty-mark{display:grid; place-items:center; width:44px; height:44px; margin-bottom:12px; border:1px solid rgba(230,195,77,.28); border-radius:50%; color:var(--gold); font-size:20px;}
@@ -273,7 +274,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .dash-foot{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;}
   .dash-close{font-size:13px; color:var(--sub); cursor:pointer; background:none; border:none; font-family:inherit;}
   .dash-close:hover{color:var(--text);}
-  @media(max-width:760px){#dashboard.active{grid-template-columns:minmax(0,1fr); align-content:start;}.dashboard-sidebar,.dashboard-main{min-width:0;}.dashboard-sidebar{position:sticky; height:auto; padding:11px 14px 9px; border-right:0; border-bottom:1px solid var(--panel-b);}.dashboard-brand{padding:0 4px 10px;}.dashboard-sidebar-label,.dashboard-sidebar-status{display:none;}.dashboard-sidebar-foot{display:flex; justify-content:flex-end; margin-top:8px; padding:5px 4px 0; border-top:0;}.dashboard-side-nav{display:flex; width:100%; min-width:0; gap:4px; overflow-x:auto; scrollbar-width:thin;}.dashboard-side-nav a{flex:0 0 auto; min-height:36px; padding:0 9px; font-size:11px;}.dashboard-nav-mark{width:23px; height:23px; flex-basis:23px;}.dashboard-nav-mark svg{width:13px; height:13px;}#dashboard .dashboard-main.wrap{padding:22px 16px;}.rewards-overview{grid-template-columns:1fr;}.rewards-panel{padding:17px;}.rewards-action{min-height:0;}.reward-certificate-stage .payout-certificate{grid-template-columns:78px minmax(0,1fr); gap:6px; padding:9px;}.reward-certificate-stage .payout-trophy{min-height:230px;}.reward-certificate-stage .payout-trophy img{width:65px; height:125px;}.reward-certificate-stage .payout-certificate-title{font-size:17px;}}
+  @media(max-width:760px){#dashboard.active{grid-template-columns:minmax(0,1fr); align-content:start;}.dashboard-sidebar,.dashboard-main{min-width:0;}#dashboard .dashboard-main{grid-column:1;}.dashboard-sidebar{position:sticky; top:0; bottom:auto; left:auto; width:auto; height:auto; padding:11px 14px 9px; border-right:0; border-bottom:1px solid var(--panel-b);}.dashboard-brand{padding:0 4px 10px;}.dashboard-sidebar-label,.dashboard-sidebar-status{display:none;}.dashboard-sidebar-foot{display:flex; justify-content:flex-end; margin-top:8px; padding:5px 4px 0; border-top:0;}.dashboard-side-nav{display:flex; width:100%; min-width:0; gap:4px; overflow-x:auto; scrollbar-width:thin;}.dashboard-side-nav a{flex:0 0 auto; min-height:36px; padding:0 9px; font-size:11px;}.dashboard-nav-mark{width:23px; height:23px; flex-basis:23px;}.dashboard-nav-mark svg{width:13px; height:13px;}#dashboard .dashboard-main.wrap{padding:22px 16px;}.rewards-overview{grid-template-columns:1fr;}.rewards-panel{padding:17px;}.rewards-action{min-height:0;}.reward-certificate-stage .payout-certificate{grid-template-columns:78px minmax(0,1fr); gap:6px; padding:9px;}.reward-certificate-stage .payout-trophy{min-height:230px;}.reward-certificate-stage .payout-trophy img{width:65px; height:125px;}.reward-certificate-stage .payout-certificate-title{font-size:17px;}}
   .account-banner{display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap; padding:24px; margin-bottom:14px; border:1px solid #294134; border-left:3px solid var(--green); border-radius:var(--radius); background:linear-gradient(115deg,#15221b,#101512 62%,#1b2921);}
   .account-kicker,.panel-kicker{font-size:10px; letter-spacing:.08em; font-weight:700; color:var(--green);}
   .account-banner h3{font-size:26px; margin:7px 0 4px;}
@@ -287,6 +288,105 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .account-stat b{font-size:20px; font-variant-numeric:tabular-nums;}
   .account-stat b.up{color:var(--green);}
   .desk-panel{border:1px solid var(--panel-b); border-radius:var(--radius); padding:20px; background:var(--panel); min-width:0;}
+  .dashboard-rules-panel{margin:4px 0 14px; padding:12px; border:1px solid var(--panel-b); border-radius:var(--radius); background:var(--panel);}
+  .dashboard-rules-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:8px;}
+  .dashboard-rules-head h4{margin:0; font-size:13px;}
+  .dashboard-rules-note{color:var(--sub-dim); font-size:10px;}
+  .dashboard-rule-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,132px),1fr)); gap:8px; margin:0; padding:0; list-style:none;}
+  .dashboard-rule-item{display:flex; align-items:center; min-width:0; min-height:32px; gap:8px; padding:7px 8px; border:1px solid var(--panel-b); border-radius:6px; color:var(--text); font-size:11px; line-height:1.35; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
+  .dashboard-rule-item::before{content:''; width:5px; height:5px; flex:0 0 5px; border-radius:50%; background:var(--green);}
+  .dashboard-limits-panel{margin:14px 0 0; padding:14px; border:1px solid var(--panel-b); border-radius:var(--radius); background:var(--panel);}
+  .dashboard-limits-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:10px;}
+  .dashboard-limits-head h4{margin:0; font-size:13px;}
+  .dashboard-limits-note{color:var(--sub-dim); font-size:10px;}
+  .dashboard-limit-grid{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px;}
+  .dashboard-limit-item{min-width:0; padding:10px; border:1px solid var(--panel-b); border-radius:6px;}
+  .dashboard-limit-item span{display:block; margin-bottom:7px; color:var(--sub-dim); font-size:10px;}
+  .dashboard-limit-item strong{display:block; color:var(--text); font-size:14px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
+  .dashboard-limit-item small{display:block; margin-top:4px; color:var(--sub); font-size:10px; line-height:1.4;}
+  @media(max-width:760px){.dashboard-limit-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  .dashboard-workspace-grid,.dashboard-analytics-grid{display:grid; grid-template-columns:minmax(0,.82fr) minmax(0,1.6fr); gap:12px; margin-top:12px;}
+  .dashboard-analytics-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .desk-dashboard-panel{min-width:0; padding:14px; border:1px solid var(--panel-b); border-radius:var(--radius); background:var(--panel);}
+  .desk-dashboard-panel h4{margin:0; font-size:12px;}
+  .desk-data-panel-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:11px;}
+  .desk-panel-note{color:var(--sub-dim); font-size:9px; text-align:right;}
+  .desk-status-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px;}
+  .desk-status-item,.desk-metric{min-width:0; padding:9px; border:1px solid var(--panel-b); border-radius:6px; background:rgba(0,0,0,.12);}
+  .desk-status-item span,.desk-metric span{display:block; margin-bottom:5px; color:var(--sub-dim); font-size:9px; text-transform:uppercase; letter-spacing:.035em;}
+  .desk-status-item strong,.desk-metric strong{display:block; overflow-wrap:anywhere; color:var(--text); font-size:12px; font-variant-numeric:tabular-nums;}
+  .desk-status-item strong.is-active{color:var(--green);}
+  .desk-status-item strong.is-inactive{color:#e07870;}
+  .desk-status-rules{display:flex; flex-wrap:wrap; gap:5px; margin-top:8px;}
+  .desk-status-rule{padding:4px 6px; border:1px solid var(--panel-b); border-radius:4px; color:var(--sub); font-size:9px; line-height:1.35;}
+  .desk-chart{position:relative; display:grid; min-height:204px; place-items:center; overflow:hidden; border:1px solid var(--panel-b); border-radius:6px; background-color:#101512; background-image:linear-gradient(rgba(147,161,154,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(147,161,154,.08) 1px,transparent 1px); background-size:100% 25%,20% 100%;}
+  .desk-chart-empty{max-width:280px; padding:18px; color:var(--sub); text-align:center; font-size:11px; line-height:1.6;}
+  .desk-chart-empty strong{display:block; margin-bottom:5px; color:var(--text); font-size:12px;}
+  .desk-performance-summary{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; margin-bottom:9px;}
+  .desk-performance-panel{position:relative;}
+  .desk-performance-stat{min-width:0; padding:7px 8px; border:1px solid var(--panel-b); border-radius:5px; background:rgba(0,0,0,.12);}
+  .desk-performance-stat span{display:block; margin-bottom:4px; color:var(--sub-dim); font-size:8px; letter-spacing:.035em; text-transform:uppercase;}
+  .desk-performance-stat strong{display:block; overflow-wrap:anywhere; color:var(--text); font-size:11px; font-variant-numeric:tabular-nums;}
+  .desk-performance-stat strong.is-positive{color:var(--green);}
+  .desk-performance-stat strong.is-negative{color:#e07870;}
+  .desk-performance-stat strong.is-current{color:#81c7e5;}
+  .desk-performance-tools{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;}
+  .desk-performance-kind{color:var(--sub-dim); font-size:9px;}
+  .desk-performance-filters{display:flex; gap:4px;}
+  .desk-performance-filter{min-width:32px; padding:5px 7px; border:1px solid var(--panel-b); border-radius:4px; background:transparent; color:var(--sub); font-family:inherit; font-size:9px; font-weight:600; cursor:pointer;}
+  .desk-performance-filter:hover:not(:disabled),.desk-performance-filter[aria-pressed="true"]{border-color:rgba(62,207,126,.45); background:rgba(62,207,126,.1); color:var(--green);}
+  .desk-performance-filter:disabled{opacity:.4; cursor:not-allowed;}
+  .desk-chart-live{display:flex; align-items:center; gap:5px; color:var(--sub-dim); font-size:9px;}
+  .desk-chart-live::before{content:''; width:6px; height:6px; border-radius:50%; background:var(--blue,#81c7e5);}
+  .desk-chart-plot{display:block; width:100%; height:clamp(180px,22vw,250px); overflow:visible;}
+  .desk-chart-grid-line{stroke:rgba(147,161,154,.12); stroke-width:1;}
+  .desk-chart-axis-label{fill:var(--sub-dim); font:10px 'JetBrains Mono',monospace;}
+  .desk-chart-segment{fill:none; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke;}
+  .desk-chart-segment.is-positive{stroke:var(--green);}
+  .desk-chart-segment.is-negative{stroke:#e07870;}
+  .desk-chart-point{stroke:#101512; stroke-width:2; vector-effect:non-scaling-stroke; cursor:crosshair;}
+  .desk-chart-point.is-positive{fill:var(--green);}
+  .desk-chart-point.is-negative{fill:#e07870;}
+  .desk-chart-point.is-start{fill:var(--gold);}
+  .desk-chart-point:focus{stroke:var(--text); stroke-width:2.5; outline:none;}
+  .desk-chart-tooltip{position:absolute; z-index:2; max-width:min(240px,80%); padding:7px 9px; border:1px solid var(--panel-b); border-radius:5px; background:#0b100d; box-shadow:0 4px 14px rgba(0,0,0,.4); color:var(--text); font-size:10px; line-height:1.5; pointer-events:none; transform:translate(-50%,-110%);}
+  .desk-chart-tooltip[hidden]{display:none;}
+  .desk-chart-tooltip strong,.desk-chart-tooltip span{display:block; white-space:nowrap;}
+  .desk-chart-tooltip span{color:var(--sub);}
+  .desk-chart-foot{display:flex; justify-content:space-between; gap:8px; margin-top:5px; color:var(--sub-dim); font:9px 'JetBrains Mono',monospace;}
+  .desk-chart-legend{display:flex; flex-wrap:wrap; gap:12px; margin-top:7px; color:var(--sub-dim); font-size:9px;}
+  .desk-chart-legend[hidden]{display:none;}
+  .desk-chart-legend span{display:inline-flex; align-items:center; gap:5px;}
+  .desk-chart-legend i{width:8px; height:2px; background:var(--green);}
+  .desk-metrics-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px;}
+  .desk-metric strong{font-size:13px;}
+  .desk-metric strong.is-positive{color:var(--green);}
+  .desk-metric strong.is-negative{color:#e07870;}
+  .desk-panel-empty{padding:21px 12px; color:var(--sub); text-align:center; font-size:11px; line-height:1.55;}
+  .desk-panel-error{color:#e6a39c;}
+  .desk-calendar-caption{margin-bottom:7px; color:var(--sub); text-align:center; font-size:10px; font-weight:600;}
+  .desk-calendar-grid{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px;}
+  .desk-calendar-weekday,.desk-calendar-day{display:grid; min-width:0; min-height:27px; place-items:center; border-radius:4px; font-size:9px;}
+  .desk-calendar-weekday{color:var(--sub-dim); font-weight:700;}
+  .desk-calendar-day{position:relative; border:1px solid transparent; color:var(--sub);}
+  .desk-calendar-day.has-profit{border-color:rgba(62,207,126,.46); background:rgba(62,207,126,.11); color:var(--green);}
+  .desk-calendar-day.has-loss{border-color:rgba(224,106,90,.5); background:rgba(224,106,90,.1); color:#e07870;}
+  .desk-calendar-day.has-mixed{border-color:rgba(230,195,77,.5); background:rgba(230,195,77,.09); color:var(--gold);}
+  .desk-activity-legend{display:flex; justify-content:center; gap:12px; margin-top:8px; color:var(--sub-dim); font-size:9px;}
+  .desk-activity-legend span{display:inline-flex; align-items:center; gap:4px;}
+  .desk-activity-legend i{width:6px; height:6px; border-radius:2px; background:var(--green);}
+  .desk-activity-legend .loss{background:#e07870;}
+  .desk-data-table-wrap{overflow-x:auto; overscroll-behavior-inline:contain;}
+  .desk-data-table{width:100%; min-width:590px; border-collapse:collapse; text-align:left; font-size:10px;}
+  .desk-data-table th{padding:8px 9px; border-bottom:1px solid var(--panel-b); color:var(--sub-dim); font-size:9px; font-weight:600; white-space:nowrap; text-transform:uppercase; letter-spacing:.035em;}
+  .desk-data-table td{padding:8px 9px; border-bottom:1px solid rgba(30,37,33,.72); color:var(--sub); white-space:nowrap; font-variant-numeric:tabular-nums;}
+  .desk-data-table tbody tr:last-child td{border-bottom:0;}
+  .desk-data-table td:first-child{color:var(--text); font-weight:600;}
+  .desk-side-buy,.desk-pnl-positive{color:var(--green)!important;}
+  .desk-side-sell,.desk-pnl-negative{color:#e07870!important;}
+  .desk-data-panels-stack{display:grid; gap:12px; margin-top:12px;}
+  @media(max-width:900px){.dashboard-workspace-grid,.dashboard-analytics-grid{grid-template-columns:minmax(0,1fr);}.desk-chart{min-height:190px;}}
+  @media(max-width:760px){.dashboard-workspace-grid,.dashboard-analytics-grid,.desk-data-panels-stack{gap:9px; margin-top:9px;}.desk-dashboard-panel{padding:12px;}.desk-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.desk-data-table{min-width:570px;}.desk-performance-summary{grid-template-columns:repeat(2,minmax(0,1fr));}.desk-chart-plot{height:190px;}.desk-performance-kind{max-width:42%; line-height:1.4;}}
   .desk-panel h4{font-size:14px; margin-bottom:4px;}
   .desk-panel .panel-sub{font-size:11.5px; color:var(--sub-dim);}
   .panel-top{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:18px;}
@@ -1132,6 +1232,82 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
         <div class="account-stat"><span>Trading days</span><b id="dDays">0</b></div>
       </div>
 
+      <section class="dashboard-rules-panel" id="dashboardRulesPanel" aria-labelledby="dashboardRulesHeading" hidden>
+        <div class="dashboard-rules-head">
+          <h4 id="dashboardRulesHeading">Challenge rules</h4>
+          <span class="dashboard-rules-note">Limits for the selected plan</span>
+        </div>
+        <ul class="dashboard-rule-grid" id="dashboardRuleList"></ul>
+      </section>
+
+      <section class="dashboard-limits-panel" id="dashboardLimitsPanel" aria-labelledby="dashboardLimitsHeading" hidden>
+        <div class="dashboard-limits-head">
+          <h4 id="dashboardLimitsHeading">Account risk limits</h4>
+          <span class="dashboard-limits-note" id="dashboardLimitsNote"></span>
+        </div>
+        <div class="dashboard-limit-grid" id="dashboardLimitGrid"></div>
+      </section>
+
+      <div class="dashboard-workspace-grid">
+        <section class="desk-dashboard-panel" aria-labelledby="deskStatusHeading">
+          <div class="desk-data-panel-head"><h4 id="deskStatusHeading">Challenge status</h4><span class="desk-panel-note">Selected account</span></div>
+          <div class="desk-status-grid" id="deskStatusGrid"></div>
+          <div class="desk-status-rules" id="deskStatusRules"></div>
+        </section>
+        <section class="desk-dashboard-panel desk-performance-panel" aria-labelledby="deskPerformanceHeading">
+          <div class="desk-data-panel-head"><h4 id="deskPerformanceHeading">Balance history</h4><span class="desk-panel-note">Realized trade performance</span></div>
+          <div class="desk-performance-summary" id="deskPerformanceSummary"></div>
+          <div class="desk-performance-tools">
+            <span class="desk-performance-kind">Reconstructed realized balance</span>
+            <div class="desk-performance-filters" role="group" aria-label="Balance history range">
+              <button class="desk-performance-filter" type="button" data-performance-range="7D" aria-pressed="false" disabled>7D</button>
+              <button class="desk-performance-filter" type="button" data-performance-range="30D" aria-pressed="false" disabled>30D</button>
+              <button class="desk-performance-filter" type="button" data-performance-range="90D" aria-pressed="false" disabled>90D</button>
+              <button class="desk-performance-filter" type="button" data-performance-range="ALL" aria-pressed="true" disabled>ALL</button>
+            </div>
+          </div>
+          <div class="desk-chart" id="deskPerformanceChart" role="img" aria-label="Balance history is loading">
+            <div class="desk-chart-empty"><strong>Balance history is loading</strong>Waiting for authenticated account and trade data.</div>
+          </div>
+          <div class="desk-chart-tooltip" id="deskChartTooltip" role="status" hidden></div>
+          <div class="desk-chart-legend" id="deskChartLegend" hidden><span><i></i>Reconstructed realized balance · no floating P/L</span></div>
+        </section>
+      </div>
+
+      <div class="dashboard-analytics-grid">
+        <section class="desk-dashboard-panel" aria-labelledby="deskStatisticsHeading">
+          <div class="desk-data-panel-head"><h4 id="deskStatisticsHeading">Trading statistics</h4><span class="desk-panel-note" id="deskStatisticsNote">Closed trades</span></div>
+          <div class="desk-metrics-grid" id="deskStatisticsGrid"></div>
+          <div class="desk-panel-empty" id="deskStatisticsEmpty" role="status" hidden></div>
+        </section>
+        <section class="desk-dashboard-panel" aria-labelledby="deskActivityHeading">
+          <div class="desk-data-panel-head"><h4 id="deskActivityHeading">Trading activity</h4><span class="desk-panel-note">Closed trade dates</span></div>
+          <div id="deskActivityCalendar" role="status" aria-live="polite"></div>
+        </section>
+      </div>
+
+      <div class="desk-data-panels-stack">
+        <section class="desk-dashboard-panel" aria-labelledby="deskPositionsHeading">
+          <div class="desk-data-panel-head"><h4 id="deskPositionsHeading">Open positions</h4><span class="desk-panel-note" id="deskPositionsNote"></span></div>
+          <div class="desk-panel-empty" id="deskPositionsEmpty" role="status">Select an account to view positions.</div>
+          <div class="desk-data-table-wrap" id="deskPositionsTableWrap" hidden>
+            <table class="desk-data-table">
+              <thead><tr><th>Symbol</th><th>Side</th><th>Volume</th><th>Entry</th><th>Mark</th><th>Floating P/L</th></tr></thead>
+              <tbody id="deskPositionsTable"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="desk-dashboard-panel" aria-labelledby="deskHistoryHeading">
+          <div class="desk-data-panel-head"><h4 id="deskHistoryHeading">Recent trade history</h4><span class="desk-panel-note" id="deskHistoryNote">Latest closed trades</span></div>
+          <div class="desk-panel-empty" id="deskHistoryEmpty" role="status">Select an account to view trade history.</div>
+          <div class="desk-data-table-wrap" id="deskHistoryTableWrap" hidden>
+            <table class="desk-data-table">
+              <thead><tr><th>Closed</th><th>Symbol</th><th>Side</th><th>Volume</th><th>Entry</th><th>Close</th><th>P/L</th></tr></thead>
+              <tbody id="deskHistoryTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </div>
         <div class="dash-foot">
           <button class="dash-close" id="dashClose">Close dashboard</button>
@@ -2865,6 +3041,675 @@ function renderAccount(){
   document.getElementById('dWithdraw').textContent = money(data.withdrawableProfit);
   document.getElementById('dDays').textContent = Number.isInteger(data.tradingDays) ? data.tradingDays : '—';
 
+  const rulesPanel = document.getElementById('dashboardRulesPanel');
+  const ruleList = document.getElementById('dashboardRuleList');
+  ruleList.replaceChildren();
+  const rules = Array.isArray(data.rules) ? data.rules.filter(rule=>typeof rule === 'string' && rule.trim()) : [];
+  rules.forEach(rule=>{
+    const item = document.createElement('li');
+    item.className = 'dashboard-rule-item';
+    item.textContent = rule;
+    ruleList.appendChild(item);
+  });
+  rulesPanel.hidden = rules.length === 0;
+
+  const limitsPanel = document.getElementById('dashboardLimitsPanel');
+  const limitGrid = document.getElementById('dashboardLimitGrid');
+  const limitsNote = document.getElementById('dashboardLimitsNote');
+  limitGrid.replaceChildren();
+  const size = Number(data.size);
+  const validSize = Number.isFinite(size) && size > 0;
+  const formatLimitMoney = value => '$' + value.toLocaleString('en-US',{maximumFractionDigits:2});
+  const limits = [];
+  const addLimit = (label,value,note) => limits.push({label,value,note});
+
+  if(validSize){
+    const targetRule = rules.find(rule=>/^(\d+(?:\.\d+)?)%\s+profit target$/i.test(rule));
+    const phaseTargetsRule = rules.find(rule=>/^Ph 1:\s*(\d+(?:\.\d+)?)%\s*\/\s*Ph 2:\s*(\d+(?:\.\d+)?)%$/i.test(rule));
+    const noTargetRule = rules.some(rule=>/^No profit target$/i.test(rule));
+    if(targetRule){
+      const percent = Number(targetRule.match(/^(\d+(?:\.\d+)?)%/)[1]);
+      if(percent > 0 && percent <= 100) addLimit('Profit target',formatLimitMoney(size * percent / 100),percent + '% of initial size');
+    }else if(phaseTargetsRule){
+      const match = phaseTargetsRule.match(/^Ph 1:\s*(\d+(?:\.\d+)?)%\s*\/\s*Ph 2:\s*(\d+(?:\.\d+)?)%$/i);
+      const firstPhase = Number(match[1]);
+      const secondPhase = Number(match[2]);
+      if(firstPhase > 0 && firstPhase <= 100 && secondPhase > 0 && secondPhase <= 100){
+        addLimit('Phase targets',firstPhase === secondPhase ? firstPhase + '% per phase' : firstPhase + '% / ' + secondPhase + '%','Phase 1: ' + formatLimitMoney(size * firstPhase / 100) + ' · Phase 2: ' + formatLimitMoney(size * secondPhase / 100));
+      }
+    }else if(noTargetRule){
+      addLimit('Profit target','Not required','This plan has no target');
+    }
+
+    const dailyRule = rules.find(rule=>/^(\d+(?:\.\d+)?)%\s+daily drawdown$/i.test(rule));
+    const dailyMatch = dailyRule && dailyRule.match(/^(\d+(?:\.\d+)?)%/);
+    if(dailyMatch){
+      const percent = Number(dailyMatch[1]);
+      if(percent > 0 && percent <= 100) addLimit('Daily drawdown',percent + '%','of start-of-day balance');
+    }
+
+    const maxRule = rules.find(rule=>/^(\d+(?:\.\d+)?)%\s+max drawdown$/i.test(rule));
+    const maxMatch = maxRule && maxRule.match(/^(\d+(?:\.\d+)?)%/);
+    if(maxMatch){
+      const percent = Number(maxMatch[1]);
+      if(percent > 0 && percent <= 100) addLimit('Maximum drawdown',formatLimitMoney(size * percent / 100),percent + '% of initial size');
+    }
+
+    const daysRule = rules.find(rule=>/^(\d+)\s+min trading days$/i.test(rule));
+    const daysMatch = daysRule && daysRule.match(/^(\d+)\s+/);
+    if(daysMatch) addLimit('Minimum trading days',daysMatch[1] + ' days','Plan requirement');
+  }
+
+  limits.forEach(({label,value,note})=>{
+    const item = document.createElement('div');
+    item.className = 'dashboard-limit-item';
+    const title = document.createElement('span');
+    title.textContent = label;
+    const amount = document.createElement('strong');
+    amount.textContent = value;
+    const detail = document.createElement('small');
+    detail.textContent = note;
+    item.append(title,amount,detail);
+    limitGrid.appendChild(item);
+  });
+  limitsNote.textContent = validSize ? 'Based on ' + formatLimitMoney(size) + ' initial account size and plan rules' : '';
+  limitsPanel.hidden = limits.length === 0;
+  renderDeskChallengeStatus(data,rules);
+  loadDeskTradingData(data);
+}
+
+let deskTradingRequestId = 0;
+const deskNumber = value => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
+const deskMoney = value => {
+  const number = deskNumber(value);
+  return number === null ? '—' : (number < 0 ? '−$' : '$') + Math.abs(number).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+};
+const deskPrice = value => {
+  const number = deskNumber(value);
+  return number === null ? '—' : number.toLocaleString('en-US',{maximumFractionDigits:5});
+};
+const deskDate = value => {
+  let normalized = value;
+  if(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(?:[ T].*)?$/.test(value)){
+    normalized = value.length === 10 ? value + 'T00:00:00Z' : value.replace(' ','T');
+    if(!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized)) normalized += 'Z';
+  }
+  const date = normalized ? new Date(normalized) : null;
+  return date && Number.isFinite(date.getTime()) ? date : null;
+};
+const deskDateTime = value => {
+  const date = deskDate(value);
+  return date ? new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(date) : '—';
+};
+function appendDeskTableCell(row,value,className=''){
+  const cell = document.createElement('td');
+  cell.textContent = value == null ? '—' : String(value);
+  if(className) cell.className = className;
+  row.appendChild(cell);
+}
+function setDeskPanelEmpty(id,message,isError=false){
+  const element = document.getElementById(id);
+  element.textContent = message;
+  element.classList.toggle('desk-panel-error',isError);
+  element.hidden = false;
+}
+function renderDeskChallengeStatus(data,rules){
+  const grid = document.getElementById('deskStatusGrid');
+  const ruleList = document.getElementById('deskStatusRules');
+  grid.replaceChildren();
+  ruleList.replaceChildren();
+  const phase = data.phase ? String(data.phase).replaceAll('_',' ').replace(/\b\w/g,character=>character.toUpperCase()) : '—';
+  const status = data.status ? String(data.status).replaceAll('_',' ').toUpperCase() : '—';
+  const facts = [
+    ['Account size',deskMoney(data.size)],
+    ['Challenge model',data.label || '—'],
+    ['Phase',phase],
+    ['Current status',status]
+  ];
+  facts.forEach(([label,value])=>{
+    const item = document.createElement('div');
+    item.className = 'desk-status-item';
+    const name = document.createElement('span');
+    name.textContent = label;
+    const detail = document.createElement('strong');
+    detail.textContent = value;
+    if(label === 'Current status') detail.classList.add(data.status === 'active' ? 'is-active' : 'is-inactive');
+    item.append(name,detail);
+    grid.appendChild(item);
+  });
+  rules.forEach(rule=>{
+    const item = document.createElement('span');
+    item.className = 'desk-status-rule';
+    item.textContent = rule;
+    ruleList.appendChild(item);
+  });
+}
+function renderDeskStatistics(trades){
+  const grid = document.getElementById('deskStatisticsGrid');
+  const empty = document.getElementById('deskStatisticsEmpty');
+  grid.replaceChildren();
+  empty.hidden = true;
+  const pnlValues = trades.map(trade=>deskNumber(trade.realized_pnl)).filter(value=>value !== null);
+  const wins = pnlValues.filter(value=>value > 0);
+  const losses = pnlValues.filter(value=>value < 0);
+  const grossWins = wins.reduce((sum,value)=>sum+value,0);
+  const grossLosses = Math.abs(losses.reduce((sum,value)=>sum+value,0));
+  const metrics = [
+    ['Total trades',String(trades.length),''],
+    ['Winning trades',String(wins.length),'is-positive'],
+    ['Losing trades',String(losses.length),losses.length ? 'is-negative' : ''],
+    ['Win rate',pnlValues.length ? (wins.length / pnlValues.length * 100).toFixed(1) + '%' : '—',''],
+    ['Realized P/L',pnlValues.length ? deskMoney(pnlValues.reduce((sum,value)=>sum+value,0)) : '—',pnlValues.length ? (pnlValues.reduce((sum,value)=>sum+value,0) >= 0 ? 'is-positive' : 'is-negative') : ''],
+    ['Average win',wins.length ? deskMoney(grossWins / wins.length) : '—','is-positive'],
+    ['Average loss',losses.length ? deskMoney(-grossLosses / losses.length) : '—',losses.length ? 'is-negative' : ''],
+    ['Profit factor',grossLosses > 0 ? (grossWins / grossLosses).toFixed(2) : '—','']
+  ];
+  metrics.forEach(([label,value,className])=>{
+    const item = document.createElement('div');
+    item.className = 'desk-metric';
+    const name = document.createElement('span');
+    name.textContent = label;
+    const detail = document.createElement('strong');
+    detail.textContent = value;
+    if(className) detail.classList.add(className);
+    item.append(name,detail);
+    grid.appendChild(item);
+  });
+  document.getElementById('deskStatisticsNote').textContent = pnlValues.length + ' closed trades with recorded P/L';
+}
+function renderDeskActivity(trades){
+  const container = document.getElementById('deskActivityCalendar');
+  container.replaceChildren();
+  const datedTrades = trades.map(trade=>({trade,date:deskDate(trade.closed_at)})).filter(item=>item.date);
+  const latestDate = datedTrades.reduce((latest,item)=>!latest || item.date > latest ? item.date : latest,null);
+  const monthDate = latestDate || new Date();
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const monthLabel = new Intl.DateTimeFormat(undefined,{month:'long',year:'numeric'}).format(monthDate);
+  const caption = document.createElement('div');
+  caption.className = 'desk-calendar-caption';
+  caption.textContent = monthLabel + (latestDate ? '' : ' · no dated trades');
+  container.appendChild(caption);
+  const calendar = document.createElement('div');
+  calendar.className = 'desk-calendar-grid';
+  const weekdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  weekdays.forEach(day=>{
+    const item = document.createElement('span');
+    item.className = 'desk-calendar-weekday';
+    item.textContent = day;
+    calendar.appendChild(item);
+  });
+  const firstDayOffset = (new Date(year,month,1).getDay()+6)%7;
+  for(let blank=0;blank<firstDayOffset;blank++){
+    const item = document.createElement('span');
+    item.className = 'desk-calendar-day';
+    item.setAttribute('aria-hidden','true');
+    calendar.appendChild(item);
+  }
+  const activityByDay = new Map();
+  datedTrades.forEach(({trade,date})=>{
+    if(date.getFullYear() !== year || date.getMonth() !== month) return;
+    const day = date.getDate();
+    const pnl = deskNumber(trade.realized_pnl);
+    const totals = activityByDay.get(day) || {count:0,profit:false,loss:false};
+    totals.count += 1;
+    if(pnl !== null && pnl > 0) totals.profit = true;
+    if(pnl !== null && pnl < 0) totals.loss = true;
+    activityByDay.set(day,totals);
+  });
+  const dayCount = new Date(year,month+1,0).getDate();
+  for(let day=1;day<=dayCount;day++){
+    const item = document.createElement('span');
+    const activity = activityByDay.get(day);
+    item.className = 'desk-calendar-day';
+    item.textContent = String(day);
+    if(activity){
+      const activityClass = activity.profit && activity.loss ? 'has-mixed' : activity.loss ? 'has-loss' : activity.profit ? 'has-profit' : '';
+      if(activityClass) item.classList.add(activityClass);
+      item.setAttribute('aria-label',day + ' ' + monthLabel + ': ' + activity.count + ' closed trade' + (activity.count === 1 ? '' : 's'));
+      item.title = activity.count + ' closed trade' + (activity.count === 1 ? '' : 's');
+    }
+    calendar.appendChild(item);
+  }
+  container.appendChild(calendar);
+  if(datedTrades.length){
+    const legend = document.createElement('div');
+    legend.className = 'desk-activity-legend';
+    legend.innerHTML = '<span><i></i>Profit day</span><span><i class="loss"></i>Loss day</span>';
+    container.appendChild(legend);
+  }else{
+    const empty = document.createElement('div');
+    empty.className = 'desk-panel-empty';
+    empty.textContent = trades.length ? 'No valid trade dates are available.' : 'No trading activity recorded yet.';
+    container.appendChild(empty);
+  }
+}
+function renderDeskPositions(positions){
+  const body = document.getElementById('deskPositionsTable');
+  const wrapper = document.getElementById('deskPositionsTableWrap');
+  const empty = document.getElementById('deskPositionsEmpty');
+  body.replaceChildren();
+  wrapper.hidden = positions.length === 0;
+  empty.hidden = positions.length > 0;
+  if(!positions.length){
+    setDeskPanelEmpty('deskPositionsEmpty','No open positions');
+    document.getElementById('deskPositionsNote').textContent = '0 open';
+    return;
+  }
+  positions.forEach(position=>{
+    const row = document.createElement('tr');
+    const side = String(position.side || '—').toUpperCase();
+    const pnl = deskNumber(position.floating_pnl);
+    appendDeskTableCell(row,position.symbol || '—');
+    appendDeskTableCell(row,side,side === 'BUY' ? 'desk-side-buy' : side === 'SELL' ? 'desk-side-sell' : '');
+    appendDeskTableCell(row,deskPrice(position.volume));
+    appendDeskTableCell(row,deskPrice(position.open_price));
+    appendDeskTableCell(row,deskPrice(position.current_price));
+    appendDeskTableCell(row,deskMoney(position.floating_pnl),pnl === null ? '' : pnl >= 0 ? 'desk-pnl-positive' : 'desk-pnl-negative');
+    body.appendChild(row);
+  });
+  document.getElementById('deskPositionsNote').textContent = positions.length + ' open';
+}
+function renderDeskHistory(trades){
+  const body = document.getElementById('deskHistoryTable');
+  const wrapper = document.getElementById('deskHistoryTableWrap');
+  const empty = document.getElementById('deskHistoryEmpty');
+  body.replaceChildren();
+  wrapper.hidden = trades.length === 0;
+  empty.hidden = trades.length > 0;
+  if(!trades.length){
+    setDeskPanelEmpty('deskHistoryEmpty','No closed trades yet');
+    document.getElementById('deskHistoryNote').textContent = 'No closed trades';
+    return;
+  }
+  trades.slice(0,8).forEach(trade=>{
+    const row = document.createElement('tr');
+    const side = String(trade.side || '—').toUpperCase();
+    const pnl = deskNumber(trade.realized_pnl);
+    appendDeskTableCell(row,deskDateTime(trade.closed_at));
+    appendDeskTableCell(row,trade.symbol || '—');
+    appendDeskTableCell(row,side,side === 'BUY' ? 'desk-side-buy' : side === 'SELL' ? 'desk-side-sell' : '');
+    appendDeskTableCell(row,deskPrice(trade.volume));
+    appendDeskTableCell(row,deskPrice(trade.open_price));
+    appendDeskTableCell(row,deskPrice(trade.close_price));
+    appendDeskTableCell(row,deskMoney(trade.realized_pnl),pnl === null ? '' : pnl >= 0 ? 'desk-pnl-positive' : 'desk-pnl-negative');
+    body.appendChild(row);
+  });
+  document.getElementById('deskHistoryNote').textContent = 'Showing ' + Math.min(8,trades.length) + ' of ' + trades.length + ' closed trades';
+}
+async function fetchDeskTradingData(path,accountId){
+  const response = await fetch(API_BASE + path + '?account_id=' + encodeURIComponent(accountId),{
+    credentials:'same-origin',
+    headers:await firebaseApiHeaders({Accept:'application/json'})
+  });
+  let payload;
+  try{ payload = await response.json(); }
+  catch{ throw new Error('The trading service returned an invalid response.'); }
+  if(!response.ok || payload && payload.success === false) throw new Error(payload && payload.error ? payload.error : 'Trading service unavailable (' + response.status + ').');
+  return payload;
+}
+let deskPerformanceState = null;
+function setDeskPerformanceEmpty(message,isError=false){
+  const chart = document.getElementById('deskPerformanceChart');
+  chart.replaceChildren();
+  chart.setAttribute('aria-label',message);
+  const empty = document.createElement('div');
+  empty.className = 'desk-chart-empty';
+  if(isError) empty.classList.add('desk-panel-error');
+  const title = document.createElement('strong');
+  title.textContent = message;
+  empty.appendChild(title);
+  chart.appendChild(empty);
+  const tooltip = document.getElementById('deskChartTooltip');
+  tooltip.hidden = true;
+  tooltip.dataset.pointIndex = '';
+  document.getElementById('deskChartLegend').hidden = true;
+}
+function appendPerformanceSummary(label,value,className=''){
+  const item = document.createElement('div');
+  item.className = 'desk-performance-stat';
+  const title = document.createElement('span');
+  title.textContent = label;
+  const detail = document.createElement('strong');
+  detail.textContent = value;
+  if(className) detail.className = className;
+  item.append(title,detail);
+  document.getElementById('deskPerformanceSummary').appendChild(item);
+}
+function resetDeskPerformance(){
+  deskPerformanceState = null;
+  document.getElementById('deskPerformanceSummary').replaceChildren();
+  document.querySelectorAll('.desk-performance-filter').forEach(button=>{
+    button.disabled = true;
+    button.setAttribute('aria-pressed',String(button.dataset.performanceRange === 'ALL'));
+  });
+  setDeskPerformanceEmpty('Loading balance history…');
+}
+function compareDeskTrades(left,right){
+  const timeDifference = left.closedAt.getTime() - right.closedAt.getTime();
+  if(timeDifference) return timeDifference;
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
+function renderDeskPerformanceSummary(state){
+  const summary = document.getElementById('deskPerformanceSummary');
+  summary.replaceChildren();
+  appendPerformanceSummary('Starting balance',deskMoney(state.startingBalance));
+  appendPerformanceSummary('Current balance',deskMoney(state.currentBalance),'is-current');
+  if(state.currentEquity !== null) appendPerformanceSummary('Current live equity',deskMoney(state.currentEquity),'is-current');
+  appendPerformanceSummary('Total realized P/L',deskMoney(state.realizedPnl),state.realizedPnl >= 0 ? 'is-positive' : 'is-negative');
+  appendPerformanceSummary('Best trade',state.trades.length ? deskMoney(state.bestTrade) : '—',state.trades.length ? state.bestTrade >= 0 ? 'is-positive' : 'is-negative' : '');
+  appendPerformanceSummary('Worst trade',state.trades.length ? deskMoney(state.worstTrade) : '—',state.trades.length ? state.worstTrade < 0 ? 'is-negative' : 'is-positive' : '');
+  appendPerformanceSummary('Closed trades',String(state.trades.length));
+  appendPerformanceSummary('Max balance drawdown',state.trades.length ? state.maxBalanceDrawdown.toFixed(2) + '%' : '—',state.maxBalanceDrawdown > 0 ? 'is-negative' : '');
+}
+function svgDeskElement(name,attributes={}){
+  const element = document.createElementNS('http://www.w3.org/2000/svg',name);
+  Object.entries(attributes).forEach(([key,value])=>element.setAttribute(key,String(value)));
+  return element;
+}
+function formatDeskAxisMoney(value){
+  const absolute = Math.abs(value);
+  const formatted = absolute >= 1000000 ? '$' + (absolute / 1000000).toFixed(1) + 'm' : absolute >= 1000 ? '$' + (absolute / 1000).toFixed(absolute >= 10000 ? 0 : 1) + 'k' : deskMoney(absolute);
+  return value < 0 ? '−' + formatted : formatted;
+}
+function deskShortDate(timestamp){
+  return new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric'}).format(new Date(timestamp));
+}
+function showDeskChartTooltip(pointElement,panelRect){
+  const tooltip = document.getElementById('deskChartTooltip');
+  const rect = pointElement.getBoundingClientRect();
+  const pointIndex = pointElement.dataset.pointIndex;
+  if(tooltip.dataset.pointIndex !== pointIndex){
+    tooltip.replaceChildren();
+    const balance = document.createElement('strong');
+    balance.textContent = deskMoney(Number(pointElement.dataset.balance));
+    const timestamp = Number(pointElement.dataset.timestamp);
+    const date = document.createElement('span');
+    date.textContent = pointElement.dataset.pointLabel + ' · ' + (Number.isFinite(timestamp) ? deskDateTime(new Date(timestamp).toISOString()) : 'date unavailable');
+    tooltip.append(balance,date);
+    if(pointElement.dataset.pnl !== ''){
+      const pnl = document.createElement('span');
+      pnl.textContent = 'Realized P/L: ' + deskMoney(Number(pointElement.dataset.pnl));
+      tooltip.appendChild(pnl);
+    }
+    tooltip.dataset.pointIndex = pointIndex;
+  }
+  tooltip.style.left = Math.max(116,Math.min(panelRect.width - 116,rect.left + rect.width / 2 - panelRect.left)) + 'px';
+  tooltip.style.top = Math.max(45,rect.top - panelRect.top) + 'px';
+  tooltip.hidden = false;
+}
+function renderDeskPerformanceChart(range='ALL'){
+  const state = deskPerformanceState;
+  if(!state) return;
+  if(!state.trades.length){
+    setDeskPerformanceEmpty('No closed-trade performance history yet');
+    return;
+  }
+  const rangeMilliseconds = {'7D':7*86400000,'30D':30*86400000,'90D':90*86400000};
+  const now = Date.now();
+  const cutoff = range === 'ALL' ? state.createdAt : now - rangeMilliseconds[range];
+  const tradesInRange = state.trades.filter(trade=>trade.closedAt.getTime() >= cutoff);
+  if(!tradesInRange.length){
+    setDeskPerformanceEmpty('No closed trades in this period');
+    return;
+  }
+
+  const chart = document.getElementById('deskPerformanceChart');
+  const svgWidth = Math.max(chart.clientWidth,220);
+  const svg = svgDeskElement('svg',{class:'desk-chart-plot',viewBox:'0 0 ' + svgWidth + ' 240',preserveAspectRatio:'none',role:'img','aria-label':range === 'ALL' ? 'Reconstructed account balance history for all closed trades' : 'Reconstructed account balance history for the last ' + range});
+  const plot = {left:60,right:svgWidth-12,top:18,bottom:198};
+  const chartPoints = [];
+  if(range === 'ALL') chartPoints.push({timestamp:state.createdAt,balance:state.startingBalance,pnl:null,label:'Starting balance'});
+  tradesInRange.forEach(trade=>chartPoints.push({timestamp:trade.closedAt.getTime(),balance:trade.balance,pnl:trade.pnl,label:'Trade closed',tradeId:trade.id}));
+  const xStart = range === 'ALL' ? state.createdAt : cutoff;
+  let xEnd = range === 'ALL' ? Math.max(now,tradesInRange[tradesInRange.length-1].closedAt.getTime()) : now;
+  if(xEnd <= xStart) xEnd = xStart + 86400000;
+  const balances = chartPoints.map(point=>point.balance);
+  let low = balances.reduce((minimum,value)=>Math.min(minimum,value),Infinity);
+  let high = balances.reduce((maximum,value)=>Math.max(maximum,value),-Infinity);
+  const spread = high - low;
+  const padding = spread > 0 ? spread * .14 : Math.max(Math.abs(high) * .01,1);
+  low -= padding;
+  high += padding;
+  const x = timestamp=>plot.left + (timestamp - xStart) / (xEnd - xStart) * (plot.right - plot.left);
+  const y = balance=>plot.bottom - (balance - low) / (high - low) * (plot.bottom - plot.top);
+
+  for(let tick=0;tick<=4;tick++){
+    const tickY = plot.top + tick * (plot.bottom - plot.top) / 4;
+    const balance = high - tick * (high - low) / 4;
+    svg.appendChild(svgDeskElement('line',{x1:plot.left,y1:tickY,x2:plot.right,y2:tickY,class:'desk-chart-grid-line'}));
+    const label = svgDeskElement('text',{x:plot.left-9,y:tickY+3,'text-anchor':'end',class:'desk-chart-axis-label'});
+    label.textContent = formatDeskAxisMoney(balance);
+    svg.appendChild(label);
+  }
+  const xAxis = svgDeskElement('line',{x1:plot.left,y1:plot.bottom,x2:plot.right,y2:plot.bottom,class:'desk-chart-grid-line'});
+  svg.appendChild(xAxis);
+  const startLabel = svgDeskElement('text',{x:plot.left,y:226,'text-anchor':'start',class:'desk-chart-axis-label'});
+  startLabel.textContent = deskShortDate(xStart);
+  svg.appendChild(startLabel);
+  const endLabel = svgDeskElement('text',{x:plot.right,y:226,'text-anchor':'end',class:'desk-chart-axis-label'});
+  endLabel.textContent = deskShortDate(xEnd);
+  svg.appendChild(endLabel);
+
+  for(let index=1;index<chartPoints.length;index++){
+    const previous = chartPoints[index-1];
+    const current = chartPoints[index];
+    const segment = svgDeskElement('path',{
+      d:'M '+x(previous.timestamp)+' '+y(previous.balance)+' L '+x(current.timestamp)+' '+y(current.balance),
+      class:'desk-chart-segment ' + (current.balance >= previous.balance ? 'is-positive' : 'is-negative')
+    });
+    svg.appendChild(segment);
+  }
+  chartPoints.forEach((point,index)=>{
+    const marker = svgDeskElement('circle',{
+      cx:x(point.timestamp),
+      cy:y(point.balance),
+      r:index === chartPoints.length-1 ? 4.5 : 3.5,
+      class:'desk-chart-point ' + (index === 0 && range === 'ALL' ? 'is-start' : point.balance >= state.startingBalance ? 'is-positive' : 'is-negative'),
+      tabindex:'0',
+      role:'img',
+      'aria-label':point.label + ': ' + deskMoney(point.balance) + (point.pnl === null ? '' : ', realized P/L ' + deskMoney(point.pnl)),
+      'data-point-index':state.accountId + ':' + range + ':' + index,
+      'data-balance':point.balance,
+      'data-timestamp':point.timestamp,
+      'data-pnl':point.pnl === null ? '' : point.pnl,
+      'data-point-label':point.label
+    });
+    const title = svgDeskElement('title');
+    title.textContent = point.label + ' · ' + (point.timestamp === null ? 'Date unavailable' : deskDateTime(new Date(point.timestamp).toISOString())) + ' · Balance ' + deskMoney(point.balance) + (point.pnl === null ? '' : ' · Realized P/L ' + deskMoney(point.pnl));
+    marker.appendChild(title);
+    svg.appendChild(marker);
+  });
+  chart.replaceChildren(svg);
+  chart.setAttribute('aria-label',range === 'ALL' ? chartPoints.length + ' reconstructed balance points from ' + state.trades.length + ' closed trades' : chartPoints.length + ' reconstructed balance points from ' + tradesInRange.length + ' closed trades');
+  state.renderedWidth = svgWidth;
+  const tooltip = document.getElementById('deskChartTooltip');
+  tooltip.hidden = true;
+  tooltip.dataset.pointIndex = '';
+  document.getElementById('deskChartLegend').hidden = false;
+  const activeButton = document.querySelector('.desk-performance-filter[aria-pressed="true"]');
+  if(activeButton && activeButton.dataset.performanceRange !== range) activeButton.setAttribute('aria-pressed','false');
+  const nextButton = document.querySelector('.desk-performance-filter[data-performance-range="' + range + '"]');
+  if(nextButton) nextButton.setAttribute('aria-pressed','true');
+}
+function renderDeskPerformance(accountSnapshot,trades,accountId){
+  const summary = document.getElementById('deskPerformanceSummary');
+  summary.replaceChildren();
+  const buttons = [...document.querySelectorAll('.desk-performance-filter')];
+  buttons.forEach(button=>{
+    button.disabled = true;
+    button.setAttribute('aria-pressed',String(button.dataset.performanceRange === 'ALL'));
+  });
+  const startingBalance = deskNumber(accountSnapshot && accountSnapshot.starting_balance);
+  const currentBalance = deskNumber(accountSnapshot && accountSnapshot.balance);
+  const currentEquity = accountSnapshot && accountSnapshot.market_data_status === 'live' ? deskNumber(accountSnapshot.equity) : null;
+  const createdAt = deskDate(accountSnapshot && accountSnapshot.created_at);
+  const tradingAccountId = accountSnapshot && accountSnapshot.id;
+  if(startingBalance === null || startingBalance <= 0 || !createdAt){
+    setDeskPerformanceEmpty('Balance history unavailable: authoritative starting balance or account creation time is missing.',true);
+    return;
+  }
+  if(typeof tradingAccountId !== 'string' || !tradingAccountId){
+    setDeskPerformanceEmpty('Balance history unavailable: the authenticated trading account identifier is missing.',true);
+    return;
+  }
+  const normalizedTrades = [];
+  const tradeIds = new Set();
+  for(const trade of trades){
+    const closedAt = deskDate(trade.closed_at);
+    const pnl = deskNumber(trade.realized_pnl);
+    if(trade.account_id !== tradingAccountId || typeof trade.id !== 'string' || !trade.id || tradeIds.has(trade.id) || !closedAt || pnl === null){
+      setDeskPerformanceEmpty('Balance history unavailable: a closed trade is missing a matching trading account, unique ID, close time, or realized P/L.',true);
+      return;
+    }
+    tradeIds.add(trade.id);
+    normalizedTrades.push({id:trade.id,closedAt,pnl});
+  }
+  normalizedTrades.sort(compareDeskTrades);
+  if(normalizedTrades.some(trade=>trade.closedAt < createdAt)){
+    setDeskPerformanceEmpty('Balance history unavailable: a trade close time predates the account creation time.',true);
+    return;
+  }
+  let balance = startingBalance;
+  let peakBalance = startingBalance;
+  let maxBalanceDrawdown = 0;
+  let bestTrade = -Infinity;
+  let worstTrade = Infinity;
+  let realizedPnl = 0;
+  normalizedTrades.forEach(trade=>{
+    balance += trade.pnl;
+    trade.balance = balance;
+    realizedPnl += trade.pnl;
+    bestTrade = Math.max(bestTrade,trade.pnl);
+    worstTrade = Math.min(worstTrade,trade.pnl);
+    peakBalance = Math.max(peakBalance,balance);
+    if(peakBalance > 0) maxBalanceDrawdown = Math.max(maxBalanceDrawdown,(peakBalance-balance)/peakBalance*100);
+  });
+  deskPerformanceState = {
+    accountId,
+    startingBalance,
+    currentBalance,
+    currentEquity,
+    createdAt:createdAt.getTime(),
+    trades:normalizedTrades,
+    realizedPnl,
+    bestTrade:normalizedTrades.length ? bestTrade : null,
+    worstTrade:normalizedTrades.length ? worstTrade : null,
+    maxBalanceDrawdown
+  };
+  renderDeskPerformanceSummary(deskPerformanceState);
+  if(!normalizedTrades.length){
+    setDeskPerformanceEmpty('No closed-trade performance history yet');
+    return;
+  }
+  buttons.forEach(button=>{
+    if(button.dataset.performanceRange === 'ALL'){
+      button.disabled = false;
+      return;
+    }
+    const duration = {'7D':7,'30D':30,'90D':90}[button.dataset.performanceRange] * 86400000;
+    button.disabled = !normalizedTrades.some(trade=>trade.closedAt.getTime() >= Date.now()-duration);
+  });
+  renderDeskPerformanceChart('ALL');
+}
+document.querySelector('.desk-performance-filters').addEventListener('click',event=>{
+  const button = event.target.closest('button[data-performance-range]');
+  if(!button || button.disabled || !deskPerformanceState) return;
+  document.querySelectorAll('.desk-performance-filter').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+  renderDeskPerformanceChart(button.dataset.performanceRange);
+});
+document.getElementById('deskPerformanceChart').addEventListener('pointermove',event=>{
+  const pointElement = event.target.closest('[data-point-index]');
+  if(!pointElement || !deskPerformanceState) return;
+  showDeskChartTooltip(pointElement,document.querySelector('.desk-performance-panel').getBoundingClientRect());
+});
+document.getElementById('deskPerformanceChart').addEventListener('pointerleave',()=>{document.getElementById('deskChartTooltip').hidden = true;});
+document.getElementById('deskPerformanceChart').addEventListener('focusin',event=>{
+  const pointElement = event.target.closest('[data-point-index]');
+  if(!pointElement || !deskPerformanceState) return;
+  showDeskChartTooltip(pointElement,document.querySelector('.desk-performance-panel').getBoundingClientRect());
+});
+document.getElementById('deskPerformanceChart').addEventListener('focusout',()=>{document.getElementById('deskChartTooltip').hidden = true;});
+if(typeof ResizeObserver !== 'undefined'){
+  new ResizeObserver(entries=>{
+    const width = Math.max(entries[0].target.clientWidth,220);
+    if(deskPerformanceState && deskPerformanceState.trades.length && Math.abs(width-deskPerformanceState.renderedWidth)>1){
+      const rangeButton = document.querySelector('.desk-performance-filter[aria-pressed="true"]');
+      deskPerformanceState.renderedWidth = width;
+      renderDeskPerformanceChart(rangeButton ? rangeButton.dataset.performanceRange : 'ALL');
+    }
+  }).observe(document.getElementById('deskPerformanceChart'));
+}
+async function loadDeskTradingData(data){
+  const requestId = ++deskTradingRequestId;
+  resetDeskPerformance();
+  const positionsBody = document.getElementById('deskPositionsTable');
+  const historyBody = document.getElementById('deskHistoryTable');
+  positionsBody.replaceChildren();
+  historyBody.replaceChildren();
+  document.getElementById('deskPositionsTableWrap').hidden = true;
+  document.getElementById('deskHistoryTableWrap').hidden = true;
+  document.getElementById('deskPositionsNote').textContent = '';
+  document.getElementById('deskHistoryNote').textContent = 'Latest closed trades';
+  document.getElementById('deskStatisticsGrid').replaceChildren();
+  const statisticsEmpty = document.getElementById('deskStatisticsEmpty');
+  statisticsEmpty.textContent = 'Loading trade statistics…';
+  statisticsEmpty.classList.remove('desk-panel-error');
+  statisticsEmpty.hidden = false;
+  document.getElementById('deskStatisticsNote').textContent = 'Closed trades';
+  const activityCalendar = document.getElementById('deskActivityCalendar');
+  activityCalendar.textContent = 'Loading trading activity…';
+  ['deskPositionsEmpty','deskHistoryEmpty'].forEach(id=>setDeskPanelEmpty(id,'Loading account activity…'));
+  if(data.status !== 'active' || data.tradingEnabled !== true){
+    const message = 'Trading is not enabled for this account.';
+    setDeskPerformanceEmpty(message);
+    setDeskPanelEmpty('deskPositionsEmpty',message);
+    setDeskPanelEmpty('deskHistoryEmpty',message);
+    document.getElementById('deskStatisticsEmpty').textContent = message;
+    document.getElementById('deskStatisticsEmpty').hidden = false;
+    document.getElementById('deskActivityCalendar').textContent = message;
+    return;
+  }
+  if(!data.accountId){
+    const message = 'Trading account identifier is unavailable.';
+    setDeskPerformanceEmpty(message,true);
+    setDeskPanelEmpty('deskPositionsEmpty',message,true);
+    setDeskPanelEmpty('deskHistoryEmpty',message,true);
+    document.getElementById('deskStatisticsEmpty').textContent = message;
+    document.getElementById('deskStatisticsEmpty').classList.add('desk-panel-error');
+    document.getElementById('deskStatisticsEmpty').hidden = false;
+    document.getElementById('deskActivityCalendar').textContent = message;
+    return;
+  }
+  const [accountResult,tradesResult] = await Promise.allSettled([
+    fetchDeskTradingData('/api/trading/accounts',data.accountId),
+    fetchDeskTradingData('/api/trading/trades',data.accountId)
+  ]);
+  if(requestId !== deskTradingRequestId) return;
+  if(accountResult.status === 'fulfilled' && Array.isArray(accountResult.value.positions)){
+    renderDeskPositions(accountResult.value.positions);
+  }else{
+    const message = accountResult.status === 'rejected' ? accountResult.reason.message : 'The trading service returned invalid open-position data.';
+    setDeskPanelEmpty('deskPositionsEmpty',message,true);
+  }
+  if(accountResult.status === 'fulfilled' && tradesResult.status === 'fulfilled' && Array.isArray(tradesResult.value.trades)){
+    renderDeskPerformance(accountResult.value.account,tradesResult.value.trades,data.accountId);
+  }else{
+    const message = accountResult.status === 'rejected' ? accountResult.reason.message : tradesResult.status === 'rejected' ? tradesResult.reason.message : 'The trading service returned invalid performance-history data.';
+    setDeskPerformanceEmpty(message,true);
+  }
+  if(tradesResult.status === 'fulfilled' && Array.isArray(tradesResult.value.trades)){
+    renderDeskStatistics(tradesResult.value.trades);
+    renderDeskActivity(tradesResult.value.trades);
+    renderDeskHistory(tradesResult.value.trades);
+  }else{
+    const message = tradesResult.status === 'rejected' ? tradesResult.reason.message : 'The trading service returned invalid trade-history data.';
+    document.getElementById('deskStatisticsEmpty').textContent = message;
+    document.getElementById('deskStatisticsEmpty').classList.add('desk-panel-error');
+    document.getElementById('deskStatisticsEmpty').hidden = false;
+    document.getElementById('deskActivityCalendar').textContent = message;
+    setDeskPanelEmpty('deskHistoryEmpty',message,true);
+  }
 }
 const accSelectEl = document.getElementById('accSelect');
 if(accSelectEl) accSelectEl.addEventListener('change',()=>{ renderAccount(); renderRewardsCertificate(); });
