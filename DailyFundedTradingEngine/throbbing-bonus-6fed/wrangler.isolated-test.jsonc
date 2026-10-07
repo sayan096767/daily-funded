@@ -1,0 +1,41 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "daily-funded-market-feed-test",
+  "main": "test/isolated-worker.js",
+  "compatibility_date": "2026-09-26",
+  "d1_databases": [
+    {
+      "binding": "daily_funded_trading_db",
+      "database_name": "daily-funded-market-feed-test-db",
+      "database_id": "a9928674-63fc-4faf-bf6d-d24a1eec751a"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TEST_MARKET_FEED",
+        "class_name": "TestMarketFeedDO"
+      },
+      {
+        "name": "TEST_POSITION_EVENTS",
+        "class_name": "TestPositionEventsDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-isolated-test-feed",
+      "new_sqlite_classes": ["TestMarketFeedDO"]
+    },
+    {
+      "tag": "v2-isolated-test-events",
+      "new_sqlite_classes": ["TestPositionEventsDO"]
+    }
+  ],
+  "vars": {
+    "TEST_CONTROL_PATH": "/_isolated_biquote_feed_test_20261005_7c91f3d1"
+  }
+}

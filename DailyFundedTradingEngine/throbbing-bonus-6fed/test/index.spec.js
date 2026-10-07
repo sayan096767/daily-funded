@@ -1,16 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import worker, { PositionEventsDO } from "../src/index.flexible.js";
+import worker, { MarketFeedDO, PositionEventsDO } from "../src/index.flexible.js";
 import {
 	protectionPrice,
 	tickIsAfterPositionOpen,
 	triggeredProtection,
 } from "../src/positionProtection.js";
+import { parseSignalRFrames } from "../src/biquoteSignalR.js";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.useRealTimers();
+	vi.restoreAllMocks();
 });
 
 const provisioningToken = "test-provisioning-token";
@@ -116,6 +118,7 @@ function mockDb({
 		candles: [],
 		snapshotBindingCounts: [],
 		tickCursors: [],
+		positionQueryCount: 0,
 		positionEvents: [],
 	};
 
@@ -221,7 +224,10 @@ function mockDb({
 					if (lower.includes("from positions")) {
 						let positions = lower.includes("p.symbol = ?")
 							? state.positions.filter((row) => row.symbol === this.values[0])
-							: state.positions.filter((row) => row.account_id === this.values[0]);
+							: lower.includes("p.account_id = ?")
+								? state.positions.filter((row) => row.account_id === this.values[0])
+								: [...state.positions];
+						state.positionQueryCount += 1;
 						if (lower.includes("p.id != ?")) {
 							positions = positions.filter((row) => row.id !== this.values.at(-1));
 						}
@@ -232,6 +238,7 @@ function mockDb({
 							results: positions.map((row) => ({
 								...row,
 								user_id: state.accounts.find((account) => account.id === row.account_id)?.user_id,
+								account_balance: state.accounts.find((account) => account.id === row.account_id)?.balance,
 							})),
 						};
 					}
@@ -431,6 +438,60 @@ function mockDb({
 }
 
 const positionEventNamespaces = new WeakMap();
+const marketFeedNamespaces = new WeakMap();
+
+function mockMarketFeedNamespace(env) {
+	const database = env.daily_funded_trading_db;
+	if (marketFeedNamespaces.has(database)) return marketFeedNamespaces.get(database);
+	const instances = new Map();
+	const namespace = {
+		idFromName: (name) => name,
+		get(id) {
+			if (!instances.has(id)) {
+				const state = {
+					storage: {
+						get: async () => null,
+						put: async () => {},
+						setAlarm: async () => {},
+					},
+					blockConcurrencyWhile(callback) { return callback(); },
+					waitUntil(promise) { void promise; },
+				};
+				const instance = new MarketFeedDO(state, env);
+				instance.ensureConnection = async () => ({ connected: true });
+				instances.set(id, instance);
+			}
+			const instance = instances.get(id);
+			return {
+				instance,
+				async fetch(url, init) {
+					await instance.initialized;
+					for (const record of instance.symbolRecords) {
+						if (!instance.safeAfterTimestamp.has(record.symbol)) {
+							instance.safeAfterTimestamp.set(record.symbol, 0);
+						}
+						if (!instance.baselineTimestamps.has(record.symbol)) {
+							instance.baselineTimestamps.set(record.symbol, 0);
+						}
+						instance.trustedSymbols.add(record.symbol);
+						if (!instance.latestTicks.has(record.symbol)) {
+							instance.latestTicks.set(record.symbol, {
+								symbol: record.symbol,
+								provider_symbol: record.provider_symbol,
+								timestamp_ms: Date.now() - 60_000,
+								bid: 1,
+								ask: 1.0001,
+							});
+						}
+					}
+					return instance.fetch(new Request(url, init));
+				},
+			};
+		},
+	};
+	marketFeedNamespaces.set(database, namespace);
+	return namespace;
+}
 
 function mockPositionEventsNamespace(env) {
 	if (positionEventNamespaces.has(env.daily_funded_trading_db)) {
@@ -524,6 +585,7 @@ async function callTrading(db, path, options = {}) {
 	const { request, env } = tradingRequest(path, options);
 	env.daily_funded_trading_db = db;
 	env.POSITION_EVENTS = mockPositionEventsNamespace(env);
+	env.MARKET_FEED = options.marketFeed || mockMarketFeedNamespace(env);
 	env.TRADING_EVENTS_SIGNING_SECRET = "test-event-signing-secret-long-enough-32";
 	env.MARKET_TICK_INGEST_TOKEN = "test-market-tick-ingest-token";
 	return worker.fetch(request, env);
@@ -656,6 +718,7 @@ async function ingestBiquoteTick(db, { symbol = "EURUSD", bid, ask, timestamp = 
 		POSITION_EVENTS: null,
 	};
 	env.POSITION_EVENTS = mockPositionEventsNamespace(env);
+	env.MARKET_FEED = mockMarketFeedNamespace(env);
 	const request = new Request("http://example.com/internal/market-tick", {
 		method: "POST",
 		headers: {
@@ -761,6 +824,628 @@ function tradingStateSnapshot(state) {
 		trades: state.trades,
 	});
 }
+
+describe("Biquote Durable Object feed", () => {
+	it("parses fragmented and coalesced SignalR JSON records", () => {
+		const first = parseSignalRFrames("", "{\"type\":6}\x1e{\"type\":");
+		const second = parseSignalRFrames(first.buffer, "6}\x1e");
+
+		expect(first.frames).toEqual([{ type: 6 }]);
+		expect(second.frames).toEqual([{ type: 6 }]);
+		expect(second.buffer).toBe("");
+	});
+
+	it("reconnects after failure and restores all 17 subscriptions on one socket", async () => {
+		class FakeSocket {
+			readyState = 1;
+			listeners = new Map();
+			sent = [];
+			accept() {}
+			addEventListener(name, listener) {
+				this.listeners.set(name, listener);
+			}
+			emit(name, data = {}) {
+				this.listeners.get(name)?.(data);
+			}
+			send(frame) {
+				this.sent.push(frame);
+				const message = JSON.parse(frame.slice(0, -1));
+				if (!message.type) {
+					queueMicrotask(() => this.emit("message", { data: `{}\x1e` }));
+				} else if (message.target === "Subscribe") {
+					queueMicrotask(() => this.emit("message", {
+						data: `${JSON.stringify({ type: 3, invocationId: message.invocationId })}\x1e`,
+					}));
+				}
+			}
+			close() {
+				this.readyState = 3;
+				this.emit("close");
+			}
+		}
+
+		const providerSymbols = [
+			"BTCUSD", "ETHUSD", "EURUSD", "GBPUSD", "UKOIL", "USDJPY", "USOIL",
+			"XAGUSD", "XAUUSD", "XCUUSD", "XNGUSD", "US30", "US500", "NAS100",
+			"GER40", "UK100", "AUS200",
+		];
+		const { db } = mockDb({
+			tradingSymbols: providerSymbols.map((symbol) => ({
+				...marketRecord(symbol),
+				provider: "biquote",
+				provider_symbol: symbol,
+				market_data_enabled: 1,
+			})),
+		});
+		const sockets = [];
+		let failUpgrade = true;
+		const fetchMock = vi.fn(async (input) => {
+			const url = new URL(input.toString());
+			if (url.pathname === "/api/latest") {
+				return new Response(JSON.stringify(Object.fromEntries(providerSymbols.map((symbol) => [
+					symbol,
+					{ bid: 100, ask: 101, timestamp: Date.now(), stale: false },
+				]))));
+			}
+			if (url.pathname.endsWith("/negotiate")) {
+				return new Response(JSON.stringify({
+					connectionToken: "test-connection-token",
+					availableTransports: [{ transport: "WebSockets" }],
+				}));
+			}
+			if (failUpgrade) return { status: 500, webSocket: null };
+			const socket = new FakeSocket();
+			sockets.push(socket);
+			return { status: 101, webSocket: socket };
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		vi.stubGlobal("WebSocket", { OPEN: 1 });
+		const waiting = [];
+		const state = {
+			storage: { get: async () => null, put: async () => {}, setAlarm: async () => {} },
+			blockConcurrencyWhile(callback) { return callback(); },
+			waitUntil(promise) { waiting.push(promise); },
+		};
+		const feed = new MarketFeedDO(state, { daily_funded_trading_db: db });
+		await feed.initialized;
+
+		const failed = await feed.fetch(new Request("https://feed/ensure", { method: "POST" }));
+		expect(failed.status).toBe(503);
+		const failedPayload = await failed.json();
+		expect(failedPayload).toMatchObject({
+			success: false,
+			connected: false,
+			reason: "websocket_upgrade_failed",
+		});
+		expect(failedPayload.error).toBeUndefined();
+		failUpgrade = false;
+		const connected = await feed.fetch(new Request("https://feed/ensure", { method: "POST" }));
+		expect(connected.status).toBe(200);
+		expect(await connected.json()).toEqual({
+			success: true,
+			connected: true,
+			symbols: providerSymbols.length,
+		});
+		expect(sockets).toHaveLength(1);
+
+		const subscribed = sockets[0].sent
+			.map((frame) => JSON.parse(frame.slice(0, -1)))
+			.find((message) => message.target === "Subscribe");
+		expect(subscribed.arguments[0]).toEqual(providerSymbols);
+		sockets[0].emit("close");
+		await Promise.all(waiting);
+		expect(sockets).toHaveLength(2);
+		expect(sockets[1].sent.map((frame) => JSON.parse(frame.slice(0, -1)))
+			.find((message) => message.target === "Subscribe").arguments[0]).toEqual(providerSymbols);
+		expect(fetchMock.mock.calls.filter(([input, options]) => {
+			const url = new URL(input.toString());
+			return url.protocol === "https:" &&
+				url.pathname === "/hubs/tick" &&
+				url.searchParams.get("id") === "test-connection-token" &&
+				options?.headers?.Upgrade === "websocket";
+		})).toHaveLength(3);
+	});
+
+	it("resumes server-side protection for an open position after the SignalR socket reconnects", async () => {
+		class FakeSocket {
+			readyState = 1;
+			listeners = new Map();
+			accept() {}
+			addEventListener(name, listener) {
+				this.listeners.set(name, listener);
+			}
+			emit(name, data = {}) {
+				this.listeners.get(name)?.(data);
+			}
+			send(frame) {
+				const message = JSON.parse(frame.slice(0, -1));
+				if (!message.type) {
+					queueMicrotask(() => this.emit("message", { data: `{}\x1e` }));
+				} else if (message.target === "Subscribe") {
+					queueMicrotask(() => this.emit("message", {
+						data: `${JSON.stringify({ type: 3, invocationId: message.invocationId })}\x1e`,
+					}));
+				}
+			}
+			close() {
+				this.readyState = 3;
+				this.emit("close");
+			}
+		}
+
+		const { db, state: tradingState } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		const sockets = [];
+		const fetchMock = vi.fn(async (input) => {
+			const url = new URL(input.toString());
+			if (url.pathname === "/api/latest") {
+				return new Response(JSON.stringify({
+					EURUSD: { bid: 1.25, ask: 1.2502, timestamp: Date.now(), stale: false },
+				}));
+			}
+			if (url.pathname.endsWith("/negotiate")) {
+				return new Response(JSON.stringify({
+					connectionToken: "test-connection-token",
+					availableTransports: [{ transport: "WebSockets" }],
+				}));
+			}
+			const socket = new FakeSocket();
+			sockets.push(socket);
+			return { status: 101, webSocket: socket };
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		vi.stubGlobal("WebSocket", { OPEN: 1 });
+		const waiting = [];
+		const feedState = {
+			storage: { get: async () => null, put: async () => {}, setAlarm: async () => {} },
+			blockConcurrencyWhile(callback) { return callback(); },
+			waitUntil(promise) { waiting.push(promise); },
+		};
+		const env = {
+			daily_funded_trading_db: db,
+			POSITION_EVENTS: mockPositionEventsNamespace({ daily_funded_trading_db: db }),
+		};
+		const feed = new MarketFeedDO(feedState, env);
+		await feed.initialized;
+		expect(feed.positionsById.has(tradingState.positions[0].id)).toBe(true);
+
+		expect((await feed.ensureConnection()).connected).toBe(true);
+		sockets[0].emit("close");
+		await Promise.all(waiting);
+		expect(sockets).toHaveLength(2);
+		expect(feed.positionsById.has(tradingState.positions[0].id)).toBe(true);
+
+		sockets[1].emit("message", {
+			data: `${JSON.stringify({
+				type: 1,
+				target: "ReceiveTick",
+				arguments: [{
+					symbol: "EURUSD",
+					timestamp: new Date(Date.now() + 1000).toISOString(),
+					bid: 1.2,
+					ask: 1.2002,
+				}],
+			})}\x1e`,
+		});
+		await vi.waitFor(() => {
+			expect(tradingState.positions[0].status).toBe("closed");
+		});
+		expect(tradingState.trades).toHaveLength(1);
+		expect(tradingState.positions[0].close_price).toBe(1.2);
+	});
+
+	it.each([
+		["biquote_negotiation_failed", "negotiation"],
+		["websocket_upgrade_failed", "upgrade"],
+		["signalr_handshake_failed", "handshake"],
+		["subscription_failed", "subscription"],
+	])("returns safe %s reason from DO startup", async (expectedReason, failureStage) => {
+		class FakeSocket {
+			readyState = 1;
+			listeners = new Map();
+			accept() {}
+			addEventListener(name, listener) { this.listeners.set(name, listener); }
+			emit(name, data) { this.listeners.get(name)?.(data); }
+			send(frame) {
+				const message = JSON.parse(frame.slice(0, -1));
+				if (!message.type) {
+					const response = failureStage === "handshake"
+						? { error: "private-token-must-not-leak" }
+						: {};
+					queueMicrotask(() => this.emit("message", {
+						data: `${JSON.stringify(response)}\x1e`,
+					}));
+				} else if (message.target === "Subscribe") {
+					const response = {
+						type: 3,
+						invocationId: message.invocationId,
+						...(failureStage === "subscription"
+							? { error: "private-credential-must-not-leak" }
+							: {}),
+					};
+					queueMicrotask(() => this.emit("message", {
+						data: `${JSON.stringify(response)}\x1e`,
+					}));
+				}
+			}
+			close() { this.readyState = 3; }
+		}
+
+		const { db } = mockDb({
+			tradingSymbols: [{
+				...marketRecord("XAUUSD"),
+				provider: "biquote",
+				provider_symbol: "XAUUSD",
+				market_data_enabled: 1,
+			}],
+		});
+		const fetchMock = vi.fn(async (input) => {
+			const url = new URL(input.toString());
+			if (url.pathname === "/api/latest") {
+				return new Response(JSON.stringify({
+					XAUUSD: { bid: 100, ask: 101, timestamp: Date.now() / 1000, stale: false },
+				}));
+			}
+			if (url.pathname.endsWith("/negotiate")) {
+				if (failureStage === "negotiation") {
+					return new Response("private-token-must-not-leak", { status: 503 });
+				}
+				return new Response(JSON.stringify({
+					connectionToken: "test-connection-token",
+					availableTransports: [{ transport: "WebSockets" }],
+				}));
+			}
+			if (failureStage === "upgrade") return { status: 503, webSocket: null };
+			return { status: 101, webSocket: new FakeSocket() };
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		vi.stubGlobal("WebSocket", { OPEN: 1 });
+		const logError = vi.spyOn(console, "error").mockImplementation(() => {});
+		const state = {
+			storage: { get: async () => null, put: async () => {}, setAlarm: async () => {} },
+			blockConcurrencyWhile(callback) { return callback(); },
+		};
+		const feed = new MarketFeedDO(state, { daily_funded_trading_db: db });
+		const response = await feed.fetch(new Request("https://feed/ensure", { method: "POST" }));
+		const payload = await response.json();
+
+		expect(response.status).toBe(503);
+		expect(payload).toMatchObject({
+			success: false,
+			connected: false,
+			reason: expectedReason,
+		});
+		expect(payload.error).toBeUndefined();
+		expect(JSON.stringify(payload)).not.toMatch(/private-token|private-credential/);
+		expect(JSON.stringify(logError.mock.calls)).not.toMatch(/private-token|private-credential/);
+	});
+
+	it.each([
+		"biquote_negotiation_failed",
+		"websocket_upgrade_failed",
+		"signalr_handshake_failed",
+		"subscription_failed",
+		"feed_not_connected",
+	])("blocks position opening with safe %s readiness reason and no D1 writes", async (reason) => {
+		const failureMessages = {
+			biquote_negotiation_failed: "Biquote negotiation failed",
+			websocket_upgrade_failed: "Biquote WebSocket upgrade failed",
+			signalr_handshake_failed: "Biquote SignalR handshake failed",
+			subscription_failed: "Biquote subscription failed",
+			feed_not_connected: "Biquote feed is not connected",
+		};
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("XAUUSD")],
+			allowedSymbols: ["XAUUSD"],
+		});
+		const before = tradingStateSnapshot(state);
+		const marketFeed = {
+			idFromName: () => "test-market-feed",
+			get: () => ({
+				fetch: async () => new Response(JSON.stringify({
+					success: false,
+					connected: false,
+					reason,
+					error: "private-token-must-not-leak",
+				}), { status: 503 }),
+			}),
+		};
+		const response = await callTrading(db, "/positions", {
+			method: "POST",
+			marketFeed,
+			body: {
+				account_id: "ACC_TRADE",
+				symbol: "XAUUSD",
+				side: "BUY",
+				volume: 0.01,
+				stop_loss: 99,
+			},
+		});
+		const payload = await response.json();
+
+		expect(response.status).toBe(503);
+		expect(payload).toMatchObject({
+			success: false,
+			code: "protection_unavailable",
+			reason,
+			error: `The server-side Biquote protection feed is not ready (${failureMessages[reason]})`,
+		});
+		expect(JSON.stringify(payload)).not.toContain("private-token");
+		expect(tradingStateSnapshot(state)).toBe(before);
+	});
+
+	it("blocks a Biquote position before D1 writes when its protection baseline is stale", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("XAUUSD")],
+			allowedSymbols: ["XAUUSD"],
+		});
+		const before = tradingStateSnapshot(state);
+		const fetchMock = vi.fn(async (input) => {
+			const url = new URL(input.toString());
+			if (url.pathname === "/api/latest") {
+				return new Response(JSON.stringify({
+					XAUUSD: {
+						bid: 100,
+						ask: 101,
+						timestamp: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+						stale: true,
+					},
+				}));
+			}
+			throw new Error(`Unexpected provider request: ${url.pathname}`);
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		const feedState = {
+			storage: { get: async () => null, put: async () => {}, setAlarm: async () => {} },
+			blockConcurrencyWhile(callback) { return callback(); },
+		};
+		const marketFeed = {
+			idFromName: () => "test-market-feed",
+			get: () => {
+				const instance = new MarketFeedDO(feedState, { daily_funded_trading_db: db });
+				instance.ensureConnection = async () => ({ connected: true });
+				instance.waitForFreshSymbolTick = (symbol) =>
+					MarketFeedDO.prototype.waitForFreshSymbolTick.call(instance, symbol, 1);
+				return {
+					fetch: (url, init) => instance.fetch(new Request(url, init)),
+				};
+			},
+		};
+		const response = await callTrading(db, "/positions", {
+			method: "POST",
+			marketFeed,
+			body: {
+				account_id: "ACC_TRADE",
+				symbol: "XAUUSD",
+				side: "BUY",
+				volume: 0.01,
+				stop_loss: 99,
+			},
+		});
+		const payload = await response.json();
+
+		expect(response.status).toBe(503);
+		expect(payload).toMatchObject({
+			success: false,
+			code: "protection_unavailable",
+			reason: "feed_not_connected",
+		});
+		expect(new URL(fetchMock.mock.calls[0][0].toString()).pathname).toBe("/api/latest");
+		expect(tradingStateSnapshot(state)).toBe(before);
+	});
+
+	it("blocks a Biquote position before D1 writes until the requested symbol has a fresh tick", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("XAUUSD")],
+			allowedSymbols: ["XAUUSD"],
+		});
+		const before = tradingStateSnapshot(state);
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+			XAUUSD: {
+				bid: 100,
+				ask: 101,
+				timestamp: new Date(Date.now() - 1000).toISOString(),
+				stale: false,
+			},
+		})));
+		vi.stubGlobal("fetch", fetchMock);
+		const feedState = {
+			storage: { get: async () => null, put: async () => {}, setAlarm: async () => {} },
+			blockConcurrencyWhile(callback) { return callback(); },
+		};
+		const marketFeed = {
+			idFromName: () => "test-market-feed",
+			get: () => {
+				const instance = new MarketFeedDO(feedState, { daily_funded_trading_db: db });
+				instance.ensureConnection = async () => ({ connected: true });
+				instance.waitForFreshSymbolTick = (symbol) =>
+					MarketFeedDO.prototype.waitForFreshSymbolTick.call(instance, symbol, 1);
+				return {
+					fetch: (url, init) => instance.fetch(new Request(url, init)),
+				};
+			},
+		};
+		const response = await callTrading(db, "/positions", {
+			method: "POST",
+			marketFeed,
+			body: {
+				account_id: "ACC_TRADE",
+				symbol: "XAUUSD",
+				side: "BUY",
+				volume: 0.01,
+				stop_loss: 99,
+			},
+		});
+
+		expect(response.status).toBe(503);
+		expect(await response.json()).toMatchObject({
+			success: false,
+			code: "protection_unavailable",
+			reason: "feed_not_connected",
+		});
+		expect(tradingStateSnapshot(state)).toBe(before);
+	});
+
+	it("accepts symbol-specific protection readiness after a fresh Biquote tick", async () => {
+		const { db } = mockDb({
+			tradingSymbols: [marketRecord("XAUUSD", {
+				provider: "biquote",
+				provider_symbol: "XAUUSD",
+				trading_enabled: 1,
+			})],
+		});
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+			XAUUSD: {
+				bid: 100,
+				ask: 101,
+				timestamp: new Date(Date.now() - 1000).toISOString(),
+				stale: false,
+			},
+		})));
+		vi.stubGlobal("fetch", fetchMock);
+		const feedState = {
+			storage: { get: async () => null, put: async () => {}, setAlarm: async () => {} },
+			blockConcurrencyWhile(callback) { return callback(); },
+		};
+		const feed = new MarketFeedDO(feedState, { daily_funded_trading_db: db });
+		feed.ensureConnection = async () => ({ connected: true });
+		feed.waitForFreshSymbolTick = (symbol) =>
+			MarketFeedDO.prototype.waitForFreshSymbolTick.call(feed, symbol, 1);
+		await feed.initialized;
+		await feed.refreshProviderBaselines();
+		expect(feed.symbolRecords).toContainEqual(expect.objectContaining({
+			symbol: "XAUUSD",
+			provider: "biquote",
+			provider_symbol: "XAUUSD",
+		}));
+		expect(fetchMock).toHaveBeenCalled();
+		expect(feed.trustedSymbols.has("XAUUSD")).toBe(true);
+		expect(feed.safeAfterTimestamp.get("XAUUSD")).toBeLessThan(Date.now());
+		feed.latestTicks.set("XAUUSD", {
+			symbol: "XAUUSD",
+			provider_symbol: "XAUUSD",
+			timestamp_ms: feed.baselineTimestamps.get("XAUUSD") - 1,
+			bid: 100,
+			ask: 101,
+		});
+		const oldTickResponse = await feed.fetch(new Request(
+			"https://market-feed/ensure?symbol=XAUUSD",
+			{ method: "POST" }
+		));
+		expect(oldTickResponse.status).toBe(503);
+		const tick = await feed.acceptTick({
+			symbol: "XAUUSD",
+			provider_symbol: "XAUUSD",
+			timestamp_ms: Date.now(),
+			bid: 100,
+			ask: 101,
+		});
+		const response = await feed.fetch(new Request(
+			"https://market-feed/ensure?symbol=XAUUSD",
+			{ method: "POST" }
+		));
+
+		expect(tick).toMatchObject({ accepted: true });
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			success: true,
+			connected: true,
+			symbols: 1,
+		});
+	});
+
+	it("publishes authoritative account marks for each fresh market tick", async () => {
+		const { db, state: tradingState } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.1,
+			take_profit: 1.4,
+		});
+		const position = tradingState.positions[0];
+		const env = { daily_funded_trading_db: db };
+		env.POSITION_EVENTS = mockPositionEventsNamespace(env);
+		const socket = { messages: [], send(message) { this.messages.push(message); }, close: vi.fn() };
+		env.POSITION_EVENTS.get("user:user-123").addSocket("ACC_TRADE", socket);
+		const feedState = {
+			storage: { get: async () => null, put: async () => {}, setAlarm: async () => {} },
+			blockConcurrencyWhile(callback) { return callback(); },
+		};
+		const feed = new MarketFeedDO(feedState, env);
+		await feed.initialized;
+		feed.trustedSymbols.add("EURUSD");
+		feed.safeAfterTimestamp.set("EURUSD", 0);
+
+		const result = await feed.acceptTick({
+			symbol: "EURUSD",
+			provider_symbol: "EURUSD",
+			timestamp_ms: Date.now() + 1,
+			bid: 1.3,
+			ask: 1.3002,
+		});
+
+		expect(result.accepted).toBe(true);
+		const event = JSON.parse(socket.messages.at(-1));
+		expect(event).toMatchObject({
+			type: "ACCOUNT_MARK_UPDATED",
+			account_id: "ACC_TRADE",
+			account: {
+				balance: 10000,
+				market_data_status: "live",
+			},
+			positions: [{
+				id: position.id,
+				current_price: 1.3,
+				market_data_status: "live",
+			}],
+		});
+		expect(event.account.open_pnl).toBeCloseTo(500);
+		expect(event.account.equity).toBeCloseTo(10500);
+		expect(event.positions[0].floating_pnl).toBeCloseTo(500);
+	});
+
+	it("uses feed_not_connected for unknown DO reasons and thrown readiness calls", async () => {
+		const { db } = positionHarness({
+			symbols: [positionSymbol("XAUUSD")],
+			allowedSymbols: ["XAUUSD"],
+		});
+		for (const fetch of [
+			async () => new Response(JSON.stringify({
+				connected: false,
+				reason: "authorization_token",
+				error: "private secret value",
+			}), { status: 503 }),
+			async () => { throw new Error("private secret value"); },
+		]) {
+			const response = await callTrading(db, "/positions", {
+				method: "POST",
+				marketFeed: {
+					idFromName: () => "test-market-feed",
+					get: () => ({ fetch }),
+				},
+				body: {
+					account_id: "ACC_TRADE",
+					symbol: "XAUUSD",
+					side: "BUY",
+					volume: 0.01,
+				},
+			});
+			const text = await response.text();
+			expect(response.status).toBe(503);
+			expect(text).toContain('"reason":"feed_not_connected"');
+			expect(text).not.toMatch(/authorization_token|private secret/);
+		}
+	});
+});
 
 describe("Market data foundation", () => {
 	it("lists only provider-mapped, market-data-enabled symbols", async () => {
@@ -1472,46 +2157,39 @@ describe("Flexible provisioning worker", () => {
 		expect(state.trades).toHaveLength(1);
 	});
 
-	it("drops a failed pre-open tick retry and processes the next newer tick", async () => {
+	it("does not write a D1 cursor per tick and processes a newer protection tick", async () => {
 		const { db, state } = positionHarness({
 			symbols: [positionSymbol("EURUSD")],
 			allowedSymbols: ["EURUSD"],
 		});
 		const oldTimestamp = new Date(Date.now() - 1000).toISOString();
-		const originalPrepare = db.prepare.bind(db);
-		let failCursorWrite = true;
-		db.prepare = (sql) => {
-			const statement = originalPrepare(sql);
-			if (sql.toLowerCase().includes("insert into market_tick_cursors")) {
-				const originalRun = statement.run;
-				statement.run = async () => {
-					if (failCursorWrite) {
-						failCursorWrite = false;
-						throw new Error("simulated temporary local Worker failure");
-					}
-					return originalRun.call(statement);
-				};
-			}
-			return statement;
-		};
-		const failed = await ingestBiquoteTick(db, {
+		const initialTick = await ingestBiquoteTick(db, {
 			bid: 1.2,
 			ask: 1.2002,
 			timestamp: oldTimestamp,
 		});
-		expect(failed.status).toBe(503);
+		expect(initialTick.status).toBe(200);
+		expect(state.tickCursors).toHaveLength(0);
+		expect(state.positionQueryCount).toBe(1);
+		const nextTick = await ingestBiquoteTick(db, {
+			bid: 1.25,
+			ask: 1.2502,
+			timestamp: new Date(Date.parse(oldTimestamp) + 1).toISOString(),
+		});
+		expect(nextTick.status).toBe(200);
+		expect(state.positionQueryCount).toBe(1);
 
 		await openProtectedPosition(db, "EURUSD", {
 			side: "BUY",
 			stop_loss: 1.2,
 			take_profit: 1.3,
 		});
-		const retry = await ingestBiquoteTick(db, {
+		const duplicate = await ingestBiquoteTick(db, {
 			bid: 1.2,
 			ask: 1.2002,
 			timestamp: oldTimestamp,
 		});
-		expect(retry.status).toBe(200);
+		expect(duplicate.status).toBe(200);
 		expect(state.positions[0].status).toBe("open");
 		expect(state.trades).toHaveLength(0);
 
@@ -1521,6 +2199,43 @@ describe("Flexible provisioning worker", () => {
 			timestamp: tickTimeFromOpen(state.positions[0], 10),
 		});
 		expect(newer.status).toBe(200);
+		expect(state.positions[0].status).toBe("closed");
+		expect(state.trades).toHaveLength(1);
+	});
+
+	it("retries a failed qualifying-tick settlement from the Durable Object alarm work queue", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		const feed = mockMarketFeedNamespace({ daily_funded_trading_db: db })
+			.get("biquote-market-feed").instance;
+		const originalBatch = db.batch.bind(db);
+		let failSettlementOnce = true;
+		db.batch = async (statements) => {
+			if (failSettlementOnce && statements.some((statement) =>
+				statement.sql.toLowerCase().includes("set status = 'closing'")
+			)) {
+				failSettlementOnce = false;
+				throw new Error("temporary D1 settlement failure");
+			}
+			return originalBatch(statements);
+		};
+		vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const tick = await ingestBiquoteTick(db, { bid: 1.2, ask: 1.2002 });
+		expect(tick.status).toBe(200);
+		expect(state.positions[0].status).toBe("open");
+		expect(feed.pendingSettlements.size).toBe(1);
+
+		db.batch = originalBatch;
+		await feed.retryPendingSettlements();
+		expect(feed.pendingSettlements.size).toBe(0);
 		expect(state.positions[0].status).toBe("closed");
 		expect(state.trades).toHaveLength(1);
 	});
@@ -1799,6 +2514,72 @@ describe("Flexible provisioning worker", () => {
 		expect(state.trades[0].close_price).toBe(1.2);
 		expect(state.trades[0].realized_pnl).toBeCloseTo(500, 8);
 		expect(state.accounts[0].balance).toBeCloseTo(10500, 8);
+	});
+
+	it("closes a SELL at the accepted Ask tick when server-side SL is reached", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "SELL",
+			stop_loss: 1.3,
+			take_profit: null,
+		});
+		const tick = await ingestBiquoteTick(db, {
+			bid: 1.2998,
+			ask: 1.3,
+			timestamp: tickTimeFromOpen(state.positions[0], 10),
+		});
+
+		expect(tick.status).toBe(200);
+		expect(state.positions[0]).toMatchObject({ status: "closed", close_price: 1.3 });
+		expect(state.trades).toHaveLength(1);
+		expect(state.trades[0].close_price).toBe(1.3);
+	});
+
+	it("reloads open positions after Durable Object restart before processing a new tick", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openProtectedPosition(db, "EURUSD", {
+			side: "BUY",
+			stop_loss: 1.2,
+			take_profit: 1.3,
+		});
+		const position = state.positions[0];
+		const feedState = {
+			storage: { get: async () => null, put: async () => {}, setAlarm: async () => {} },
+			blockConcurrencyWhile(callback) { return callback(); },
+		};
+		const restartedFeed = new MarketFeedDO(feedState, {
+			daily_funded_trading_db: db,
+			POSITION_EVENTS: mockPositionEventsNamespace({ daily_funded_trading_db: db }),
+		});
+		await restartedFeed.initialized;
+
+		expect(restartedFeed.positionsById.has(position.id)).toBe(true);
+		expect(restartedFeed.latestTicks.size).toBe(0);
+		expect(position.status).toBe("open");
+		restartedFeed.safeAfterTimestamp.set("EURUSD", Date.parse(position.opened_at));
+		restartedFeed.trustedSymbols.add("EURUSD");
+		const result = await restartedFeed.acceptTick({
+			symbol: "EURUSD",
+			provider_symbol: "EURUSD",
+			timestamp_ms: Date.parse(position.opened_at) + 1,
+			bid: 1.2,
+			ask: 1.2002,
+		});
+
+		expect(result.accepted).toBe(true);
+		expect(position.status).toBe("closed");
+		expect(state.trades).toHaveLength(1);
+		const afterCloseRestart = new MarketFeedDO(feedState, {
+			daily_funded_trading_db: db,
+		});
+		await afterCloseRestart.initialized;
+		expect(afterCloseRestart.positionsById.has(position.id)).toBe(false);
 	});
 
 	it("makes repeated close ticks harmless and keeps separate positions independent", async () => {
@@ -2206,6 +2987,8 @@ describe("Flexible provisioning worker", () => {
 			allowedSymbols: ["EURUSD"],
 		});
 		await openPosition(db, "EURUSD");
+		const feed = mockMarketFeedNamespace({ daily_funded_trading_db: db })
+			.get("biquote-market-feed").instance;
 		stubTradingQuotes(1.25);
 		const response = await callTrading(db, "/positions/modify", {
 			method: "POST",
@@ -2220,6 +3003,7 @@ describe("Flexible provisioning worker", () => {
 			status: "open",
 		});
 		expect(state.positions[0].stop_loss).toBe(1.2);
+		expect(feed.positionsById.get(state.positions[0].id).stop_loss).toBe(1.2);
 	});
 
 	it.each([

@@ -1974,6 +1974,7 @@ export class MarketFeedDO {
     this.env = env;
     this.positionsById = new Map();
     this.positionIdsBySymbol = new Map();
+    this.positionMetadataById = new Map();
     this.pendingSettlements = new Map();
     this.pendingAccountSyncs = new Set();
     this.symbolByProvider = new Map();
@@ -2022,7 +2023,7 @@ export class MarketFeedDO {
       }
     }
     const openPositions = await this.env.daily_funded_trading_db.prepare(`
-      SELECT p.*, a.user_id
+      SELECT p.*, a.user_id, a.balance AS account_balance
       FROM positions p
       INNER JOIN trading_accounts a ON a.id = p.account_id
       WHERE p.status = 'open'
@@ -2045,6 +2046,7 @@ export class MarketFeedDO {
   removePosition(positionId) {
     const position = this.positionsById.get(positionId);
     this.pendingSettlements.delete(positionId);
+    this.positionMetadataById.delete(positionId);
     if (!position) return;
     this.positionsById.delete(positionId);
     const ids = this.positionIdsBySymbol.get(position.symbol);
@@ -2054,7 +2056,7 @@ export class MarketFeedDO {
 
   async refreshAccountPositions(accountId) {
     const result = await this.env.daily_funded_trading_db.prepare(`
-      SELECT p.*, a.user_id
+      SELECT p.*, a.user_id, a.balance AS account_balance
       FROM positions p
       INNER JOIN trading_accounts a ON a.id = p.account_id
       WHERE p.account_id = ? AND p.status = 'open'
@@ -2069,6 +2071,85 @@ export class MarketFeedDO {
       }
     }
     return result.results || [];
+  }
+
+  async getPositionMetadata(position) {
+    let metadata = this.positionMetadataById.get(position.id);
+    if (!metadata) {
+      metadata = await getPositionCalculationSnapshot(this.env, position.id);
+      this.positionMetadataById.set(position.id, metadata);
+    }
+    return metadata;
+  }
+
+  async publishAccountMarkUpdate(accountId, timestampMs) {
+    if (!this.env.POSITION_EVENTS) return;
+    const accountPositions = [...this.positionsById.values()].filter(
+      (position) => position.account_id === accountId
+    );
+    if (!accountPositions.length) return;
+
+    let totalFloatingPnl = 0;
+    let completeMarketData = true;
+    const positions = [];
+    for (const position of accountPositions) {
+      const tick = this.latestTicks.get(position.symbol);
+      const price = protectionPrice(position, tick);
+      if (!freshProviderTick(tick) || !tickIsAfterPositionOpen(position, tick) ||
+        price === null) {
+        completeMarketData = false;
+        positions.push({
+          id: position.id,
+          current_price: null,
+          floating_pnl: null,
+          market_data_status: "unavailable",
+        });
+        continue;
+      }
+      try {
+        const floatingPnl = calculatePnlUsd(
+          position,
+          price,
+          await this.getPositionMetadata(position)
+        );
+        position.current_price = price;
+        position.floating_pnl = floatingPnl;
+        totalFloatingPnl += floatingPnl;
+        positions.push({
+          id: position.id,
+          current_price: price,
+          floating_pnl: floatingPnl,
+          market_data_status: "live",
+        });
+      } catch (error) {
+        completeMarketData = false;
+        console.error(`Unable to calculate live P/L for position ${position.id}:`, error);
+        positions.push({
+          id: position.id,
+          current_price: null,
+          floating_pnl: null,
+          market_data_status: "unavailable",
+        });
+      }
+    }
+
+    const balanceValue = accountPositions[0].account_balance;
+    const balance = balanceValue === null || balanceValue === undefined || balanceValue === ""
+      ? NaN
+      : Number(balanceValue);
+    const accountIsLive = completeMarketData && Number.isFinite(balance);
+    await publishPositionEvent(this.env, accountPositions[0].user_id, accountId, {
+      type: "ACCOUNT_MARK_UPDATED",
+      account_id: accountId,
+      timestamp: new Date(timestampMs).toISOString(),
+      positions,
+      account: {
+        balance: Number.isFinite(balance) ? balance : null,
+        open_pnl: accountIsLive ? totalFloatingPnl : null,
+        equity: accountIsLive ? balance + totalFloatingPnl : null,
+        market_data_status: accountIsLive ? "live" : "unavailable",
+      },
+    });
   }
 
   async refreshProviderBaselines() {
@@ -2321,6 +2402,7 @@ export class MarketFeedDO {
     for (const onTick of this.symbolReadinessWaiters.get(tick.symbol) || []) onTick();
 
     const positionIds = [...(this.positionIdsBySymbol.get(tick.symbol) || [])];
+    const updatedAccountIds = new Set();
     this.metrics.protectionTicks += 1;
     this.metrics.protectionEvaluations += positionIds.length;
     for (const positionId of positionIds) {
@@ -2329,6 +2411,15 @@ export class MarketFeedDO {
       const trigger = triggeredProtection(position, tick);
       if (!trigger) continue;
       await this.settleTriggeredPosition(position.id, tick, trigger.reason);
+    }
+    for (const positionId of positionIds) {
+      const position = this.positionsById.get(positionId);
+      if (position && tickIsAfterPositionOpen(position, tick)) {
+        updatedAccountIds.add(position.account_id);
+      }
+    }
+    for (const accountId of updatedAccountIds) {
+      await this.publishAccountMarkUpdate(accountId, Number(tick.timestamp_ms));
     }
     const elapsed = performance.now() - startedAt;
     this.metrics.protectionLatencyTotalMs += elapsed;
@@ -2617,7 +2708,9 @@ export class PositionEventsDO {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/publish") {
       const { account_id: accountId, event } = await readJson(request);
-      if (!accountId || !event || typeof event.position_id !== "string") {
+      const isAccountMark = event?.type === "ACCOUNT_MARK_UPDATED" &&
+        event.account_id === accountId && Array.isArray(event.positions);
+      if (!accountId || !event || (typeof event.position_id !== "string" && !isAccountMark)) {
         return json({ success: false, error: "Invalid position event" }, 400);
       }
       const message = JSON.stringify(event);

@@ -235,7 +235,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .rewards-panel h3{font-size:16px; margin:5px 0 8px;}
   .rewards-panel p{color:var(--sub); font-size:12px; line-height:1.6;}
   .reward-certificate-stage{min-width:0; margin-top:15px; overflow:hidden;}
-  .reward-certificate-stage .payout-card{width:100%; flex:0 0 100%; min-height:320px; margin:0; padding:10px; filter:blur(3px); cursor:default; pointer-events:none;}
+  .reward-certificate-stage .payout-card{width:100%; flex:0 0 100%; min-height:320px; margin:0; padding:10px; filter:none; cursor:default; pointer-events:none;}
   .reward-certificate-stage .payout-card-inner{inset:10px;}
   .reward-certificate-stage .payout-certificate{grid-template-columns:104px minmax(0,1fr); gap:10px; padding:12px;}
   .reward-certificate-stage .payout-trophy{width:100%; height:100%; min-height:280px;}
@@ -256,7 +256,32 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .rewards-empty strong{display:block; margin-bottom:5px; color:var(--text); font-size:13px;}
   .dash-top{display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px; margin-bottom:26px;}
   .dash-select{display:flex; gap:8px; align-items:center; font-size:13px; color:var(--sub);}
-  .dash-select select{background:var(--panel); color:var(--text); border:1px solid var(--panel-b); border-radius:7px; padding:8px 10px; font-family:inherit; font-size:13px;}
+  .dash-select select{color-scheme:dark; background:var(--panel); color:var(--text); border:1px solid var(--panel-b); border-radius:7px; padding:8px 10px; font-family:inherit; font-size:13px;}
+  .dash-select select option{background:#111813; color:#eef1ef;}
+  .account-select-picker{position:relative; display:inline-flex; min-width:0;}
+  .account-select-native{position:absolute!important; width:1px!important; height:1px!important; padding:0!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important;}
+  .account-select-trigger{position:relative; isolation:isolate; display:inline-flex; align-items:center; justify-content:space-between; gap:10px; min-width:220px; max-width:min(320px,calc(100vw - 96px)); padding:10px 13px; overflow:hidden; border:1px solid rgba(169,255,201,.52); border-radius:11px; background:linear-gradient(115deg,rgba(52,112,73,.68),rgba(28,66,44,.72) 48%,rgba(16,35,24,.78)); -webkit-backdrop-filter:blur(14px) saturate(150%); backdrop-filter:blur(14px) saturate(150%); box-shadow:inset 0 1px 0 rgba(255,255,255,.34),inset 0 -1px 0 rgba(0,0,0,.25),0 8px 22px rgba(0,0,0,.35),0 0 18px rgba(62,207,126,.13); color:#f5fff7; font:600 15px 'Inter',system-ui,sans-serif; text-align:left; cursor:pointer; transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease;}
+  .account-select-trigger::before{position:absolute; z-index:-1; top:0; right:0; left:0; height:48%; border-radius:inherit; background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,0)); content:""; pointer-events:none;}
+  .account-select-trigger:hover,.account-select-trigger[aria-expanded="true"]{transform:translateY(-1px); border-color:rgba(142,255,190,.72); box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -1px 0 rgba(0,0,0,.35),0 10px 25px rgba(0,0,0,.4),0 0 0 3px rgba(62,207,126,.1),0 0 22px rgba(62,207,126,.2);}
+  .account-select-trigger:focus-visible{outline:2px solid var(--green); outline-offset:2px;}
+  .account-select-trigger-copy{display:grid; gap:3px; min-width:0;}
+  .account-select-trigger-value{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .account-select-trigger-status{color:#e1eee5; font-size:13px; font-weight:700;}
+  .account-select-chevron{width:16px; height:16px; flex:0 0 16px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; transition:transform .16s ease;}
+  .account-select-trigger[aria-expanded="true"] .account-select-chevron{transform:rotate(180deg);}
+  .account-select-list{position:fixed; z-index:50; width:min(320px,calc(100vw - 24px)); max-height:min(320px,calc(100dvh - 24px)); overflow-y:auto; padding:7px; border:1px solid rgba(169,255,201,.48); border-radius:14px; background:linear-gradient(145deg,rgba(42,78,52,.82),rgba(21,43,29,.84) 48%,rgba(12,25,17,.88)); -webkit-backdrop-filter:blur(18px) saturate(155%); backdrop-filter:blur(18px) saturate(155%); box-shadow:inset 0 1px 0 rgba(255,255,255,.26),inset 0 -1px 0 rgba(0,0,0,.3),0 20px 48px rgba(0,0,0,.68),0 0 24px rgba(62,207,126,.15); scrollbar-color:#64856d #111813; scrollbar-width:thin;}
+  .account-select-list[hidden]{display:none;}
+  .account-select-option{position:relative; display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; min-height:54px; padding:10px 10px 10px 13px; border:1px solid transparent; border-radius:9px; background:linear-gradient(100deg,rgba(255,255,255,.025),rgba(255,255,255,0)); color:#f5fff7; font:inherit; text-align:left; cursor:pointer; transition:border-color .15s ease,background .15s ease,transform .15s ease;}
+  .account-select-option:hover,.account-select-option:focus-visible{transform:translateY(-1px); border-color:rgba(174,220,187,.32); outline:none; background:linear-gradient(100deg,rgba(255,255,255,.09),rgba(255,255,255,.025));}
+  .account-select-option[aria-selected="true"]{border-color:rgba(106,239,157,.48); background:linear-gradient(100deg,rgba(62,207,126,.22),rgba(62,207,126,.07)); box-shadow:inset 0 1px 0 rgba(255,255,255,.11),0 0 14px rgba(62,207,126,.09);}
+  .account-select-option[aria-selected="true"]::before{position:absolute; top:8px; bottom:8px; left:0; width:3px; border-radius:99px; background:linear-gradient(180deg,#a2ffc0,#39d77d); content:"";}
+  .account-select-option-copy{display:grid; gap:3px; min-width:0;}
+  .account-select-option-title{overflow:hidden; color:#f5fff7; font-size:16px; font-weight:750; text-overflow:ellipsis; white-space:nowrap;}
+  .account-select-option-plan{color:#e0ebe3; font-size:14px;}
+  .account-select-option-status{flex:0 0 auto; padding:5px 8px; border:1px solid rgba(189,201,192,.35); border-radius:99px; background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,.025)); color:#edf5ef; font-size:12px; font-weight:800; letter-spacing:.025em; box-shadow:inset 0 1px 0 rgba(255,255,255,.1);}
+  .account-select-option-status.is-active{border-color:rgba(62,207,126,.56); background:linear-gradient(180deg,rgba(62,207,126,.24),rgba(62,207,126,.1)); color:#a1ffc0;}
+  .account-select-option-status.is-rejected{border-color:rgba(224,120,112,.56); background:linear-gradient(180deg,rgba(224,120,112,.23),rgba(224,120,112,.09)); color:#ffc0ba;}
+  .account-select-option-status.is-pending{border-color:rgba(230,195,77,.56); background:linear-gradient(180deg,rgba(230,195,77,.22),rgba(230,195,77,.08)); color:#ffebaa;}
   .dash-cards{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px;}
   .dcard{border:1px solid var(--panel-b); border-radius:var(--radius); padding:18px; background:var(--panel);}
   .dcard .dlbl{font-size:12px; color:var(--sub-dim); margin-bottom:6px;}
@@ -295,30 +320,24 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .dashboard-rule-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,132px),1fr)); gap:8px; margin:0; padding:0; list-style:none;}
   .dashboard-rule-item{display:flex; align-items:center; min-width:0; min-height:32px; gap:8px; padding:7px 8px; border:1px solid var(--panel-b); border-radius:6px; color:var(--text); font-size:11px; line-height:1.35; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
   .dashboard-rule-item::before{content:''; width:5px; height:5px; flex:0 0 5px; border-radius:50%; background:var(--green);}
-  .dashboard-limits-panel{margin:14px 0 0; padding:14px; border:1px solid var(--panel-b); border-radius:var(--radius); background:var(--panel);}
-  .dashboard-limits-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:10px;}
-  .dashboard-limits-head h4{margin:0; font-size:13px;}
-  .dashboard-limits-note{color:var(--sub-dim); font-size:10px;}
-  .dashboard-limit-grid{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px;}
-  .dashboard-limit-item{min-width:0; padding:10px; border:1px solid var(--panel-b); border-radius:6px;}
-  .dashboard-limit-item span{display:block; margin-bottom:7px; color:var(--sub-dim); font-size:10px;}
-  .dashboard-limit-item strong{display:block; color:var(--text); font-size:14px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
-  .dashboard-limit-item small{display:block; margin-top:4px; color:var(--sub); font-size:10px; line-height:1.4;}
-  @media(max-width:760px){.dashboard-limit-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
   .dashboard-workspace-grid,.dashboard-analytics-grid{display:grid; grid-template-columns:minmax(0,.82fr) minmax(0,1.6fr); gap:12px; margin-top:12px;}
   .dashboard-analytics-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
   .desk-dashboard-panel{min-width:0; padding:14px; border:1px solid var(--panel-b); border-radius:var(--radius); background:var(--panel);}
+  .desk-dashboard-panel.desk-objectives-panel{padding:0; border:0; background:transparent;}
   .desk-dashboard-panel h4{margin:0; font-size:12px;}
   .desk-data-panel-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:11px;}
   .desk-panel-note{color:var(--sub-dim); font-size:9px; text-align:right;}
-  .desk-status-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px;}
-  .desk-status-item,.desk-metric{min-width:0; padding:9px; border:1px solid var(--panel-b); border-radius:6px; background:rgba(0,0,0,.12);}
-  .desk-status-item span,.desk-metric span{display:block; margin-bottom:5px; color:var(--sub-dim); font-size:9px; text-transform:uppercase; letter-spacing:.035em;}
-  .desk-status-item strong,.desk-metric strong{display:block; overflow-wrap:anywhere; color:var(--text); font-size:12px; font-variant-numeric:tabular-nums;}
-  .desk-status-item strong.is-active{color:var(--green);}
-  .desk-status-item strong.is-inactive{color:#e07870;}
-  .desk-status-rules{display:flex; flex-wrap:wrap; gap:5px; margin-top:8px;}
-  .desk-status-rule{padding:4px 6px; border:1px solid var(--panel-b); border-radius:4px; color:var(--sub); font-size:9px; line-height:1.35;}
+  .desk-objectives{display:grid; gap:10px; padding:15px; border:1px solid var(--panel-b); border-radius:9px; background:#121a16;}
+  .desk-objectives-title{margin:0 0 1px; color:var(--text); font-size:13px; font-weight:700;}
+  .desk-objective{display:flex; align-items:center; justify-content:space-between; min-width:0; gap:12px;}
+  .desk-objective-copy{min-width:0;}
+  .desk-objective-name{display:block; color:var(--text); font-size:11px; line-height:1.35;}
+  .desk-objective-value{display:block; margin-top:4px; color:var(--sub); font-size:10px; line-height:1.4; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
+  .desk-objective-status{flex:0 0 auto; padding:5px 9px; border:1px solid rgba(246,191,67,.4); border-radius:99px; background:rgba(246,191,67,.08); color:#f6bf43; font-size:9px; font-weight:700; white-space:nowrap;}
+  .desk-objective-status.is-passed,.desk-objective-status.is-safe{border-color:rgba(41,216,132,.38); background:rgba(41,216,132,.08); color:#29d884;}
+  .desk-objective-status.is-alert{border-color:rgba(224,106,90,.45); background:rgba(224,106,90,.09); color:#e07870;}
+  .desk-objective-status.is-unavailable,.desk-objective-status.is-not-required{border-color:var(--panel-b); background:rgba(0,0,0,.1); color:var(--sub-dim);}
+  .desk-objectives-empty{padding:16px 8px; color:var(--sub-dim); text-align:center; font-size:10px; line-height:1.5;}
   .desk-chart{position:relative; display:grid; min-height:204px; place-items:center; overflow:hidden; border:1px solid var(--panel-b); border-radius:6px; background-color:#101512; background-image:linear-gradient(rgba(147,161,154,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(147,161,154,.08) 1px,transparent 1px); background-size:100% 25%,20% 100%;}
   .desk-chart-empty{max-width:280px; padding:18px; color:var(--sub); text-align:center; font-size:11px; line-height:1.6;}
   .desk-chart-empty strong{display:block; margin-bottom:5px; color:var(--text); font-size:12px;}
@@ -359,23 +378,84 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .desk-chart-legend span{display:inline-flex; align-items:center; gap:5px;}
   .desk-chart-legend i{width:8px; height:2px; background:var(--green);}
   .desk-metrics-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px;}
-  .desk-metric strong{font-size:13px;}
+  .desk-stat-highlight{grid-column:1/-1; display:grid; grid-template-columns:minmax(0,1fr) minmax(100px,.85fr); align-items:center; gap:14px; min-width:0; padding:13px; border:1px solid rgba(62,207,126,.24); border-radius:8px; background:radial-gradient(ellipse at 0 0,rgba(62,207,126,.11),transparent 68%),#101713;}
+  .desk-stat-highlight-label{display:block; margin-bottom:6px; color:var(--sub-dim); font-size:9px; font-weight:700; letter-spacing:.075em; text-transform:uppercase;}
+  .desk-stat-highlight-value{display:block; color:var(--text); font-size:clamp(19px,2.2vw,25px); font-variant-numeric:tabular-nums; line-height:1.15; overflow-wrap:anywhere;}
+  .desk-stat-highlight-value.is-positive,.desk-stat-highlight-meter-value.is-positive{color:var(--green);}
+  .desk-stat-highlight-value.is-negative,.desk-stat-highlight-meter-value.is-negative{color:#e07870;}
+  .desk-stat-highlight-meta{margin-top:5px; color:var(--sub-dim); font-size:9px;}
+  .desk-stat-highlight-meter{min-width:0; padding-left:14px; border-left:1px solid rgba(147,161,154,.13);}
+  .desk-stat-highlight-meter-top{display:flex; align-items:baseline; justify-content:space-between; gap:6px; margin-bottom:8px;}
+  .desk-stat-highlight-meter-label{color:var(--sub-dim); font-size:9px;}
+  .desk-stat-highlight-meter-value{color:var(--text); font-size:13px; font-weight:700; font-variant-numeric:tabular-nums;}
+  .desk-stat-winloss-track{display:flex; height:6px; overflow:hidden; border-radius:99px; background:rgba(147,161,154,.16);}
+  .desk-stat-winloss-wins{background:var(--green);}
+  .desk-stat-winloss-losses{background:#e07870;}
+  .desk-stat-highlight-meter-note{margin-top:5px; color:var(--sub-dim); font-size:8px;}
+  .desk-metric{position:relative; min-width:0; min-height:56px; padding:9px 10px; overflow:hidden; border-color:rgba(147,161,154,.12); background:linear-gradient(145deg,rgba(255,255,255,.025),rgba(0,0,0,.12));}
+  .desk-metric::before{position:absolute; top:0; left:9px; width:18px; height:2px; border-radius:0 0 2px 2px; background:rgba(147,161,154,.32); content:'';}
+  .desk-metric.is-positive::before{background:var(--green);}
+  .desk-metric.is-negative::before{background:#e07870;}
+  .desk-metric span{display:block; margin-bottom:5px; color:var(--sub-dim); font-size:8px; letter-spacing:.055em; text-transform:uppercase;}
+  .desk-metric strong{display:block; overflow-wrap:anywhere; color:var(--text); font-size:12px; font-variant-numeric:tabular-nums;}
   .desk-metric strong.is-positive{color:var(--green);}
   .desk-metric strong.is-negative{color:#e07870;}
+  .desk-statistics-empty{padding:27px 14px; border:1px dashed rgba(147,161,154,.18); border-radius:8px; background:rgba(0,0,0,.08);}
+  @media(max-width:420px){.desk-stat-highlight{grid-template-columns:minmax(0,1fr); gap:11px;}.desk-stat-highlight-meter{padding:0; border-left:0;}.desk-metrics-grid{gap:6px;}.desk-metric{padding:8px;}}
+  .desk-calendar-panel{grid-column:1/-1;}
+  #deskActivityCalendar{container:desk-activity / inline-size;}
+  .desk-calendar-shell{padding:14px; border:1px solid var(--panel-b); border-radius:9px; background:#121a16;}
+  .desk-calendar-caption{display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:10px; color:var(--text); font-size:12px; font-weight:700;}
+  .desk-calendar-net{color:var(--sub-dim); font-size:10px; font-weight:500; white-space:nowrap;}
+  .desk-calendar-net.is-positive{color:var(--green); font-weight:700;}
+  .desk-calendar-net.is-negative{color:#e07870; font-weight:700;}
+  .desk-calendar-grid{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px;}
+  .desk-calendar-weekday,.desk-calendar-day{display:flex; min-width:0; border-radius:6px; font-size:9px;}
+  .desk-calendar-weekday{min-height:20px; align-items:center; justify-content:center; color:var(--sub-dim); font-weight:600;}
+  .desk-calendar-day{min-height:49px; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:5px; padding:6px; border:1px solid transparent; background:#0b100d; color:var(--sub); font-variant-numeric:tabular-nums;}
+  .desk-calendar-day[aria-hidden="true"]{background:transparent;}
+  .desk-calendar-date{color:#cbd3ce; font-size:9px; line-height:1;}
+  .desk-calendar-pnl{color:#a8b2ac; font-size:10px; font-weight:700; line-height:1.1; white-space:nowrap;}
+  .desk-calendar-day.has-profit{border-color:rgba(62,207,126,.46); background:rgba(62,207,126,.12);}
+  .desk-calendar-day.has-profit .desk-calendar-pnl{color:var(--green);}
+  .desk-calendar-day.has-loss{border-color:rgba(224,106,90,.5); background:rgba(224,106,90,.12);}
+  .desk-calendar-day.has-loss .desk-calendar-pnl{color:#e07870;}
+  .desk-calendar-day.has-mixed{border-color:rgba(230,195,77,.5); background:rgba(230,195,77,.1);}
+  .desk-calendar-day.has-mixed .desk-calendar-pnl{color:var(--gold);}
+  .desk-calendar-empty{margin-top:8px; color:var(--sub-dim); text-align:center; font-size:9px;}
+  @container desk-activity (max-width:560px){.desk-calendar-shell{padding:10px;}.desk-calendar-grid{gap:4px;}.desk-calendar-day{min-height:44px; padding:5px 4px;}.desk-calendar-pnl{font-size:9px;}}
+  @container desk-activity (max-width:360px){.desk-calendar-day{padding:5px 2px;}.desk-calendar-pnl{font-size:8px;}}
   .desk-panel-empty{padding:21px 12px; color:var(--sub); text-align:center; font-size:11px; line-height:1.55;}
   .desk-panel-error{color:#e6a39c;}
-  .desk-calendar-caption{margin-bottom:7px; color:var(--sub); text-align:center; font-size:10px; font-weight:600;}
-  .desk-calendar-grid{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px;}
-  .desk-calendar-weekday,.desk-calendar-day{display:grid; min-width:0; min-height:27px; place-items:center; border-radius:4px; font-size:9px;}
-  .desk-calendar-weekday{color:var(--sub-dim); font-weight:700;}
-  .desk-calendar-day{position:relative; border:1px solid transparent; color:var(--sub);}
-  .desk-calendar-day.has-profit{border-color:rgba(62,207,126,.46); background:rgba(62,207,126,.11); color:var(--green);}
-  .desk-calendar-day.has-loss{border-color:rgba(224,106,90,.5); background:rgba(224,106,90,.1); color:#e07870;}
-  .desk-calendar-day.has-mixed{border-color:rgba(230,195,77,.5); background:rgba(230,195,77,.09); color:var(--gold);}
-  .desk-activity-legend{display:flex; justify-content:center; gap:12px; margin-top:8px; color:var(--sub-dim); font-size:9px;}
-  .desk-activity-legend span{display:inline-flex; align-items:center; gap:4px;}
-  .desk-activity-legend i{width:6px; height:6px; border-radius:2px; background:var(--green);}
-  .desk-activity-legend .loss{background:#e07870;}
+  .desk-session-card{perspective:900px;}
+  .desk-session-card-inner{position:relative; min-height:226px; transform-style:preserve-3d; transition:transform .55s cubic-bezier(.2,.7,.2,1);}
+  .desk-session-card.is-flipped .desk-session-card-inner{transform:rotateY(180deg);}
+  .desk-session-face{position:absolute; inset:0; display:flex; flex-direction:column; padding:14px; overflow:hidden; border:1px solid var(--panel-b); border-radius:9px; background:#121a16; cursor:pointer; backface-visibility:hidden; -webkit-backface-visibility:hidden;}
+  .desk-session-face-back{transform:rotateY(180deg); border-color:rgba(62,207,126,.46);}
+  .desk-session-face-title{margin:0 0 12px; color:var(--text); font-size:12px; font-weight:700;}
+  .desk-session-table{width:100%; border-collapse:collapse; table-layout:fixed; text-align:left; font-size:10px;}
+  .desk-session-table th{padding:7px 5px; border-bottom:1px solid var(--panel-b); color:var(--sub-dim); font-size:9px; font-weight:600; white-space:nowrap;}
+  .desk-session-table td{padding:10px 5px; border-bottom:1px solid rgba(30,37,33,.72); color:var(--text); font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .desk-session-table tr:last-child td{border-bottom:0;}
+  .desk-session-table th:not(:first-child),.desk-session-table td:not(:first-child){text-align:right;}
+  .desk-session-table td:first-child{font-weight:500;}
+  .desk-session-positive{color:var(--green)!important;}
+  .desk-session-negative{color:#e07870!important;}
+  .desk-session-note{margin-top:auto; padding-top:8px; color:var(--sub-dim); font-size:9px; line-height:1.4;}
+  .desk-session-flip-button{display:block; align-self:flex-end; margin:7px 0 0; padding:2px 0; border:0; background:transparent; color:var(--sub); font:inherit; font-size:9px; text-align:right; cursor:pointer;}
+  .desk-session-flip-button:hover,.desk-session-flip-button:focus-visible{color:var(--green); text-decoration:underline;}
+  .desk-session-flip-button:focus-visible{outline:2px solid var(--green); outline-offset:3px;}
+  .desk-session-bars{display:grid; gap:0;}
+  .desk-session-bar-row{display:grid; grid-template-columns:82px minmax(0,1fr) 42px; align-items:center; gap:9px; min-height:55px; border-bottom:1px solid rgba(30,37,33,.72);}
+  .desk-session-bar-row:last-child{border-bottom:0;}
+  .desk-session-bar-name{color:var(--text); font-size:10px;}
+  .desk-session-bar-track{height:10px; overflow:hidden; border-radius:99px; background:#26322c;}
+  .desk-session-bar-fill{height:100%; border-radius:inherit; background:#29d884;}
+  .desk-session-bar-fill.is-low{background:#f6bf43;}
+  .desk-session-bar-value{color:var(--green); font-size:11px; font-weight:700; text-align:right; font-variant-numeric:tabular-nums;}
+  .desk-session-bar-value.is-low{color:#f6bf43;}
+  .desk-session-empty{display:grid; min-height:122px; place-items:center; color:var(--sub-dim); text-align:center; font-size:10px;}
+  @media(max-width:760px){.desk-session-face{padding:12px;}.desk-session-bar-row{grid-template-columns:70px minmax(0,1fr) 38px; gap:7px;}}
   .desk-data-table-wrap{overflow-x:auto; overscroll-behavior-inline:contain;}
   .desk-data-table{width:100%; min-width:590px; border-collapse:collapse; text-align:left; font-size:10px;}
   .desk-data-table th{padding:8px 9px; border-bottom:1px solid var(--panel-b); color:var(--sub-dim); font-size:9px; font-weight:600; white-space:nowrap; text-transform:uppercase; letter-spacing:.035em;}
@@ -395,9 +475,154 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .chart-labels{display:flex; justify-content:space-between; color:var(--sub-dim); font-size:10px;}
   .risk-row{margin-top:18px;}
   .risk-row:first-of-type{margin-top:15px;}
+  #dashboard.active{background:radial-gradient(ellipse at 72% 0%,rgba(62,207,126,.09),transparent 42%),linear-gradient(145deg,#0c110e,#090c0a 64%);}
+  .dashboard-sidebar{border-right-color:rgba(125,157,135,.24); background:linear-gradient(180deg,#121c16 0%,#0d1410 48%,#0a100d 100%); box-shadow:8px 0 28px rgba(0,0,0,.22),inset -1px 0 0 rgba(255,255,255,.025);}
+  .dashboard-brand{font-size:15px;}
+  .dashboard-sidebar-label{color:#a2b3a7; font-size:11px; letter-spacing:.08em; text-transform:uppercase;}
+  .dashboard-side-nav a{min-height:44px; border:1px solid transparent; color:#c0cbc3; font-size:13.5px;}
+  .dashboard-side-nav a:hover{border-color:rgba(255,255,255,.09); background:linear-gradient(135deg,rgba(255,255,255,.08),rgba(255,255,255,.025));}
+  .dashboard-side-nav a.active{border-color:rgba(62,207,126,.3); background:linear-gradient(135deg,rgba(62,207,126,.2),rgba(62,207,126,.07)); color:#7de6a5; box-shadow:inset 0 1px 0 rgba(255,255,255,.08);}
+  .dashboard-side-nav a.dashboard-trade-link{background:linear-gradient(135deg,rgba(62,207,126,.22),rgba(62,207,126,.08));}
+  .dashboard-sidebar-foot{color:#a2b3a7; font-size:11px;}
+  .dashboard-sidebar-foot a{font-size:13px;}
+  #dashboard .dashboard-main.wrap{padding-top:36px; padding-bottom:40px;}
+  #dashboard .dash-top h2{font-size:clamp(28px,3vw,36px); letter-spacing:-.025em;}
+  #dashboard .eyebrow{font-size:12px; letter-spacing:.09em;}
+  .dash-select{color:#c0cbc3; font-size:14px;}
+  .dash-select select{border-color:#425249; border-radius:8px; background:linear-gradient(180deg,#202b24,#151d18); box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 4px 12px rgba(0,0,0,.2); font-size:14px;}
+  .account-banner,.account-stat,.desk-panel,.dashboard-rules-panel,.desk-dashboard-panel,.rewards-panel,.dash-panel{border-color:rgba(137,171,147,.27); background:linear-gradient(145deg,#1a261e 0%,#121a15 65%,#101612 100%); box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 10px 26px rgba(0,0,0,.2);}
+  .account-banner{border-left:3px solid var(--green); border-color:rgba(137,171,147,.31); border-left-color:var(--green); background:linear-gradient(115deg,#1c3023 0%,#142019 48%,#111813 100%); box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 12px 30px rgba(0,0,0,.24),0 0 28px rgba(62,207,126,.045);}
+  .account-kicker,.panel-kicker{font-size:11px;}
+  .account-banner h3{font-size:clamp(25px,2.6vw,31px);}
+  .account-banner p{color:#c0cbc3; font-size:14px;}
+  .account-badge{border-color:#46544a; background:rgba(255,255,255,.035); color:#c0cbc3; font-size:11px;}
+  .account-stat{padding:18px;}
+  .account-stat span{color:#bdc9c0; font-size:13px;}
+  .account-stat b{font-size:clamp(21px,2vw,26px);}
+  .dashboard-rules-panel{padding:16px;}
+  .dashboard-rules-head h4{font-size:15px;}
+  .dashboard-rules-note{color:#b3c1b7; font-size:12px;}
+  .dashboard-rule-item{border-color:rgba(137,171,147,.24); border-radius:8px; background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(0,0,0,.12)); font-size:12px;}
+  .desk-dashboard-panel,.desk-panel{padding:17px;}
+  .desk-dashboard-panel h4,.desk-panel h4{font-size:14px;}
+  .desk-data-panel-head{margin-bottom:14px;}
+  .desk-panel-note{color:#b3c1b7; font-size:11px;}
+  .desk-objectives{border-color:rgba(137,171,147,.25); background:linear-gradient(145deg,#19251d,#111813); box-shadow:inset 0 1px 0 rgba(255,255,255,.07);}
+  .desk-objectives-title{font-size:15px;}
+  .desk-objective-name{font-size:13px;}
+  .desk-objective-value{color:#bbc8be; font-size:12px;}
+  .desk-objective-status{font-size:11px;}
+  .desk-objectives-empty,.desk-panel-empty{color:#bbc8be; font-size:12px;}
+  .desk-performance-summary{gap:9px;}
+  .desk-chart-live,.desk-chart-legend{color:#bbc8be; font-size:11px;}
+  .desk-chart-axis-label{font-size:11px;}
+  .desk-chart-foot{color:#bbc8be; font-size:10px;}
+  .desk-chart-tooltip{border-color:#526357; background:#111a14; font-size:12px;}
+  .desk-stat-highlight{border-color:rgba(62,207,126,.38); background:linear-gradient(145deg,rgba(62,207,126,.16),rgba(16,23,18,.96) 68%); box-shadow:inset 0 1px 0 rgba(255,255,255,.1);}
+  .desk-stat-highlight-label,.desk-stat-highlight-meta,.desk-stat-highlight-meter-label{color:#bdc9c0; font-size:10px;}
+  .desk-stat-highlight-value{font-size:clamp(21px,2.3vw,27px);}
+  .desk-stat-highlight-meter-value{font-size:14px;}
+  .desk-stat-highlight-meter-note{color:#bdc9c0; font-size:9px;}
+  .desk-metric{border:1px solid rgba(137,171,147,.24); border-radius:8px; background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(0,0,0,.16));}
+  .desk-metric span{color:#bdc9c0; font-size:10px;}
+  .desk-metric strong{font-size:14px;}
+  .desk-calendar-shell,.desk-session-face{border-color:rgba(137,171,147,.25); background:linear-gradient(145deg,#19251d,#111813); box-shadow:inset 0 1px 0 rgba(255,255,255,.07);}
+  .desk-calendar-caption{font-size:14px;}
+  .desk-calendar-net{color:#bdc9c0; font-size:11px;}
+  .desk-calendar-weekday{color:#bdc9c0; font-size:10px;}
+  .desk-calendar-day{border-color:rgba(137,171,147,.12); background:#0d1410; color:#d5ded7; font-size:10px;}
+  .desk-calendar-date{color:#e0e8e2; font-size:10px;}
+  .desk-calendar-pnl{font-size:11px;}
+  .desk-calendar-empty{color:#bdc9c0; font-size:11px;}
+  .desk-session-face-title{font-size:14px;}
+  .desk-session-table{font-size:12px;}
+  .desk-session-table th{color:#bdc9c0; font-size:10px;}
+  .desk-session-table td{border-bottom-color:rgba(137,171,147,.16);}
+  .desk-session-note{color:#bdc9c0; font-size:11px;}
+  .desk-session-flip-button{font-size:11px;}
+  .desk-session-bar-row{border-bottom-color:rgba(137,171,147,.16);}
+  .desk-session-bar-name{font-size:12px;}
+  .desk-session-bar-track{background:#2c3d32;}
+  .desk-session-bar-value{font-size:12px;}
+  .desk-session-empty{color:#bdc9c0; font-size:11px;}
+  .desk-data-table{font-size:12px;}
+  .desk-data-table th{color:#bdc9c0; font-size:11px;}
+  .desk-data-table td{border-bottom-color:rgba(137,171,147,.16); color:#d0dad2;}
+  .desk-performance-kind,.desk-performance-filter{font-size:11px;}
+  .desk-session-table th{font-size:11px;}
+  .dash-close{font-size:14px;}
+  .rewards-panel h3,.competition-empty h3{font-size:19px;}
+  .rewards-panel p,.competition-empty p{color:#c3cec6; font-size:14px; line-height:1.65;}
+  .reward-certificate-note{color:#bbc8be!important; font-size:12px!important;}
+  .rewards-history-head{border-bottom-color:rgba(137,171,147,.24); color:#c3cec6; font-size:12px;}
+  .rewards-history-table{font-size:12px;}
+  .rewards-history-table th{border-bottom-color:rgba(137,171,147,.2); color:#bdc9c0; font-size:11px;}
+  .rewards-empty{color:#c3cec6; font-size:13px;}
+  .rewards-empty strong{font-size:15px;}
+  .competition-empty-mark{box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 4px 12px rgba(0,0,0,.2);}
+  .calendar-widget-copyright{color:#bdc9c0; font-size:11px;}
+  .calendar-widget-error{color:#c3cec6; font-size:13px;}
+  @media(max-width:760px){
+    #dashboard .dashboard-main.wrap{padding:24px 16px 32px;}
+    .dashboard-side-nav a{min-height:40px; font-size:12px;}
+    .dashboard-nav-mark{width:25px; height:25px; flex-basis:25px;}
+    .dashboard-nav-mark svg{width:14px; height:14px;}
+    .desk-dashboard-panel,.desk-panel{padding:14px;}
+    .account-stat{padding:14px;}
+    .account-stat span{font-size:12px;}
+    .desk-data-table{min-width:600px;}
+  }
   .risk-row .prow-top{font-size:11px;}
   @media(max-width:760px){.account-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
-  @media(max-width:420px){.account-banner{padding:18px;}.account-banner h3{font-size:22px;}.account-stat{padding:13px;}.account-stat b{font-size:17px;}.desk-panel{padding:16px;}}
+  @media(max-width:420px){.account-banner{padding:18px;}.account-banner h3{font-size:22px;}.account-stat{padding:13px;}.account-stat b{font-size:20px;}.desk-panel{padding:16px;}}
+
+  body.dashboard-open{-webkit-font-smoothing:auto;}
+  #dashboard .account-stat,#dashboard .dashboard-rules-panel,#dashboard .desk-dashboard-panel,
+  #dashboard .desk-panel,#dashboard .dash-panel,#dashboard .rewards-panel{
+    border-color:rgba(155,190,166,.34);
+    background:linear-gradient(155deg,rgba(255,255,255,.075),transparent 38%),linear-gradient(145deg,#202e24 0%,#17221b 55%,#111813 100%);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 12px 30px rgba(0,0,0,.26);
+  }
+  #dashboard .dashboard-sidebar-label{color:#bdc9c0; font-size:12px;}
+  #dashboard .dashboard-side-nav a{font-size:14px;}
+  #dashboard .dashboard-sidebar-foot,#dashboard .dashboard-sidebar-foot a{color:#bdc9c0; font-size:12px;}
+  #dashboard .account-kicker,#dashboard .panel-kicker{font-size:12px;}
+  #dashboard .account-badge{font-size:12px;}
+  #dashboard .dashboard-rules-note{color:#bdc9c0; font-size:13px;}
+  #dashboard .dashboard-rule-item{font-size:13px; line-height:1.45;}
+  #dashboard .desk-panel-note{color:#bdc9c0; font-size:12px;}
+  #dashboard .desk-objective-name{font-size:14px;}
+  #dashboard .desk-objective-value{font-size:13px; line-height:1.5;}
+  #dashboard .desk-objective-status{font-size:12px;}
+  #dashboard .desk-objectives-empty,#dashboard .desk-panel-empty{font-size:13px;}
+  #dashboard .desk-performance-stat span{color:#bdc9c0; font-size:11px;}
+  #dashboard .desk-performance-stat strong{font-size:13px;}
+  #dashboard .desk-performance-kind,#dashboard .desk-performance-filter,
+  #dashboard .desk-chart-live,#dashboard .desk-chart-legend{font-size:12px;}
+  #dashboard .desk-chart-axis-label{font-size:12px;}
+  #dashboard .desk-chart-foot{font-size:11px;}
+  #dashboard .desk-chart-tooltip{font-size:13px;}
+  #dashboard .desk-stat-highlight-label,#dashboard .desk-stat-highlight-meta,
+  #dashboard .desk-stat-highlight-meter-label{font-size:12px;}
+  #dashboard .desk-stat-highlight-value{font-size:clamp(24px,2.5vw,30px);}
+  #dashboard .desk-stat-highlight-meter-value{font-size:15px;}
+  #dashboard .desk-stat-highlight-meter-note{font-size:12px;}
+  #dashboard .desk-metric span{font-size:12px;}
+  #dashboard .desk-metric strong{font-size:15px;}
+  #dashboard .desk-calendar-net,#dashboard .desk-calendar-weekday,
+  #dashboard .desk-calendar-day,#dashboard .desk-calendar-date,
+  #dashboard .desk-calendar-pnl,#dashboard .desk-calendar-empty{font-size:12px;}
+  #dashboard .desk-session-table{font-size:12px;}
+  #dashboard .desk-session-table th{font-size:12px;}
+  #dashboard .desk-session-note,#dashboard .desk-session-flip-button{font-size:12px;}
+  #dashboard .desk-session-bar-name,#dashboard .desk-session-bar-value{font-size:13px;}
+  #dashboard .desk-session-empty{font-size:12px;}
+  #dashboard .desk-data-table{font-size:12px;}
+  #dashboard .desk-data-table th{font-size:12px;}
+  #dashboard .calendar-widget-copyright{font-size:12px;}
+  #dashboard .account-stat b{display:block; max-width:100%; overflow-wrap:anywhere; line-height:1.2;}
+  @media(max-width:1050px){#dashboard .account-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  @media(max-width:420px){#dashboard .account-stat b{font-size:clamp(16px,5vw,20px);}}
 
   #checkout{display:none;}
   #checkout.active{display:block;}
@@ -1199,9 +1424,17 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
         <div class="eyebrow" id="dashboardGreeting">Account details</div>
         <h2>Trading desk</h2>
       </div>
-      <div class="dash-select" id="dashSelectWrap">
-        Account
-        <select id="accSelect"></select>
+      <div class="dash-select account-select-picker" id="dashSelectWrap">
+        <span id="accountSelectorLabel">Account</span>
+        <button type="button" class="account-select-trigger" id="accountSelectTrigger" aria-labelledby="accountSelectorLabel accountSelectorValue accountSelectorStatus" aria-haspopup="listbox" aria-expanded="false" aria-controls="accountSelectList">
+          <span class="account-select-trigger-copy">
+            <span class="account-select-trigger-value" id="accountSelectorValue">Select account</span>
+            <span class="account-select-trigger-status" id="accountSelectorStatus"></span>
+          </span>
+          <svg class="account-select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="account-select-list" id="accountSelectList" role="listbox" aria-labelledby="accountSelectorLabel" hidden></div>
+        <select id="accSelect" class="account-select-native" aria-hidden="true" tabindex="-1"></select>
       </div>
     </div>
 
@@ -1226,8 +1459,8 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
       </div>
 
       <div class="account-stat-grid">
-        <div class="account-stat"><span>Account size</span><b id="dBalance">$0</b></div>
-        <div class="account-stat"><span>Challenge balance</span><b id="dEquity">$0</b></div>
+        <div class="account-stat"><span>Balance</span><b id="dBalance">$0</b></div>
+        <div class="account-stat"><span>Live equity</span><b id="dEquity">$0</b></div>
         <div class="account-stat"><span>Withdrawable profit</span><b class="up" id="dWithdraw">$0</b></div>
         <div class="account-stat"><span>Trading days</span><b id="dDays">0</b></div>
       </div>
@@ -1240,19 +1473,9 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
         <ul class="dashboard-rule-grid" id="dashboardRuleList"></ul>
       </section>
 
-      <section class="dashboard-limits-panel" id="dashboardLimitsPanel" aria-labelledby="dashboardLimitsHeading" hidden>
-        <div class="dashboard-limits-head">
-          <h4 id="dashboardLimitsHeading">Account risk limits</h4>
-          <span class="dashboard-limits-note" id="dashboardLimitsNote"></span>
-        </div>
-        <div class="dashboard-limit-grid" id="dashboardLimitGrid"></div>
-      </section>
-
       <div class="dashboard-workspace-grid">
-        <section class="desk-dashboard-panel" aria-labelledby="deskStatusHeading">
-          <div class="desk-data-panel-head"><h4 id="deskStatusHeading">Challenge status</h4><span class="desk-panel-note">Selected account</span></div>
-          <div class="desk-status-grid" id="deskStatusGrid"></div>
-          <div class="desk-status-rules" id="deskStatusRules"></div>
+        <section class="desk-dashboard-panel desk-objectives-panel" aria-label="Account objectives">
+          <div id="deskObjectives" role="status" aria-live="polite"></div>
         </section>
         <section class="desk-dashboard-panel desk-performance-panel" aria-labelledby="deskPerformanceHeading">
           <div class="desk-data-panel-head"><h4 id="deskPerformanceHeading">Balance history</h4><span class="desk-panel-note">Realized trade performance</span></div>
@@ -1281,8 +1504,12 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
           <div class="desk-panel-empty" id="deskStatisticsEmpty" role="status" hidden></div>
         </section>
         <section class="desk-dashboard-panel" aria-labelledby="deskActivityHeading">
-          <div class="desk-data-panel-head"><h4 id="deskActivityHeading">Trading activity</h4><span class="desk-panel-note">Closed trade dates</span></div>
-          <div id="deskActivityCalendar" role="status" aria-live="polite"></div>
+          <div class="desk-data-panel-head"><h4 id="deskActivityHeading">Session analytics</h4><span class="desk-panel-note">Closed trades · UTC</span></div>
+          <div id="deskSessionAnalytics" role="status" aria-live="polite">Loading session analytics…</div>
+        </section>
+        <section class="desk-dashboard-panel desk-calendar-panel" aria-labelledby="deskCalendarHeading">
+          <div class="desk-data-panel-head"><h4 id="deskCalendarHeading">Trading activity</h4><span class="desk-panel-note">Daily realized P/L · trade dates</span></div>
+          <div id="deskActivityCalendar" role="status" aria-live="polite">Loading trading activity…</div>
         </section>
       </div>
 
@@ -1325,7 +1552,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
       <section class="rewards-panel" aria-labelledby="rewardCertificateHeading">
         <div class="panel-kicker">YOUR CERTIFICATE</div>
         <div class="reward-certificate-stage" id="rewardCertificatePreview" aria-label="Certificate preview"></div>
-        <p class="reward-certificate-note">The certificate is blurred and its payout amount is omitted.</p>
+        <p class="reward-certificate-note">Certificate preview · payout amount appears after a verified payout.</p>
       </section>
 
       <section class="rewards-panel rewards-action" aria-labelledby="rewardRequestHeading">
@@ -1893,7 +2120,7 @@ function renderRewardsCertificate(){
   card.removeAttribute('tabindex');
   card.removeAttribute('aria-pressed');
   card.setAttribute('role','img');
-  card.setAttribute('aria-label','Blurred Daily Funded certificate with payout amount omitted');
+  card.setAttribute('aria-label','Daily Funded certificate preview; payout amount appears after a verified payout');
   card.querySelector('.payout-stamp').remove();
   card.querySelector('.payout-amount').textContent = '';
   card.querySelector('.payout-certificate-back').remove();
@@ -2059,6 +2286,131 @@ function getAccounts(){
   return dashboardAccounts;
 }
 
+function accountPickerStatus(account){
+  return account.status.replaceAll('_',' ').toUpperCase();
+}
+function syncDashboardAccountPicker(accounts){
+  const selector = document.getElementById('accSelect');
+  const trigger = document.getElementById('accountSelectTrigger');
+  const list = document.getElementById('accountSelectList');
+  const selected = accounts.find(account=>account.id === selector.value) || accounts[0];
+  document.getElementById('accountSelectorValue').textContent = selected
+    ? '$' + selected.size.toLocaleString() + ' · ' + selected.label
+    : 'Select account';
+  document.getElementById('accountSelectorStatus').textContent = selected ? accountPickerStatus(selected) : '';
+  list.replaceChildren(...accounts.map(account=>{
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'account-select-option';
+    option.setAttribute('role','option');
+    option.setAttribute('aria-selected',String(account.id === selector.value));
+    option.dataset.accountId = account.id;
+    const copy = document.createElement('span');
+    copy.className = 'account-select-option-copy';
+    const title = document.createElement('span');
+    title.className = 'account-select-option-title';
+    title.textContent = '$' + account.size.toLocaleString();
+    const plan = document.createElement('span');
+    plan.className = 'account-select-option-plan';
+    plan.textContent = account.label;
+    copy.append(title,plan);
+    const status = document.createElement('span');
+    status.className = 'account-select-option-status ' + (
+      account.status === 'active'
+        ? 'is-active'
+        : ['rejected','payment_rejected'].includes(account.status)
+          ? 'is-rejected'
+          : 'is-pending'
+    );
+    status.textContent = accountPickerStatus(account);
+    option.append(copy,status);
+    return option;
+  }));
+  trigger.disabled = accounts.length === 0;
+}
+const accountSelectTrigger = document.getElementById('accountSelectTrigger');
+const accountSelectList = document.getElementById('accountSelectList');
+function closeDashboardAccountPicker(returnFocus=false){
+  accountSelectList.hidden = true;
+  accountSelectTrigger.setAttribute('aria-expanded','false');
+  if(returnFocus) accountSelectTrigger.focus();
+}
+function positionDashboardAccountPicker(){
+  const triggerRect = accountSelectTrigger.getBoundingClientRect();
+  const viewportPadding = 12;
+  const menuWidth = Math.min(Math.max(triggerRect.width,280),window.innerWidth - viewportPadding * 2);
+  const menuHeight = Math.min(accountSelectList.scrollHeight,window.innerHeight - viewportPadding * 2);
+  const spaceBelow = window.innerHeight - triggerRect.bottom - viewportPadding;
+  const spaceAbove = triggerRect.top - viewportPadding;
+  const openAbove = spaceBelow < menuHeight && spaceAbove > spaceBelow;
+  const top = openAbove
+    ? Math.max(viewportPadding,triggerRect.top - menuHeight - 8)
+    : Math.min(triggerRect.bottom + 8,window.innerHeight - menuHeight - viewportPadding);
+  const left = Math.max(viewportPadding,Math.min(triggerRect.right - menuWidth,window.innerWidth - menuWidth - viewportPadding));
+  accountSelectList.style.width = menuWidth + 'px';
+  accountSelectList.style.left = left + 'px';
+  accountSelectList.style.top = top + 'px';
+}
+function openDashboardAccountPicker(focusSelected=false){
+  syncDashboardAccountPicker(getAccounts());
+  accountSelectList.hidden = false;
+  accountSelectTrigger.setAttribute('aria-expanded','true');
+  positionDashboardAccountPicker();
+  if(focusSelected){
+    const selected = accountSelectList.querySelector('[aria-selected="true"]');
+    (selected || accountSelectList.querySelector('[role="option"]'))?.focus();
+  }
+}
+accountSelectTrigger.addEventListener('click',()=>{
+  if(accountSelectList.hidden) openDashboardAccountPicker();
+  else closeDashboardAccountPicker();
+});
+accountSelectTrigger.addEventListener('keydown',event=>{
+  if(event.key === 'ArrowDown' || event.key === 'ArrowUp'){
+    event.preventDefault();
+    openDashboardAccountPicker(true);
+  }else if(event.key === 'Escape' && !accountSelectList.hidden){
+    event.preventDefault();
+    closeDashboardAccountPicker();
+  }
+});
+accountSelectList.addEventListener('click',event=>{
+  const option = event.target.closest('[data-account-id]');
+  if(!option) return;
+  const selector = document.getElementById('accSelect');
+  selector.value = option.dataset.accountId;
+  selector.dispatchEvent(new Event('change',{bubbles:true}));
+  closeDashboardAccountPicker(true);
+});
+accountSelectList.addEventListener('keydown',event=>{
+  const options = [...accountSelectList.querySelectorAll('[role="option"]')];
+  const currentIndex = options.indexOf(document.activeElement);
+  if(event.key === 'Escape'){
+    event.preventDefault();
+    closeDashboardAccountPicker(true);
+  }else if(event.key === 'ArrowDown' || event.key === 'ArrowUp'){
+    event.preventDefault();
+    const direction = event.key === 'ArrowDown' ? 1 : -1;
+    options[(currentIndex + direction + options.length) % options.length]?.focus();
+  }else if(event.key === 'Home'){
+    event.preventDefault();
+    options[0]?.focus();
+  }else if(event.key === 'End'){
+    event.preventDefault();
+    options.at(-1)?.focus();
+  }else if(event.key === 'Enter' || event.key === ' '){
+    event.preventDefault();
+    document.activeElement.click();
+  }else if(event.key === 'Tab'){
+    closeDashboardAccountPicker();
+  }
+});
+document.addEventListener('click',event=>{
+  if(!event.target.closest('#dashSelectWrap') && !accountSelectList.hidden) closeDashboardAccountPicker();
+});
+window.addEventListener('resize',()=>{if(!accountSelectList.hidden) closeDashboardAccountPicker();});
+window.addEventListener('scroll',()=>{if(!accountSelectList.hidden) closeDashboardAccountPicker();},true);
+
 function openDashboard(preferredAccountId){
   closeRegistration();
   document.body.classList.add('dashboard-open');
@@ -2070,6 +2422,9 @@ function openDashboard(preferredAccountId){
   refreshDashboard(preferredAccountId);
 }
 function closeDashboard(){
+  closeDashboardAccountPicker();
+  ++deskTradingRequestId;
+  stopDeskPositionsPolling();
   document.body.classList.remove('dashboard-open');
   mainSections.forEach(sel=>{ const el = document.querySelector(sel); if(el) el.style.display = ''; });
   document.querySelector('footer').style.display = '';
@@ -3014,6 +3369,7 @@ async function refreshDashboard(preferredAccountId){
   if(preferredAccountId && accounts.some(account=>account.id===preferredAccountId)) sel.value = preferredAccountId;
   else if(!accounts.find(a=>a.id===sel.value) && accounts.length) sel.value = accounts[0].id;
 
+  syncDashboardAccountPicker(accounts);
   renderAccount();
   renderRewardsCertificate();
 }
@@ -3036,8 +3392,9 @@ function renderAccount(){
     ? 'PAYMENT PENDING'
     : data.status.replaceAll('_',' ').toUpperCase();
   const money = value => value != null && Number.isFinite(Number(value)) ? '$' + Number(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
-  document.getElementById('dBalance').textContent = money(data.balance);
-  document.getElementById('dEquity').textContent = money(data.equity);
+  const tradingActive = data.status === 'active' && data.tradingEnabled === true;
+  document.getElementById('dBalance').textContent = tradingActive ? '—' : money(data.balance);
+  document.getElementById('dEquity').textContent = tradingActive ? '—' : money(data.equity);
   document.getElementById('dWithdraw').textContent = money(data.withdrawableProfit);
   document.getElementById('dDays').textContent = Number.isInteger(data.tradingDays) ? data.tradingDays : '—';
 
@@ -3053,72 +3410,24 @@ function renderAccount(){
   });
   rulesPanel.hidden = rules.length === 0;
 
-  const limitsPanel = document.getElementById('dashboardLimitsPanel');
-  const limitGrid = document.getElementById('dashboardLimitGrid');
-  const limitsNote = document.getElementById('dashboardLimitsNote');
-  limitGrid.replaceChildren();
-  const size = Number(data.size);
-  const validSize = Number.isFinite(size) && size > 0;
-  const formatLimitMoney = value => '$' + value.toLocaleString('en-US',{maximumFractionDigits:2});
-  const limits = [];
-  const addLimit = (label,value,note) => limits.push({label,value,note});
-
-  if(validSize){
-    const targetRule = rules.find(rule=>/^(\d+(?:\.\d+)?)%\s+profit target$/i.test(rule));
-    const phaseTargetsRule = rules.find(rule=>/^Ph 1:\s*(\d+(?:\.\d+)?)%\s*\/\s*Ph 2:\s*(\d+(?:\.\d+)?)%$/i.test(rule));
-    const noTargetRule = rules.some(rule=>/^No profit target$/i.test(rule));
-    if(targetRule){
-      const percent = Number(targetRule.match(/^(\d+(?:\.\d+)?)%/)[1]);
-      if(percent > 0 && percent <= 100) addLimit('Profit target',formatLimitMoney(size * percent / 100),percent + '% of initial size');
-    }else if(phaseTargetsRule){
-      const match = phaseTargetsRule.match(/^Ph 1:\s*(\d+(?:\.\d+)?)%\s*\/\s*Ph 2:\s*(\d+(?:\.\d+)?)%$/i);
-      const firstPhase = Number(match[1]);
-      const secondPhase = Number(match[2]);
-      if(firstPhase > 0 && firstPhase <= 100 && secondPhase > 0 && secondPhase <= 100){
-        addLimit('Phase targets',firstPhase === secondPhase ? firstPhase + '% per phase' : firstPhase + '% / ' + secondPhase + '%','Phase 1: ' + formatLimitMoney(size * firstPhase / 100) + ' · Phase 2: ' + formatLimitMoney(size * secondPhase / 100));
-      }
-    }else if(noTargetRule){
-      addLimit('Profit target','Not required','This plan has no target');
-    }
-
-    const dailyRule = rules.find(rule=>/^(\d+(?:\.\d+)?)%\s+daily drawdown$/i.test(rule));
-    const dailyMatch = dailyRule && dailyRule.match(/^(\d+(?:\.\d+)?)%/);
-    if(dailyMatch){
-      const percent = Number(dailyMatch[1]);
-      if(percent > 0 && percent <= 100) addLimit('Daily drawdown',percent + '%','of start-of-day balance');
-    }
-
-    const maxRule = rules.find(rule=>/^(\d+(?:\.\d+)?)%\s+max drawdown$/i.test(rule));
-    const maxMatch = maxRule && maxRule.match(/^(\d+(?:\.\d+)?)%/);
-    if(maxMatch){
-      const percent = Number(maxMatch[1]);
-      if(percent > 0 && percent <= 100) addLimit('Maximum drawdown',formatLimitMoney(size * percent / 100),percent + '% of initial size');
-    }
-
-    const daysRule = rules.find(rule=>/^(\d+)\s+min trading days$/i.test(rule));
-    const daysMatch = daysRule && daysRule.match(/^(\d+)\s+/);
-    if(daysMatch) addLimit('Minimum trading days',daysMatch[1] + ' days','Plan requirement');
-  }
-
-  limits.forEach(({label,value,note})=>{
-    const item = document.createElement('div');
-    item.className = 'dashboard-limit-item';
-    const title = document.createElement('span');
-    title.textContent = label;
-    const amount = document.createElement('strong');
-    amount.textContent = value;
-    const detail = document.createElement('small');
-    detail.textContent = note;
-    item.append(title,amount,detail);
-    limitGrid.appendChild(item);
-  });
-  limitsNote.textContent = validSize ? 'Based on ' + formatLimitMoney(size) + ' initial account size and plan rules' : '';
-  limitsPanel.hidden = limits.length === 0;
-  renderDeskChallengeStatus(data,rules);
   loadDeskTradingData(data);
 }
 
 let deskTradingRequestId = 0;
+const deskPositionsRefreshIntervalMs = 5000;
+let deskPositionsPollTimer = null;
+let deskPositionsPollAccountId = null;
+let deskPositionsPollOwnerRequestId = null;
+let deskPositionsPollInFlightRequestId = null;
+let deskPositionsLastUpdatedAt = null;
+const deskTradingEventsUrl = 'wss://throbbing-bonus-6fed.dailyfunded.workers.dev/trading/events';
+let deskLivePositions = [];
+let deskLiveAccountSnapshot = null;
+let deskLiveEventsSocket = null;
+let deskLiveEventsRetryTimer = null;
+let deskLiveEventsGeneration = 0;
+let deskLiveEventsConnected = false;
+let deskObjectivesState = null;
 const deskNumber = value => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
 const deskMoney = value => {
   const number = deskNumber(value);
@@ -3153,60 +3462,197 @@ function setDeskPanelEmpty(id,message,isError=false){
   element.classList.toggle('desk-panel-error',isError);
   element.hidden = false;
 }
-function renderDeskChallengeStatus(data,rules){
-  const grid = document.getElementById('deskStatusGrid');
-  const ruleList = document.getElementById('deskStatusRules');
-  grid.replaceChildren();
-  ruleList.replaceChildren();
-  const phase = data.phase ? String(data.phase).replaceAll('_',' ').replace(/\b\w/g,character=>character.toUpperCase()) : '—';
-  const status = data.status ? String(data.status).replaceAll('_',' ').toUpperCase() : '—';
-  const facts = [
-    ['Account size',deskMoney(data.size)],
-    ['Challenge model',data.label || '—'],
-    ['Phase',phase],
-    ['Current status',status]
-  ];
-  facts.forEach(([label,value])=>{
-    const item = document.createElement('div');
-    item.className = 'desk-status-item';
-    const name = document.createElement('span');
-    name.textContent = label;
-    const detail = document.createElement('strong');
+function renderDeskObjectives(){
+  const container = document.getElementById('deskObjectives');
+  if(!container || !deskObjectivesState) return;
+  const {data,account,rules,trades} = deskObjectivesState;
+  container.replaceChildren();
+  const shell = document.createElement('div');
+  shell.className = 'desk-objectives';
+  const title = document.createElement('h5');
+  title.className = 'desk-objectives-title';
+  title.textContent = 'Objectives';
+  shell.appendChild(title);
+
+  const planRules = Array.isArray(data.rules) ? data.rules.filter(rule=>typeof rule === 'string') : [];
+  const accountRules = rules && typeof rules === 'object' ? rules : {};
+  const numericRule = (field,pattern) => {
+    const value = deskNumber(accountRules[field]);
+    if(value !== null && value >= 0) return value;
+    const rule = planRules.find(item=>pattern.test(item));
+    const match = rule && rule.match(pattern);
+    return match ? Number(match[1] || match[2]) : null;
+  };
+  const profitTarget = numericRule('profit_target_percent',/(\d+(?:\.\d+)?)%\s+profit target/i);
+  const minimumDays = numericRule('minimum_trading_days',/^(\d+)\s+min trading days$/i);
+  const dailyLimit = numericRule('daily_drawdown_percent',/(\d+(?:\.\d+)?)%\s+daily drawdown/i);
+  const maxLimit = numericRule('max_drawdown_percent',/(\d+(?:\.\d+)?)%\s+max drawdown/i);
+  const addObjective = (name,value,status,statusClass='is-unavailable')=>{
+    const row = document.createElement('div');
+    row.className = 'desk-objective';
+    const copy = document.createElement('div');
+    copy.className = 'desk-objective-copy';
+    const label = document.createElement('span');
+    label.className = 'desk-objective-name';
+    label.textContent = name;
+    const detail = document.createElement('span');
+    detail.className = 'desk-objective-value';
     detail.textContent = value;
-    if(label === 'Current status') detail.classList.add(data.status === 'active' ? 'is-active' : 'is-inactive');
-    item.append(name,detail);
-    grid.appendChild(item);
-  });
-  rules.forEach(rule=>{
-    const item = document.createElement('span');
-    item.className = 'desk-status-rule';
-    item.textContent = rule;
-    ruleList.appendChild(item);
-  });
+    const badge = document.createElement('span');
+    badge.className = 'desk-objective-status ' + statusClass;
+    badge.textContent = status;
+    copy.append(label,detail);
+    row.append(copy,badge);
+    shell.appendChild(row);
+  };
+  const startingBalance = deskNumber(account && account.starting_balance);
+  const currentBalance = deskNumber(account && account.balance);
+  if(profitTarget === 0 || planRules.some(rule=>/^No profit target$/i.test(rule))){
+    addObjective('Profit target','Not required','Not required','is-not-required');
+  }else if(profitTarget !== null && startingBalance !== null && startingBalance > 0 && currentBalance !== null){
+    const achievedPercent = (currentBalance - startingBalance) / startingBalance * 100;
+    const progress = Math.max(0,Math.min(100,achievedPercent / profitTarget * 100));
+    const passed = achievedPercent >= profitTarget;
+    addObjective('Profit target',achievedPercent.toFixed(1) + '% of ' + profitTarget + '% · ' + progress.toFixed(0) + '% complete',passed ? 'Passed' : 'In progress',passed ? 'is-passed' : '');
+  }else{
+    addObjective('Profit target',profitTarget === null ? 'Target unavailable' : 'Waiting for account balance','Unavailable');
+  }
+
+  const tradingDays = deskNumber(data.tradingDays);
+  if(minimumDays === 0){
+    addObjective('Minimum trading days','Not required','Not required','is-not-required');
+  }else if(minimumDays !== null && tradingDays !== null){
+    const passed = tradingDays >= minimumDays;
+    addObjective('Minimum trading days',Math.floor(tradingDays) + ' / ' + Math.floor(minimumDays),passed ? 'Passed' : 'In progress',passed ? 'is-passed' : '');
+  }else{
+    addObjective('Minimum trading days',minimumDays === null ? 'Requirement unavailable' : 'Trading-day data unavailable','Unavailable');
+  }
+
+  const consistencyLimit = numericRule('consistency_percent',/(?:(\d+(?:\.\d+)?)%\s+(?:max(?:imum)?\s+)?consistency|consistency\s*\(?(?:max(?:imum)?\s*)?(\d+(?:\.\d+)?)%)/i);
+  const consistencyNotRequired = planRules.some(rule=>/no .*consistency/i.test(rule)) || ['1step','2step','instant'].includes(String(data.plan || '').toLowerCase());
+  if(consistencyLimit !== null){
+    const dailyPnl = new Map();
+    let consistencyDataComplete = Array.isArray(trades);
+    (Array.isArray(trades) ? trades : []).forEach(trade=>{
+      const closedAt = deskDate(trade.closed_at);
+      const pnl = deskNumber(trade.realized_pnl);
+      if(!closedAt || pnl === null){
+        consistencyDataComplete = false;
+        return;
+      }
+      const day = closedAt.toISOString().slice(0,10);
+      dailyPnl.set(day,(dailyPnl.get(day) || 0) + pnl);
+    });
+    const totalPnl = [...dailyPnl.values()].reduce((sum,value)=>sum+value,0);
+    const bestDay = Math.max(0,...dailyPnl.values());
+    if(consistencyDataComplete && totalPnl > 0){
+      const ratio = bestDay / totalPnl * 100;
+      const passed = ratio <= consistencyLimit;
+      addObjective('Consistency (max ' + consistencyLimit + '%)',ratio.toFixed(1) + '% of total realized profit',passed ? 'Passing' : 'Over limit',passed ? 'is-safe' : 'is-alert');
+    }else if(!consistencyDataComplete){
+      addObjective('Consistency (max ' + consistencyLimit + '%)','Closed-trade data is incomplete','Unavailable');
+    }else{
+      addObjective('Consistency (max ' + consistencyLimit + '%)','Requires positive realized profit','Unavailable');
+    }
+  }else{
+    addObjective('Consistency','No consistency rule','Not required','is-not-required');
+  }
+
+  const dailyDrawdown = deskNumber(data.dailyDrawdown);
+  if(dailyLimit !== null && dailyDrawdown !== null && dailyDrawdown >= 0){
+    const safe = dailyDrawdown <= dailyLimit;
+    addObjective('Daily loss limit',dailyDrawdown.toFixed(1) + '% of ' + dailyLimit + '%',safe ? 'Safe' : 'Limit reached',safe ? 'is-safe' : 'is-alert');
+  }else{
+    addObjective('Daily loss limit',dailyLimit === null ? 'Limit unavailable' : 'Current daily drawdown unavailable' + (dailyLimit !== null ? ' · limit ' + dailyLimit + '%' : ''),'Unavailable');
+  }
+
+  const maxDrawdown = deskNumber(data.overallDrawdown);
+  if(maxLimit !== null && maxDrawdown !== null && maxDrawdown >= 0){
+    const safe = maxDrawdown <= maxLimit;
+    addObjective('Max loss limit',maxDrawdown.toFixed(1) + '% of ' + maxLimit + '%',safe ? 'Safe' : 'Limit reached',safe ? 'is-safe' : 'is-alert');
+  }else{
+    addObjective('Max loss limit',maxLimit === null ? 'Limit unavailable' : 'Current maximum drawdown unavailable' + (maxLimit !== null ? ' · limit ' + maxLimit + '%' : ''),'Unavailable');
+  }
+
+  container.appendChild(shell);
 }
 function renderDeskStatistics(trades){
   const grid = document.getElementById('deskStatisticsGrid');
   const empty = document.getElementById('deskStatisticsEmpty');
   grid.replaceChildren();
-  empty.hidden = true;
   const pnlValues = trades.map(trade=>deskNumber(trade.realized_pnl)).filter(value=>value !== null);
   const wins = pnlValues.filter(value=>value > 0);
   const losses = pnlValues.filter(value=>value < 0);
   const grossWins = wins.reduce((sum,value)=>sum+value,0);
   const grossLosses = Math.abs(losses.reduce((sum,value)=>sum+value,0));
+  const netPnl = pnlValues.reduce((sum,value)=>sum+value,0);
+  if(!trades.length){
+    grid.hidden = true;
+    empty.classList.add('desk-statistics-empty');
+    empty.textContent = 'No closed-trade statistics yet. Your results will appear here after trades are closed.';
+    empty.hidden = false;
+    document.getElementById('deskStatisticsNote').textContent = 'No closed trades';
+    return;
+  }
+  grid.hidden = false;
+  empty.hidden = true;
+  const highlight = document.createElement('div');
+  highlight.className = 'desk-stat-highlight';
+  const summary = document.createElement('div');
+  const summaryLabel = document.createElement('span');
+  summaryLabel.className = 'desk-stat-highlight-label';
+  summaryLabel.textContent = 'Realized P/L';
+  const summaryValue = document.createElement('strong');
+  summaryValue.className = 'desk-stat-highlight-value' + (pnlValues.length ? netPnl >= 0 ? ' is-positive' : ' is-negative' : '');
+  summaryValue.textContent = pnlValues.length ? deskMoney(netPnl) : '—';
+  const summaryMeta = document.createElement('div');
+  summaryMeta.className = 'desk-stat-highlight-meta';
+  summaryMeta.textContent = pnlValues.length + ' of ' + trades.length + ' closed trades with recorded P/L';
+  summary.append(summaryLabel,summaryValue,summaryMeta);
+
+  const meter = document.createElement('div');
+  meter.className = 'desk-stat-highlight-meter';
+  const meterTop = document.createElement('div');
+  meterTop.className = 'desk-stat-highlight-meter-top';
+  const meterLabel = document.createElement('span');
+  meterLabel.className = 'desk-stat-highlight-meter-label';
+  meterLabel.textContent = 'Win rate';
+  const winRate = pnlValues.length ? wins.length / pnlValues.length * 100 : null;
+  const meterValue = document.createElement('strong');
+  meterValue.className = 'desk-stat-highlight-meter-value' + (winRate === null ? '' : winRate >= 50 ? ' is-positive' : ' is-negative');
+  meterValue.textContent = winRate === null ? '—' : winRate.toFixed(1) + '%';
+  meterTop.append(meterLabel,meterValue);
+  const winLossTrack = document.createElement('div');
+  winLossTrack.className = 'desk-stat-winloss-track';
+  winLossTrack.setAttribute('role','img');
+  winLossTrack.setAttribute('aria-label',winRate === null ? 'Win and loss distribution unavailable' : wins.length + ' wins and ' + losses.length + ' losses among ' + pnlValues.length + ' trades with recorded profit or loss');
+  if(winRate !== null){
+    const winsSegment = document.createElement('span');
+    winsSegment.className = 'desk-stat-winloss-wins';
+    winsSegment.style.width = winRate + '%';
+    const lossesSegment = document.createElement('span');
+    lossesSegment.className = 'desk-stat-winloss-losses';
+    lossesSegment.style.width = (losses.length / pnlValues.length * 100) + '%';
+    winLossTrack.append(winsSegment,lossesSegment);
+  }
+  const meterNote = document.createElement('div');
+  meterNote.className = 'desk-stat-highlight-meter-note';
+  meterNote.textContent = wins.length + ' wins · ' + losses.length + ' losses';
+  meter.append(meterTop,winLossTrack,meterNote);
+  highlight.append(summary,meter);
+  grid.appendChild(highlight);
   const metrics = [
     ['Total trades',String(trades.length),''],
-    ['Winning trades',String(wins.length),'is-positive'],
-    ['Losing trades',String(losses.length),losses.length ? 'is-negative' : ''],
-    ['Win rate',pnlValues.length ? (wins.length / pnlValues.length * 100).toFixed(1) + '%' : '—',''],
-    ['Realized P/L',pnlValues.length ? deskMoney(pnlValues.reduce((sum,value)=>sum+value,0)) : '—',pnlValues.length ? (pnlValues.reduce((sum,value)=>sum+value,0) >= 0 ? 'is-positive' : 'is-negative') : ''],
-    ['Average win',wins.length ? deskMoney(grossWins / wins.length) : '—','is-positive'],
+    ['Winning trades',pnlValues.length ? String(wins.length) : '—','is-positive'],
+    ['Losing trades',pnlValues.length ? String(losses.length) : '—',losses.length ? 'is-negative' : ''],
+    ['Average win',wins.length ? deskMoney(grossWins / wins.length) : '—',wins.length ? 'is-positive' : ''],
     ['Average loss',losses.length ? deskMoney(-grossLosses / losses.length) : '—',losses.length ? 'is-negative' : ''],
     ['Profit factor',grossLosses > 0 ? (grossWins / grossLosses).toFixed(2) : '—','']
   ];
   metrics.forEach(([label,value,className])=>{
     const item = document.createElement('div');
     item.className = 'desk-metric';
+    if(className) item.classList.add(className);
     const name = document.createElement('span');
     name.textContent = label;
     const detail = document.createElement('strong');
@@ -3215,7 +3661,7 @@ function renderDeskStatistics(trades){
     item.append(name,detail);
     grid.appendChild(item);
   });
-  document.getElementById('deskStatisticsNote').textContent = pnlValues.length + ' closed trades with recorded P/L';
+  document.getElementById('deskStatisticsNote').textContent = trades.length + ' closed trades · ' + pnlValues.length + ' with recorded P/L';
 }
 function renderDeskActivity(trades){
   const container = document.getElementById('deskActivityCalendar');
@@ -3223,13 +3669,48 @@ function renderDeskActivity(trades){
   const datedTrades = trades.map(trade=>({trade,date:deskDate(trade.closed_at)})).filter(item=>item.date);
   const latestDate = datedTrades.reduce((latest,item)=>!latest || item.date > latest ? item.date : latest,null);
   const monthDate = latestDate || new Date();
-  const year = monthDate.getFullYear();
-  const month = monthDate.getMonth();
-  const monthLabel = new Intl.DateTimeFormat(undefined,{month:'long',year:'numeric'}).format(monthDate);
+  const year = monthDate.getUTCFullYear();
+  const month = monthDate.getUTCMonth();
+  const monthLabel = new Intl.DateTimeFormat(undefined,{month:'long',year:'numeric',timeZone:'UTC'}).format(monthDate);
+  const activityByDay = new Map();
+  let monthNet = 0;
+  let monthPnlComplete = true;
+  let monthTradeCount = 0;
+  datedTrades.forEach(({trade,date})=>{
+    if(date.getUTCFullYear() !== year || date.getUTCMonth() !== month) return;
+    const day = date.getUTCDate();
+    const pnl = deskNumber(trade.realized_pnl);
+    const totals = activityByDay.get(day) || {count:0,pnl:0,pnlComplete:true};
+    totals.count += 1;
+    if(pnl === null){
+      totals.pnlComplete = false;
+      monthPnlComplete = false;
+    }else{
+      totals.pnl += pnl;
+      monthNet += pnl;
+    }
+    monthTradeCount += 1;
+    activityByDay.set(day,totals);
+  });
+
+  const shell = document.createElement('div');
+  shell.className = 'desk-calendar-shell';
   const caption = document.createElement('div');
   caption.className = 'desk-calendar-caption';
-  caption.textContent = monthLabel + (latestDate ? '' : ' · no dated trades');
-  container.appendChild(caption);
+  const title = document.createElement('span');
+  title.textContent = monthLabel;
+  const net = document.createElement('span');
+  net.className = 'desk-calendar-net';
+  net.appendChild(document.createTextNode('Net '));
+  const netValue = document.createElement('span');
+  netValue.textContent = monthTradeCount && monthPnlComplete ? formatDeskSessionPnl(monthNet) : monthTradeCount ? 'unavailable' : '—';
+  net.appendChild(netValue);
+  if(monthTradeCount && monthPnlComplete){
+    net.classList.add(monthNet > 0 ? 'is-positive' : monthNet < 0 ? 'is-negative' : '');
+  }
+  caption.append(title,net);
+  shell.appendChild(caption);
+
   const calendar = document.createElement('div');
   calendar.className = 'desk-calendar-grid';
   const weekdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -3239,76 +3720,268 @@ function renderDeskActivity(trades){
     item.textContent = day;
     calendar.appendChild(item);
   });
-  const firstDayOffset = (new Date(year,month,1).getDay()+6)%7;
+  const firstDayOffset = (new Date(Date.UTC(year,month,1)).getUTCDay()+6)%7;
   for(let blank=0;blank<firstDayOffset;blank++){
     const item = document.createElement('span');
     item.className = 'desk-calendar-day';
     item.setAttribute('aria-hidden','true');
     calendar.appendChild(item);
   }
-  const activityByDay = new Map();
-  datedTrades.forEach(({trade,date})=>{
-    if(date.getFullYear() !== year || date.getMonth() !== month) return;
-    const day = date.getDate();
-    const pnl = deskNumber(trade.realized_pnl);
-    const totals = activityByDay.get(day) || {count:0,profit:false,loss:false};
-    totals.count += 1;
-    if(pnl !== null && pnl > 0) totals.profit = true;
-    if(pnl !== null && pnl < 0) totals.loss = true;
-    activityByDay.set(day,totals);
-  });
-  const dayCount = new Date(year,month+1,0).getDate();
+  const dayCount = new Date(Date.UTC(year,month+1,0)).getUTCDate();
   for(let day=1;day<=dayCount;day++){
-    const item = document.createElement('span');
+    const item = document.createElement('div');
     const activity = activityByDay.get(day);
     item.className = 'desk-calendar-day';
-    item.textContent = String(day);
+    const dateLabel = document.createElement('span');
+    dateLabel.className = 'desk-calendar-date';
+    dateLabel.textContent = String(day);
+    item.appendChild(dateLabel);
     if(activity){
-      const activityClass = activity.profit && activity.loss ? 'has-mixed' : activity.loss ? 'has-loss' : activity.profit ? 'has-profit' : '';
-      if(activityClass) item.classList.add(activityClass);
-      item.setAttribute('aria-label',day + ' ' + monthLabel + ': ' + activity.count + ' closed trade' + (activity.count === 1 ? '' : 's'));
-      item.title = activity.count + ' closed trade' + (activity.count === 1 ? '' : 's');
+      if(activity.pnlComplete){
+        if(activity.pnl > 0) item.classList.add('has-profit');
+        else if(activity.pnl < 0) item.classList.add('has-loss');
+      }else{
+        item.classList.add('has-mixed');
+      }
+      const pnlLabel = activity.pnlComplete ? formatDeskSessionPnl(activity.pnl) : 'P/L n/a';
+      const pnl = document.createElement('span');
+      pnl.className = 'desk-calendar-pnl';
+      pnl.textContent = pnlLabel;
+      item.appendChild(pnl);
+      item.setAttribute('aria-label',day + ' ' + monthLabel + ': ' + pnlLabel + ' from ' + activity.count + ' closed trade' + (activity.count === 1 ? '' : 's'));
+      item.title = pnlLabel + ' · ' + activity.count + ' closed trade' + (activity.count === 1 ? '' : 's');
     }
     calendar.appendChild(item);
   }
-  container.appendChild(calendar);
-  if(datedTrades.length){
-    const legend = document.createElement('div');
-    legend.className = 'desk-activity-legend';
-    legend.innerHTML = '<span><i></i>Profit day</span><span><i class="loss"></i>Loss day</span>';
-    container.appendChild(legend);
-  }else{
+  shell.appendChild(calendar);
+  if(!datedTrades.length){
     const empty = document.createElement('div');
-    empty.className = 'desk-panel-empty';
-    empty.textContent = trades.length ? 'No valid trade dates are available.' : 'No trading activity recorded yet.';
-    container.appendChild(empty);
+    empty.className = 'desk-calendar-empty';
+    empty.textContent = trades.length ? 'No valid closed-trade dates are available.' : 'No trading activity recorded yet.';
+    shell.appendChild(empty);
   }
+  container.appendChild(shell);
 }
+function renderDeskSessionAnalytics(trades){
+  const container = document.getElementById('deskSessionAnalytics');
+  container.replaceChildren();
+  const sessions = [
+    {name:'Asia',isInSession:hour=>hour >= 22 || hour < 8},
+    {name:'London',isInSession:hour=>hour >= 8 && hour < 13},
+    {name:'New York',isInSession:hour=>hour >= 13 && hour < 22}
+  ].map(session=>({...session,trades:0,knownPnlTrades:0,wins:0,netPnl:0,pnlComplete:true}));
+  const sessionByHour = hour=>sessions.find(session=>session.isInSession(hour));
+  let invalidTradeDates = 0;
+  trades.forEach(trade=>{
+    const closedAt = deskDate(trade.closed_at);
+    if(!closedAt){
+      invalidTradeDates += 1;
+      return;
+    }
+    const session = sessionByHour(closedAt.getUTCHours());
+    if(!session) return;
+    session.trades += 1;
+    const pnl = deskNumber(trade.realized_pnl);
+    if(pnl === null){
+      session.pnlComplete = false;
+      return;
+    }
+    session.knownPnlTrades += 1;
+    session.netPnl += pnl;
+    if(pnl > 0) session.wins += 1;
+  });
+
+  const flipCard = document.createElement('div');
+  flipCard.className = 'desk-session-card';
+  const inner = document.createElement('div');
+  inner.className = 'desk-session-card-inner';
+  const front = document.createElement('div');
+  front.className = 'desk-session-face';
+  front.setAttribute('aria-hidden','false');
+  front.inert = false;
+  const back = document.createElement('div');
+  back.className = 'desk-session-face desk-session-face-back';
+  back.setAttribute('aria-hidden','true');
+  back.inert = true;
+
+  const frontTitle = document.createElement('h5');
+  frontTitle.className = 'desk-session-face-title';
+  frontTitle.textContent = 'Session edge matrix';
+  front.appendChild(frontTitle);
+  const table = document.createElement('table');
+  table.className = 'desk-session-table';
+  const tableHead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  ['Session','Trades','Win rate','Avg R','Net P&L'].forEach(label=>{
+    const cell = document.createElement('th');
+    cell.scope = 'col';
+    cell.textContent = label;
+    headerRow.appendChild(cell);
+  });
+  tableHead.appendChild(headerRow);
+  table.appendChild(tableHead);
+  const tableBody = document.createElement('tbody');
+  sessions.forEach(session=>{
+    const row = document.createElement('tr');
+    const name = document.createElement('td');
+    name.textContent = session.name;
+    const count = document.createElement('td');
+    count.textContent = String(session.trades);
+    const winRate = document.createElement('td');
+    winRate.textContent = session.knownPnlTrades
+      ? (session.wins / session.knownPnlTrades * 100).toFixed(0) + '%'
+      : '—';
+    const averageR = document.createElement('td');
+    averageR.textContent = '—';
+    const net = document.createElement('td');
+    net.textContent = session.trades && session.pnlComplete ? formatDeskSessionPnl(session.netPnl) : '—';
+    if(session.trades && session.pnlComplete && session.netPnl !== 0){
+      net.classList.add(session.netPnl > 0 ? 'desk-session-positive' : 'desk-session-negative');
+    }
+    row.append(name,count,winRate,averageR,net);
+    tableBody.appendChild(row);
+  });
+  table.appendChild(tableBody);
+  front.appendChild(table);
+  const matrixNote = document.createElement('div');
+  matrixNote.className = 'desk-session-note';
+  matrixNote.textContent = 'Asia 22:00–08:00 · London 08:00–13:00 · New York 13:00–22:00 UTC. Win rate uses recorded P/L; Avg R unavailable without historical risk.';
+  if(invalidTradeDates) matrixNote.textContent += ' ' + invalidTradeDates + ' trade date' + (invalidTradeDates === 1 ? ' was' : 's were') + ' unavailable.';
+  front.appendChild(matrixNote);
+  front.appendChild(createDeskSessionFlipButton('Click to see win-rate bars',false));
+
+  const backTitle = document.createElement('h5');
+  backTitle.className = 'desk-session-face-title';
+  backTitle.textContent = 'Win rate by session';
+  back.appendChild(backTitle);
+  const bars = document.createElement('div');
+  bars.className = 'desk-session-bars';
+  const sessionsWithPnl = sessions.filter(session=>session.knownPnlTrades > 0);
+  sessions.forEach(session=>{
+    const row = document.createElement('div');
+    row.className = 'desk-session-bar-row';
+    const name = document.createElement('span');
+    name.className = 'desk-session-bar-name';
+    name.textContent = session.name;
+    const track = document.createElement('div');
+    track.className = 'desk-session-bar-track';
+    track.setAttribute('role','meter');
+    track.setAttribute('aria-label',session.name + ' win rate');
+    track.setAttribute('aria-valuemin','0');
+    track.setAttribute('aria-valuemax','100');
+    const winRate = session.knownPnlTrades
+      ? session.wins / session.knownPnlTrades * 100
+      : null;
+    if(winRate !== null){
+      track.setAttribute('aria-valuenow',String(winRate));
+      const fill = document.createElement('div');
+      fill.className = 'desk-session-bar-fill' + (winRate < 50 ? ' is-low' : '');
+      fill.style.width = winRate + '%';
+      track.appendChild(fill);
+    }else{
+      track.setAttribute('aria-valuetext','No closed trades with recorded P/L');
+    }
+    const value = document.createElement('strong');
+    value.className = 'desk-session-bar-value' + (winRate !== null && winRate < 50 ? ' is-low' : '');
+    value.textContent = winRate === null ? '—' : winRate.toFixed(0) + '%';
+    row.append(name,track,value);
+    bars.appendChild(row);
+  });
+  if(!sessionsWithPnl.length){
+    const empty = document.createElement('div');
+    empty.className = 'desk-session-empty';
+    empty.textContent = trades.length ? 'No closed trades with valid dates and recorded P/L.' : 'No closed trades yet.';
+    bars.replaceChildren(empty);
+  }
+  back.appendChild(bars);
+  const barsNote = document.createElement('div');
+  barsNote.className = 'desk-session-note';
+  barsNote.textContent = 'Win rate uses only closed trades with recorded realized P/L.';
+  back.appendChild(barsNote);
+  back.appendChild(createDeskSessionFlipButton('Back to session matrix',true));
+
+  inner.append(front,back);
+  flipCard.appendChild(inner);
+  container.appendChild(flipCard);
+}
+function formatDeskSessionPnl(value){
+  const absoluteValue = Math.abs(value);
+  const amount = absoluteValue < 1
+    ? absoluteValue.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})
+    : absoluteValue.toLocaleString(undefined,{maximumFractionDigits:0});
+  const sign = value > 0 ? '+' : value < 0 ? '−' : '';
+  return sign + '$' + amount;
+}
+function createDeskSessionFlipButton(label,isBack){
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'desk-session-flip-button';
+  button.dataset.sessionFlip = isBack ? 'back' : 'front';
+  button.setAttribute('aria-label',isBack ? 'Show session edge matrix' : 'Show win rate by session');
+  button.textContent = label;
+  return button;
+}
+document.getElementById('deskSessionAnalytics').addEventListener('click',event=>{
+  const card = event.target.closest('.desk-session-card');
+  if(!card) return;
+  const button = event.target.closest('button[data-session-flip]');
+  const isFlipped = !card.classList.contains('is-flipped');
+  card.classList.toggle('is-flipped',isFlipped);
+  card.querySelectorAll('.desk-session-face').forEach(face=>{
+    const isVisible = face.classList.contains('desk-session-face-back') === isFlipped;
+    face.setAttribute('aria-hidden',String(!isVisible));
+    face.inert = !isVisible;
+  });
+  if(button){
+    card.querySelector('.desk-session-face' + (isFlipped ? '.desk-session-face-back' : ':not(.desk-session-face-back)') + ' .desk-session-flip-button').focus();
+  }
+});
 function renderDeskPositions(positions){
   const body = document.getElementById('deskPositionsTable');
   const wrapper = document.getElementById('deskPositionsTableWrap');
   const empty = document.getElementById('deskPositionsEmpty');
+  const note = document.getElementById('deskPositionsNote');
+  const updatedAt = new Date();
+  const timestamp = new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(updatedAt);
+  deskPositionsLastUpdatedAt = updatedAt;
+  note.classList.remove('desk-panel-error','desk-pnl-positive','desk-pnl-negative');
+  note.title = 'Last server update: ' + timestamp;
   body.replaceChildren();
   wrapper.hidden = positions.length === 0;
   empty.hidden = positions.length > 0;
   if(!positions.length){
     setDeskPanelEmpty('deskPositionsEmpty','No open positions');
-    document.getElementById('deskPositionsNote').textContent = '0 open';
+    note.textContent = '0 open · Auto-refresh · 5s';
     return;
   }
+  const hasLivePnl = positions.every(position=>
+    position.market_data_status === 'live' &&
+    deskNumber(position.current_price) !== null &&
+    deskNumber(position.floating_pnl) !== null
+  );
+  const totalFloatingPnl = hasLivePnl
+    ? positions.reduce((total,position)=>total + Number(position.floating_pnl),0)
+    : null;
   positions.forEach(position=>{
     const row = document.createElement('tr');
     const side = String(position.side || '—').toUpperCase();
-    const pnl = deskNumber(position.floating_pnl);
+    const isLive = position.market_data_status === 'live';
+    const pnl = isLive ? deskNumber(position.floating_pnl) : null;
     appendDeskTableCell(row,position.symbol || '—');
     appendDeskTableCell(row,side,side === 'BUY' ? 'desk-side-buy' : side === 'SELL' ? 'desk-side-sell' : '');
     appendDeskTableCell(row,deskPrice(position.volume));
     appendDeskTableCell(row,deskPrice(position.open_price));
-    appendDeskTableCell(row,deskPrice(position.current_price));
-    appendDeskTableCell(row,deskMoney(position.floating_pnl),pnl === null ? '' : pnl >= 0 ? 'desk-pnl-positive' : 'desk-pnl-negative');
+    appendDeskTableCell(row,isLive ? deskPrice(position.current_price) : '—');
+    appendDeskTableCell(row,deskMoney(pnl),pnl === null ? '' : pnl >= 0 ? 'desk-pnl-positive' : 'desk-pnl-negative');
     body.appendChild(row);
   });
-  document.getElementById('deskPositionsNote').textContent = positions.length + ' open';
+  note.textContent = positions.length + ' open · ' +
+    (hasLivePnl
+      ? deskMoney(totalFloatingPnl) + ' floating · ' + (deskLiveEventsConnected ? 'Live stream' : 'Live · 5s fallback')
+      : 'Live quote unavailable · 5s');
+  if(hasLivePnl && totalFloatingPnl !== 0){
+    note.classList.add(totalFloatingPnl > 0 ? 'desk-pnl-positive' : 'desk-pnl-negative');
+  }
 }
 function renderDeskHistory(trades){
   const body = document.getElementById('deskHistoryTable');
@@ -3340,6 +4013,7 @@ function renderDeskHistory(trades){
 async function fetchDeskTradingData(path,accountId){
   const response = await fetch(API_BASE + path + '?account_id=' + encodeURIComponent(accountId),{
     credentials:'same-origin',
+    cache:'no-store',
     headers:await firebaseApiHeaders({Accept:'application/json'})
   });
   let payload;
@@ -3348,6 +4022,188 @@ async function fetchDeskTradingData(path,accountId){
   if(!response.ok || payload && payload.success === false) throw new Error(payload && payload.error ? payload.error : 'Trading service unavailable (' + response.status + ').');
   return payload;
 }
+function updateDeskLiveAccountMetrics(account,positions){
+  if(account && typeof account === 'object'){
+    deskLiveAccountSnapshot = {...(deskLiveAccountSnapshot || {}),...account};
+  }
+  if(!deskLiveAccountSnapshot) return;
+  const balance = deskNumber(deskLiveAccountSnapshot.balance);
+  const positionsAreLive = Array.isArray(positions) && positions.every(position=>
+    position.market_data_status === 'live' &&
+    deskNumber(position.current_price) !== null &&
+    deskNumber(position.floating_pnl) !== null
+  );
+  const equity = deskLiveAccountSnapshot.market_data_status === 'live' && positionsAreLive
+    ? deskNumber(deskLiveAccountSnapshot.equity)
+    : null;
+  document.getElementById('dBalance').textContent = deskMoney(balance);
+  document.getElementById('dEquity').textContent = deskMoney(equity);
+  if(deskPerformanceState){
+    if(balance !== null) deskPerformanceState.currentBalance = balance;
+    deskPerformanceState.currentEquity = equity;
+    renderDeskPerformanceSummary(deskPerformanceState);
+  }
+  if(deskObjectivesState){
+    deskObjectivesState.account = deskLiveAccountSnapshot;
+    renderDeskObjectives();
+  }
+}
+function stopDeskLiveEvents(){
+  deskLiveEventsGeneration += 1;
+  deskLiveEventsConnected = false;
+  if(deskLiveEventsRetryTimer !== null) clearTimeout(deskLiveEventsRetryTimer);
+  deskLiveEventsRetryTimer = null;
+  if(deskLiveEventsSocket){
+    deskLiveEventsSocket.onclose = null;
+    deskLiveEventsSocket.onerror = null;
+    deskLiveEventsSocket.onmessage = null;
+    deskLiveEventsSocket.close();
+    deskLiveEventsSocket = null;
+  }
+}
+async function requestDeskLiveEventTicket(accountId){
+  const response = await fetch(API_BASE + '/api/trading/events/token',{
+    method:'POST',
+    credentials:'same-origin',
+    cache:'no-store',
+    headers:await firebaseApiHeaders({Accept:'application/json','Content-Type':'application/json'}),
+    body:JSON.stringify({account_id:accountId})
+  });
+  let payload;
+  try{ payload = await response.json(); }
+  catch{ throw new Error('The live trading feed returned an invalid ticket response.'); }
+  if(!response.ok || !payload || payload.success === false || typeof payload.ticket !== 'string'){
+    throw new Error(payload && payload.error ? payload.error : 'The live trading feed is unavailable (' + response.status + ').');
+  }
+  return payload.ticket;
+}
+function applyDeskAccountMarkEvent(event,requestId,tradingAccountId){
+  if(requestId !== deskTradingRequestId ||
+    event.account_id !== tradingAccountId ||
+    event.type !== 'ACCOUNT_MARK_UPDATED' ||
+    !Array.isArray(event.positions)){
+    return;
+  }
+  const positionsById = new Map(deskLivePositions.map(position=>[position.id,position]));
+  event.positions.forEach(mark=>{
+    if(!mark || typeof mark.id !== 'string' || !positionsById.has(mark.id)) return;
+    positionsById.set(mark.id,{...positionsById.get(mark.id),...mark});
+  });
+  deskLivePositions = [...positionsById.values()];
+  renderDeskPositions(deskLivePositions);
+  updateDeskLiveAccountMetrics(event.account,deskLivePositions);
+  const note = document.getElementById('deskPositionsNote');
+  if(event.timestamp){
+    note.title = 'Last market tick: ' + new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date(event.timestamp));
+  }
+}
+function startDeskLiveEvents(accountId,tradingAccountId,requestId){
+  stopDeskLiveEvents();
+  const generation = deskLiveEventsGeneration;
+  const scheduleReconnect = delay=>{
+    if(generation !== deskLiveEventsGeneration || requestId !== deskTradingRequestId) return;
+    deskLiveEventsRetryTimer = setTimeout(connect,delay);
+  };
+  const connect = async ()=>{
+    if(generation !== deskLiveEventsGeneration ||
+      requestId !== deskTradingRequestId ||
+      document.visibilityState !== 'visible'){
+      return;
+    }
+    try{
+      const ticket = await requestDeskLiveEventTicket(accountId);
+      if(generation !== deskLiveEventsGeneration || requestId !== deskTradingRequestId) return;
+      const socket = new WebSocket(deskTradingEventsUrl + '?ticket=' + encodeURIComponent(ticket));
+      deskLiveEventsSocket = socket;
+      socket.onopen = ()=>{
+        if(generation === deskLiveEventsGeneration && requestId === deskTradingRequestId){
+          deskLiveEventsConnected = true;
+          if(deskLivePositions.length) renderDeskPositions(deskLivePositions);
+        }
+      };
+      socket.onmessage = message=>{
+        try{
+          const event = JSON.parse(message.data);
+          if(event.account_id !== tradingAccountId) return;
+          if(event.type === 'ACCOUNT_MARK_UPDATED'){
+            applyDeskAccountMarkEvent(event,requestId,tradingAccountId);
+          }else if(['POSITION_OPENED','POSITION_CLOSED','POSITION_MODIFIED'].includes(event.type)){
+            refreshDeskPositions(deskPositionsPollAccountId,requestId);
+          }
+        }catch(error){
+          console.error('Unable to apply live account mark update:',error);
+        }
+      };
+      socket.onclose = ()=>{
+        if(generation !== deskLiveEventsGeneration) return;
+        deskLiveEventsSocket = null;
+        deskLiveEventsConnected = false;
+        if(deskLivePositions.length) renderDeskPositions(deskLivePositions);
+        scheduleReconnect(2000);
+      };
+      socket.onerror = ()=>socket.close();
+    }catch(error){
+      if(generation !== deskLiveEventsGeneration || requestId !== deskTradingRequestId) return;
+      console.error('Unable to connect to the live account mark feed:',error);
+      scheduleReconnect(5000);
+    }
+  };
+  void connect();
+}
+function stopDeskPositionsPolling(){
+  if(deskPositionsPollTimer !== null) clearInterval(deskPositionsPollTimer);
+  deskPositionsPollTimer = null;
+  deskPositionsPollAccountId = null;
+  deskPositionsPollOwnerRequestId = null;
+  stopDeskLiveEvents();
+}
+async function refreshDeskPositions(accountId,requestId){
+  if(requestId !== deskTradingRequestId ||
+    requestId !== deskPositionsPollOwnerRequestId ||
+    document.visibilityState !== 'visible' ||
+    deskPositionsPollInFlightRequestId === requestId){
+    return;
+  }
+  deskPositionsPollInFlightRequestId = requestId;
+  try{
+    const result = await fetchDeskTradingData('/api/trading/accounts',accountId);
+    if(requestId !== deskTradingRequestId || requestId !== deskPositionsPollOwnerRequestId) return;
+    if(!Array.isArray(result.positions)) throw new Error('The trading service returned invalid open-position data.');
+    deskLivePositions = result.positions;
+    renderDeskPositions(result.positions);
+    updateDeskLiveAccountMetrics(result.account,result.positions);
+  }catch(error){
+    if(requestId !== deskTradingRequestId || requestId !== deskPositionsPollOwnerRequestId) return;
+    const note = document.getElementById('deskPositionsNote');
+    note.textContent = deskPositionsLastUpdatedAt
+      ? 'Update failed · showing last values'
+      : 'Live update unavailable · retrying';
+    note.title = error.message + (deskPositionsLastUpdatedAt
+      ? ' Last successful update: ' + new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(deskPositionsLastUpdatedAt)
+      : '');
+    note.classList.remove('desk-pnl-positive','desk-pnl-negative');
+    note.classList.add('desk-panel-error');
+  }finally{
+    if(deskPositionsPollInFlightRequestId === requestId) deskPositionsPollInFlightRequestId = null;
+  }
+}
+function startDeskPositionsPolling(accountId,requestId){
+  stopDeskPositionsPolling();
+  deskPositionsPollAccountId = accountId;
+  deskPositionsPollOwnerRequestId = requestId;
+  deskPositionsPollTimer = setInterval(
+    ()=>refreshDeskPositions(accountId,requestId),
+    deskPositionsRefreshIntervalMs
+  );
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState === 'visible' && deskPositionsPollAccountId && deskPositionsPollOwnerRequestId !== null){
+    refreshDeskPositions(deskPositionsPollAccountId,deskPositionsPollOwnerRequestId);
+    if(!deskLiveEventsSocket && deskLiveAccountSnapshot && deskPositionsPollAccountId){
+      startDeskLiveEvents(deskPositionsPollAccountId,deskLiveAccountSnapshot.id,deskPositionsPollOwnerRequestId);
+    }
+  }
+});
 let deskPerformanceState = null;
 function setDeskPerformanceEmpty(message,isError=false){
   const chart = document.getElementById('deskPerformanceChart');
@@ -3642,6 +4498,12 @@ if(typeof ResizeObserver !== 'undefined'){
 }
 async function loadDeskTradingData(data){
   const requestId = ++deskTradingRequestId;
+  deskObjectivesState = {data,account:null,rules:null,trades:null};
+  renderDeskObjectives();
+  stopDeskPositionsPolling();
+  deskLivePositions = [];
+  deskLiveAccountSnapshot = null;
+  deskPositionsLastUpdatedAt = null;
   resetDeskPerformance();
   const positionsBody = document.getElementById('deskPositionsTable');
   const historyBody = document.getElementById('deskHistoryTable');
@@ -3649,7 +4511,9 @@ async function loadDeskTradingData(data){
   historyBody.replaceChildren();
   document.getElementById('deskPositionsTableWrap').hidden = true;
   document.getElementById('deskHistoryTableWrap').hidden = true;
-  document.getElementById('deskPositionsNote').textContent = '';
+  document.getElementById('deskPositionsNote').textContent = 'Auto-refresh · 5s';
+  document.getElementById('deskPositionsNote').classList.remove('desk-panel-error','desk-pnl-positive','desk-pnl-negative');
+  document.getElementById('deskPositionsNote').removeAttribute('title');
   document.getElementById('deskHistoryNote').textContent = 'Latest closed trades';
   document.getElementById('deskStatisticsGrid').replaceChildren();
   const statisticsEmpty = document.getElementById('deskStatisticsEmpty');
@@ -3657,27 +4521,33 @@ async function loadDeskTradingData(data){
   statisticsEmpty.classList.remove('desk-panel-error');
   statisticsEmpty.hidden = false;
   document.getElementById('deskStatisticsNote').textContent = 'Closed trades';
-  const activityCalendar = document.getElementById('deskActivityCalendar');
-  activityCalendar.textContent = 'Loading trading activity…';
+  const sessionAnalytics = document.getElementById('deskSessionAnalytics');
+  sessionAnalytics.textContent = 'Loading session analytics…';
+  document.getElementById('deskActivityCalendar').textContent = 'Loading trading activity…';
   ['deskPositionsEmpty','deskHistoryEmpty'].forEach(id=>setDeskPanelEmpty(id,'Loading account activity…'));
   if(data.status !== 'active' || data.tradingEnabled !== true){
     const message = 'Trading is not enabled for this account.';
+    document.getElementById('deskPositionsNote').textContent = 'Not active';
     setDeskPerformanceEmpty(message);
     setDeskPanelEmpty('deskPositionsEmpty',message);
     setDeskPanelEmpty('deskHistoryEmpty',message);
     document.getElementById('deskStatisticsEmpty').textContent = message;
     document.getElementById('deskStatisticsEmpty').hidden = false;
+    document.getElementById('deskSessionAnalytics').textContent = message;
     document.getElementById('deskActivityCalendar').textContent = message;
     return;
   }
   if(!data.accountId){
     const message = 'Trading account identifier is unavailable.';
+    document.getElementById('deskPositionsNote').textContent = 'Live refresh unavailable';
+    document.getElementById('deskPositionsNote').classList.add('desk-panel-error');
     setDeskPerformanceEmpty(message,true);
     setDeskPanelEmpty('deskPositionsEmpty',message,true);
     setDeskPanelEmpty('deskHistoryEmpty',message,true);
     document.getElementById('deskStatisticsEmpty').textContent = message;
     document.getElementById('deskStatisticsEmpty').classList.add('desk-panel-error');
     document.getElementById('deskStatisticsEmpty').hidden = false;
+    document.getElementById('deskSessionAnalytics').textContent = message;
     document.getElementById('deskActivityCalendar').textContent = message;
     return;
   }
@@ -3686,12 +4556,21 @@ async function loadDeskTradingData(data){
     fetchDeskTradingData('/api/trading/trades',data.accountId)
   ]);
   if(requestId !== deskTradingRequestId) return;
+  deskObjectivesState.account = accountResult.status === 'fulfilled' ? accountResult.value.account : null;
+  deskObjectivesState.rules = accountResult.status === 'fulfilled' ? accountResult.value.rules : null;
+  deskObjectivesState.trades = tradesResult.status === 'fulfilled' && Array.isArray(tradesResult.value.trades) ? tradesResult.value.trades : null;
+  renderDeskObjectives();
   if(accountResult.status === 'fulfilled' && Array.isArray(accountResult.value.positions)){
+    deskLivePositions = accountResult.value.positions;
     renderDeskPositions(accountResult.value.positions);
+    updateDeskLiveAccountMetrics(accountResult.value.account,accountResult.value.positions);
   }else{
     const message = accountResult.status === 'rejected' ? accountResult.reason.message : 'The trading service returned invalid open-position data.';
     setDeskPanelEmpty('deskPositionsEmpty',message,true);
+    document.getElementById('deskPositionsNote').textContent = 'Live update unavailable · retrying';
+    document.getElementById('deskPositionsNote').classList.add('desk-panel-error');
   }
+  startDeskPositionsPolling(data.accountId,requestId);
   if(accountResult.status === 'fulfilled' && tradesResult.status === 'fulfilled' && Array.isArray(tradesResult.value.trades)){
     renderDeskPerformance(accountResult.value.account,tradesResult.value.trades,data.accountId);
   }else{
@@ -3700,6 +4579,7 @@ async function loadDeskTradingData(data){
   }
   if(tradesResult.status === 'fulfilled' && Array.isArray(tradesResult.value.trades)){
     renderDeskStatistics(tradesResult.value.trades);
+    renderDeskSessionAnalytics(tradesResult.value.trades);
     renderDeskActivity(tradesResult.value.trades);
     renderDeskHistory(tradesResult.value.trades);
   }else{
@@ -3707,12 +4587,21 @@ async function loadDeskTradingData(data){
     document.getElementById('deskStatisticsEmpty').textContent = message;
     document.getElementById('deskStatisticsEmpty').classList.add('desk-panel-error');
     document.getElementById('deskStatisticsEmpty').hidden = false;
+    document.getElementById('deskSessionAnalytics').textContent = message;
     document.getElementById('deskActivityCalendar').textContent = message;
     setDeskPanelEmpty('deskHistoryEmpty',message,true);
   }
+  updateDeskLiveAccountMetrics(deskLiveAccountSnapshot,deskLivePositions);
+  if(accountResult.status === 'fulfilled' && accountResult.value.account && accountResult.value.account.id){
+    startDeskLiveEvents(data.accountId,accountResult.value.account.id,requestId);
+  }
 }
 const accSelectEl = document.getElementById('accSelect');
-if(accSelectEl) accSelectEl.addEventListener('change',()=>{ renderAccount(); renderRewardsCertificate(); });
+if(accSelectEl) accSelectEl.addEventListener('change',()=>{
+  syncDashboardAccountPicker(getAccounts());
+  renderAccount();
+  renderRewardsCertificate();
+});
 
 const payoutRequestPopup = document.getElementById('payoutRequestPopup');
 const payoutRequestButton = document.getElementById('payoutBtn');
