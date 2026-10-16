@@ -261,6 +261,23 @@ def firestore_json(value):
     return value
 
 
+def is_registration_profile_complete(profile):
+    if not isinstance(profile, dict):
+        return False
+    first_name = str(profile.get("firstName", "")).strip()
+    last_name = str(profile.get("lastName", "")).strip()
+    date_of_birth = str(profile.get("dateOfBirth", "")).strip()
+    country = str(profile.get("country", "")).strip()
+    phone = str(profile.get("phone", "")).strip()
+    return bool(
+        re.fullmatch(r"[A-Za-z][A-Za-z' -]{1,59}", first_name)
+        and re.fullmatch(r"[A-Za-z][A-Za-z' -]{1,59}", last_name)
+        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_of_birth)
+        and re.fullmatch(r"[A-Z]{2}", country)
+        and re.fullmatch(r"\+[1-9]\d{7,14}", phone)
+    )
+
+
 def read_json_object():
     payload = request.get_json(silent=True)
     return payload if isinstance(payload, dict) else {}
@@ -983,9 +1000,62 @@ def logout():
 @app.get("/api/auth/me")
 @firebase_auth_required
 def auth_status():
-    profile = user_document(g.firebase_uid).get().to_dict() or {}
-    email = g.firebase_claims.get("email") or profile.get("email")
-    return jsonify(authenticated=True, uid=g.firebase_uid, email=email, profile=firestore_json(profile))
+    uid = g.firebase_uid
+    try:
+        profile_ref = user_document(uid)
+        profile_snapshot = profile_ref.get()
+        profile = profile_snapshot.to_dict() or {}
+        purchase_documents = list(profile_ref.collection("purchases").limit(5).stream())
+        account_documents = list(profile_ref.collection("accounts").limit(1).stream())
+        has_existing_records = bool(purchase_documents or account_documents)
+
+        if not profile_snapshot.exists:
+            claims = g.firebase_claims
+            verified_email = claims.get("email") if claims.get("email_verified") is True else None
+            recovered_profile = {
+                "createdAt": firestore.SERVER_TIMESTAMP,
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+            }
+            if isinstance(verified_email, str) and re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", verified_email.strip()):
+                recovered_profile["email"] = verified_email.strip().lower()
+            display_name = None
+            for purchase_document in purchase_documents:
+                purchase = purchase_document.to_dict() or {}
+                if purchase.get("ownerUid") != uid:
+                    continue
+                if not recovered_profile.get("email"):
+                    stored_email = purchase.get("userEmail")
+                    if isinstance(stored_email, str) and re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", stored_email.strip()):
+                        recovered_profile["email"] = stored_email.strip().lower()
+                stored_name = purchase.get("username")
+                if isinstance(stored_name, str) and stored_name.strip():
+                    display_name = stored_name.strip()
+                    break
+            if not display_name:
+                display_name = claims.get("name")
+            if isinstance(display_name, str) and display_name.strip():
+                recovered_profile["displayName"] = display_name.strip()
+            try:
+                profile_ref.create(recovered_profile)
+                profile = {key: value for key, value in recovered_profile.items() if key not in {"createdAt", "updatedAt"}}
+            except AlreadyExists:
+                profile = profile_ref.get().to_dict() or {}
+
+        email = g.firebase_claims.get("email") or profile.get("email")
+        registration_complete = (
+            is_registration_profile_complete(profile)
+            or has_existing_records
+        )
+        return jsonify(
+            authenticated=True,
+            uid=uid,
+            email=email,
+            profile=firestore_json(profile),
+            registrationComplete=registration_complete,
+        )
+    except Exception as error:
+        app.logger.exception("Could not load authenticated user profile")
+        return firebase_service_error("Firestore", error)
 
 
 @app.get("/api/accounts")

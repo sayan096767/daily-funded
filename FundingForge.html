@@ -349,6 +349,13 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .password-rule.valid::before{content:'✓'; color:var(--green); font-weight:800;}
   .registration-submit{width:100%; justify-content:center; margin-top:4px;}
   .registration-submit:disabled{opacity:.55; cursor:wait;}
+  .registration-auth-divider{display:flex; align-items:center; gap:12px; margin:17px 0 13px; color:var(--sub-dim); font-size:9px; font-weight:700; letter-spacing:.1em;}
+  .registration-auth-divider::before,.registration-auth-divider::after{content:''; flex:1; height:1px; background:var(--panel-b);}
+  .registration-google{display:flex; align-items:center; justify-content:center; gap:10px; width:100%; min-height:42px; padding:9px 14px; border:1px solid #46534b; border-radius:5px; background:#f8faf9; color:#202722; font:600 12px 'Inter',system-ui,sans-serif; cursor:pointer; transition:background .16s ease,border-color .16s ease;}
+  .registration-google:hover{border-color:#8d9a91; background:#edf1ee;}
+  .registration-google:focus-visible{outline:2px solid var(--green); outline-offset:2px;}
+  .registration-google:disabled{opacity:.6; cursor:wait;}
+  .registration-google svg{width:17px; height:17px; flex:0 0 auto;}
   .registration-status{min-height:18px; margin-top:12px; color:var(--sub); font-size:11px; line-height:1.5;}
   .registration-status.error{color:#ef8c7d;}
   .registration-account{margin-top:15px; color:var(--sub); text-align:center; font-size:11px;}
@@ -1009,26 +1016,28 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
           <input id="registrationPhone" name="phone" type="tel" autocomplete="tel-national" inputmode="tel" maxlength="15" placeholder="Mobile number" required>
         </div>
       </div>
-      <div class="registration-field">
+      <div class="registration-field" id="registrationEmailField">
         <label for="registrationEmail">Email address</label>
         <input id="registrationEmail" name="email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.com" required>
       </div>
-      <div class="registration-field">
+      <div class="registration-field" id="registrationPasswordField">
         <label for="registrationPassword">Password</label>
         <input id="registrationPassword" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" placeholder="At least 8 characters" required>
       </div>
-      <div class="password-rules" aria-live="polite" aria-label="Password requirements">
+      <div class="password-rules" id="registrationPasswordRules" aria-live="polite" aria-label="Password requirements">
         <span class="password-rule" data-rule="length">8 or more characters</span>
         <span class="password-rule" data-rule="uppercase">One uppercase letter</span>
         <span class="password-rule" data-rule="lowercase">One lowercase letter</span>
         <span class="password-rule" data-rule="number">One number</span>
         <span class="password-rule" data-rule="symbol">One symbol</span>
       </div>
-      <div class="registration-field">
+      <div class="registration-field" id="registrationPasswordConfirmField">
         <label for="registrationPasswordConfirm">Confirm password</label>
         <input id="registrationPasswordConfirm" name="passwordConfirm" type="password" autocomplete="new-password" minlength="8" maxlength="128" placeholder="Enter your password again" required>
       </div>
       <button class="btn btn-primary registration-submit" id="registrationSubmit" type="submit">Create account <span aria-hidden="true">→</span></button>
+      <div class="registration-auth-divider" aria-hidden="true">OR</div>
+      <button class="registration-google" id="registrationGoogleSignIn" type="button"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5.1c-1.8 1.2-4 1.9-6.9 1.9-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44Z"/><path fill="#FBBC05" d="M12.6 27.5a12 12 0 0 1 0-7v-5.3H5.8a20 20 0 0 0 0 17.6l6.8-5.3Z"/><path fill="#EA4335" d="M24 12.1c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 6.1 29.5 4 24 4A20 20 0 0 0 5.8 15.2l6.8 5.3c1.6-4.8 6.1-8.4 11.4-8.4Z"/></svg>Continue with Google</button>
       <p class="registration-status" id="registrationStatus" role="status" aria-live="polite"></p>
     </form>
     <p class="registration-account" id="registrationAccountPrompt">Already have an account? <button type="button" id="showLogin">Sign in</button></p>
@@ -1043,6 +1052,8 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
         <input id="loginPassword" name="password" type="password" autocomplete="current-password" maxlength="128" placeholder="Your password" required>
       </div>
       <button class="btn btn-primary registration-submit" id="loginSubmit" type="submit">Sign in <span aria-hidden="true">→</span></button>
+      <div class="registration-auth-divider" aria-hidden="true">OR</div>
+      <button class="registration-google" id="loginGoogleSignIn" type="button"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5.1c-1.8 1.2-4 1.9-6.9 1.9-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44Z"/><path fill="#FBBC05" d="M12.6 27.5a12 12 0 0 1 0-7v-5.3H5.8a20 20 0 0 0 0 17.6l6.8-5.3Z"/><path fill="#EA4335" d="M24 12.1c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 6.1 29.5 4 24 4A20 20 0 0 0 5.8 15.2l6.8 5.3c1.6-4.8 6.1-8.4 11.4-8.4Z"/></svg>Continue with Google</button>
       <p class="registration-status" id="loginStatus" role="status" aria-live="polite"></p>
       <p class="registration-account">New here? <button type="button" id="showRegistration">Create an account</button></p>
     </form>
@@ -1962,17 +1973,29 @@ if(dashboardAccountAction){
 let resolveFirebaseAuthState;
 const firebaseAuthStateReady = new Promise(resolve=>{ resolveFirebaseAuthState = resolve; });
 let firebaseAuthStateInitialized = false;
+let googleProfileRouteUid = '';
+let googleProfileRoutePromise = null;
 if(firebaseAuth){
   firebaseAuthPersistenceReady.then(()=>{
     firebaseAuth.onAuthStateChanged(user=>{
       firebaseCurrentUser = user;
       updateFirebaseAccountControls(user);
       updateDashboardGreeting(user);
+      if(!user){
+        googleProfileRouteUid = '';
+        googleProfileRoutePromise = null;
+      }
       if(firebaseAuthStateInitialized) return;
       firebaseAuthStateInitialized = true;
       resolveFirebaseAuthState(user);
       const authActionParams = new URLSearchParams(window.location.search);
-      if(user && !authActionParams.has('oobCode') && !authActionParams.has('reset_token')) openDashboard();
+      if(user && !authActionParams.has('oobCode') && !authActionParams.has('reset_token')){
+        if(Array.isArray(user.providerData) && user.providerData.some(provider=>provider.providerId === 'google.com')){
+          continueWithGoogleUser(user).catch(error=>showGoogleProfileCheckError(error));
+        }else{
+          openDashboard();
+        }
+      }
     },error=>{
       console.error('Firebase auth state could not be restored:',error);
       if(!firebaseAuthStateInitialized){
@@ -1997,7 +2020,10 @@ const resetPasswordForm = document.getElementById('resetPasswordForm');
 const loginStatus = document.getElementById('loginStatus');
 const registrationTitle = document.getElementById('registrationTitle');
 const registrationIntro = document.querySelector('.registration-panel>p');
+const registrationGoogleSignIn = document.getElementById('registrationGoogleSignIn');
+const loginGoogleSignIn = document.getElementById('loginGoogleSignIn');
 let pendingResetToken = '';
+let googleRegistrationMode = false;
 function hideAuthForms(){
   registrationForm.style.display = 'none';
   loginForm.style.display = 'none';
@@ -2006,7 +2032,150 @@ function hideAuthForms(){
   document.getElementById('registrationAccountPrompt').style.display = 'none';
   document.getElementById('forgotPassword').style.display = 'none';
 }
+function setGoogleRegistrationMode(enabled,user=null,profile={}){
+  googleRegistrationMode = enabled;
+  const emailField = document.getElementById('registrationEmailField');
+  const passwordField = document.getElementById('registrationPasswordField');
+  const passwordRules = document.getElementById('registrationPasswordRules');
+  const passwordConfirmField = document.getElementById('registrationPasswordConfirmField');
+  const emailInput = document.getElementById('registrationEmail');
+  const passwordConfirm = document.getElementById('registrationPasswordConfirm');
+  [emailField,passwordField,passwordRules,passwordConfirmField].forEach(field=>{
+    field.style.display = enabled ? 'none' : '';
+  });
+  emailInput.required = !enabled;
+  registrationPassword.required = !enabled;
+  passwordConfirm.required = !enabled;
+  const registrationSubmit = document.getElementById('registrationSubmit');
+  registrationSubmit.firstChild.textContent = enabled ? 'Complete profile' : 'Create account ';
+  registrationSubmit.lastElementChild.hidden = enabled;
+  if(!enabled) return;
+
+  const displayName = (user && typeof user.displayName === 'string' ? user.displayName : '').trim().split(/\s+/);
+  const firstName = typeof profile.firstName === 'string' ? profile.firstName.trim() : '';
+  const lastName = typeof profile.lastName === 'string' ? profile.lastName.trim() : '';
+  document.getElementById('registrationFirstName').value = firstName || displayName.shift() || '';
+  document.getElementById('registrationLastName').value = lastName || displayName.join(' ');
+  document.getElementById('registrationDateOfBirth').value = typeof profile.dateOfBirth === 'string' ? profile.dateOfBirth : '';
+  document.getElementById('registrationCountry').value = typeof profile.country === 'string' ? profile.country : '';
+  emailInput.value = user && user.email || '';
+  const countryCode = typeof profile.country === 'string' && countryPhoneCodes[profile.country] ? profile.country : '';
+  const dialCode = countryCode ? countryPhoneCodes[countryCode] : '+91';
+  registrationCountry.value = countryCode;
+  registrationPhoneCode.value = dialCode;
+  const storedPhone = typeof profile.phone === 'string' ? profile.phone : '';
+  document.getElementById('registrationPhone').value = storedPhone.startsWith(dialCode)
+    ? storedPhone.slice(dialCode.length)
+    : storedPhone.replace(/\D/g,'');
+  registrationTitle.textContent = 'Complete your profile';
+  registrationIntro.textContent = 'Add your date of birth, country, and mobile number to finish setting up your account.';
+  const status = document.getElementById('registrationStatus');
+  status.className = 'registration-status';
+  status.textContent = 'Your Google account is signed in. Complete the required profile details to continue.';
+}
+function googleSignInErrorMessage(error){
+  switch(error && error.code){
+    case 'auth/popup-closed-by-user':
+      return 'Google sign-in was cancelled. You can try again or use email and password.';
+    case 'auth/cancelled-popup-request':
+      return 'Another sign-in window is already open. Complete it or close it before trying again.';
+    case 'auth/popup-blocked':
+      return 'Your browser blocked the Google sign-in window. Allow popups for this site and try again.';
+    case 'auth/network-request-failed':
+      return 'A network error interrupted Google sign-in. Check your connection and try again.';
+    case 'auth/account-exists-with-different-credential':
+      return 'An account with this email uses another sign-in method. Sign in with that method; accounts are not linked automatically.';
+    case 'auth/operation-not-allowed':
+      return 'Google sign-in is not enabled for this Firebase project yet.';
+    case 'auth/unauthorized-domain':
+      return 'This website domain is not authorized for Firebase sign-in.';
+    case 'auth/operation-not-supported-in-this-environment':
+      return 'Google popup sign-in is not supported in this browser. Try another browser or use email and password.';
+    default:
+      return 'Google sign-in could not be completed. Please try again.';
+  }
+}
+function isGoogleProfileComplete(profile){
+  if(!profile || typeof profile !== 'object') return false;
+  const firstName = typeof profile.firstName === 'string' ? profile.firstName.trim() : '';
+  const lastName = typeof profile.lastName === 'string' ? profile.lastName.trim() : '';
+  const dateOfBirth = typeof profile.dateOfBirth === 'string' ? profile.dateOfBirth : '';
+  const country = typeof profile.country === 'string' ? profile.country : '';
+  const phone = typeof profile.phone === 'string' ? profile.phone : '';
+  return Boolean(
+    /^[A-Za-z][A-Za-z' -]{1,59}$/.test(firstName)
+    && /^[A-Za-z][A-Za-z' -]{1,59}$/.test(lastName)
+    && /^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)
+    && /^[A-Z]{2}$/.test(country)
+    && /^\+[1-9]\d{7,14}$/.test(phone)
+  );
+}
+function showGoogleProfileCheckError(error){
+  console.error('Could not verify Google user profile:',error);
+  openRegistration();
+  showLoginForm();
+  loginStatus.className = 'registration-status error';
+  loginStatus.textContent = 'Your Google account is signed in, but your profile could not be verified. Check your connection and select Continue with Google to retry.';
+}
+async function continueWithGoogleUser(user){
+  if(!user || !user.uid) throw new Error('Your Google sign-in session is unavailable. Please try again.');
+  if(googleProfileRouteUid === user.uid && googleProfileRoutePromise) return googleProfileRoutePromise;
+  const routePromise = (async()=>{
+    try{
+      const response = await fetch(API_BASE + '/api/auth/me',{
+        credentials:'same-origin',
+        headers:await firebaseApiHeaders({Accept:'application/json'})
+      });
+      if(!response.ok) throw new Error('Profile service returned HTTP ' + response.status + '.');
+      const result = await response.json();
+      if(!result || typeof result !== 'object' || result.uid !== user.uid || !result.profile || typeof result.profile !== 'object' || Array.isArray(result.profile)){
+        throw new Error('Profile service returned an invalid profile.');
+      }
+      const profile = result.profile;
+      if(result.registrationComplete === true || isGoogleProfileComplete(profile)){
+        openDashboard();
+        return;
+      }
+      openRegistration();
+      showRegistrationForm();
+      setGoogleRegistrationMode(true,user,profile);
+    }catch(error){
+      console.error('Google profile verification failed:',error);
+      throw new Error('Your Google account is signed in, but your profile could not be verified. Check your connection and try again.');
+    }
+  })();
+  googleProfileRouteUid = user.uid;
+  googleProfileRoutePromise = routePromise;
+  try{
+    await routePromise;
+  }catch(error){
+    if(googleProfileRoutePromise === routePromise){
+      googleProfileRouteUid = '';
+      googleProfileRoutePromise = null;
+    }
+    throw error;
+  }
+}
+async function handleGoogleSignIn(button,status){
+  button.disabled = true;
+  status.className = 'registration-status';
+  status.textContent = 'Opening Google sign-in…';
+  try{
+    await firebaseAuthPersistenceReady;
+    const provider = new firebase.auth.GoogleAuthProvider();
+    const credential = await requireFirebaseAuth().signInWithPopup(provider);
+    await continueWithGoogleUser(credential.user);
+  }catch(error){
+    status.className = 'registration-status error';
+    status.textContent = error && error.code
+      ? googleSignInErrorMessage(error)
+      : error.message || 'Could not finish signing in. Please try again.';
+  }finally{
+    button.disabled = false;
+  }
+}
 function showLoginForm(){
+  setGoogleRegistrationMode(false);
   hideAuthForms();
   loginForm.style.display = '';
   registrationTitle.textContent = 'Welcome back';
@@ -2016,6 +2185,7 @@ function showLoginForm(){
   document.getElementById('loginEmail').focus();
 }
 function showRegistrationForm(){
+  setGoogleRegistrationMode(false);
   hideAuthForms();
   registrationForm.style.display = '';
   document.getElementById('registrationAccountPrompt').style.display = '';
@@ -2046,6 +2216,8 @@ document.getElementById('showRegistration').addEventListener('click',showRegistr
 document.getElementById('forgotPassword').addEventListener('click',showForgotForm);
 document.getElementById('backToLogin').addEventListener('click',showLoginForm);
 document.getElementById('resetBackToForgot').addEventListener('click',showForgotForm);
+registrationGoogleSignIn.addEventListener('click',()=>handleGoogleSignIn(registrationGoogleSignIn,document.getElementById('registrationStatus')));
+loginGoogleSignIn.addEventListener('click',()=>handleGoogleSignIn(loginGoogleSignIn,loginStatus));
 loginForm.addEventListener('submit',async event=>{
   event.preventDefault();
   const submit = document.getElementById('loginSubmit');
@@ -2378,24 +2550,30 @@ registrationForm.addEventListener('submit',async event=>{
   const confirmation = document.getElementById('registrationPasswordConfirm').value;
   const status = document.getElementById('registrationStatus');
   const submit = document.getElementById('registrationSubmit');
-  if(password !== confirmation){
+  if(!googleRegistrationMode && password !== confirmation){
     status.className = 'registration-status error';
     status.textContent = 'Passwords do not match.';
     return;
   }
   submit.disabled = true;
   status.className = 'registration-status';
-  status.textContent = 'Creating your account…';
+  status.textContent = googleRegistrationMode ? 'Saving your profile…' : 'Creating your account…';
   try{
     await firebaseAuthPersistenceReady;
-    const credential = await requireFirebaseAuth().createUserWithEmailAndPassword(email,password);
-    const displayName = [firstName,lastName].filter(Boolean).join(' ');
-    if(displayName) await credential.user.updateProfile({displayName});
+    if(googleRegistrationMode && !requireFirebaseAuth().currentUser){
+      throw new Error('Your Google sign-in session expired. Please continue with Google again.');
+    }
+    if(!googleRegistrationMode){
+      const credential = await requireFirebaseAuth().createUserWithEmailAndPassword(email,password);
+      const displayName = [firstName,lastName].filter(Boolean).join(' ');
+      if(displayName) await credential.user.updateProfile({displayName});
+    }
     const profileResponse = await fetch(API_BASE + '/api/auth/register',{method:'POST',credentials:'same-origin',headers:await firebaseApiHeaders({'Content-Type':'application/json',Accept:'application/json'}),body:JSON.stringify({firstName,lastName,dateOfBirth,country,phone})});
     const profileResult = await profileResponse.json();
     if(!profileResponse.ok) throw new Error(profileResult.error || 'Could not save your profile.');
     status.className = 'registration-status';
     status.textContent = 'Registration complete. Opening your dashboard…';
+    setGoogleRegistrationMode(false);
     registrationForm.reset();
     openDashboard();
   }catch(error){

@@ -350,6 +350,155 @@ class RegistrationProfileApiTests(unittest.TestCase):
         self.assertTrue(profile_ref.set.call_args.kwargs["merge"])
 
 
+class GoogleProfileApiTests(unittest.TestCase):
+    def setUp(self):
+        self.client = app.test_client()
+        self.uid = "google-user-uid"
+        self.claims = {
+            "uid": self.uid,
+            "email": "google@example.com",
+            "email_verified": True,
+            "name": "Google User",
+        }
+
+    def request_profile(self, profile=None, profile_exists=False, purchases=None, accounts=None, profile_error=None):
+        profile_ref = MagicMock()
+        profile_snapshot = MagicMock()
+        profile_snapshot.exists = profile_exists
+        profile_snapshot.to_dict.return_value = profile
+        profile_ref.get.return_value = profile_snapshot
+        if profile_error:
+            profile_ref.get.side_effect = profile_error
+
+        purchase_collection = MagicMock()
+        purchase_collection.limit.return_value.stream.return_value = purchases or []
+        account_collection = MagicMock()
+        account_collection.limit.return_value.stream.return_value = accounts or []
+        profile_ref.collection.side_effect = lambda name: {
+            "purchases": purchase_collection,
+            "accounts": account_collection,
+        }[name]
+
+        with patch("app.firebase_auth.verify_id_token", return_value=self.claims):
+            with patch("app.get_firebase_app"):
+                with patch("app.user_document", return_value=profile_ref):
+                    response = self.client.get(
+                        "/api/auth/me",
+                        headers={"Authorization": "Bearer test-token"},
+                    )
+        return response, profile_ref
+
+    def test_existing_complete_profile_is_registered_without_writes(self):
+        profile = {
+            "firstName": "Ada",
+            "lastName": "Lovelace",
+            "dateOfBirth": "1815-12-10",
+            "country": "GB",
+            "phone": "+441234567890",
+        }
+
+        response, profile_ref = self.request_profile(profile=profile, profile_exists=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["uid"], self.uid)
+        self.assertTrue(response.get_json()["registrationComplete"])
+        self.assertEqual(response.get_json()["profile"], profile)
+        profile_ref.create.assert_not_called()
+
+    def test_missing_parent_with_existing_purchase_repairs_from_verified_data(self):
+        purchase = MagicMock()
+        purchase.to_dict.return_value = {
+            "ownerUid": self.uid,
+            "username": "Previously Stored Name",
+            "userEmail": "google@example.com",
+        }
+
+        response, profile_ref = self.request_profile(purchases=[purchase])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["registrationComplete"])
+        created_profile = profile_ref.create.call_args.args[0]
+        self.assertEqual(created_profile["email"], "google@example.com")
+        self.assertEqual(created_profile["displayName"], "Previously Stored Name")
+        self.assertNotIn("firstName", created_profile)
+        self.assertNotIn("lastName", created_profile)
+        self.assertNotIn("dateOfBirth", created_profile)
+        self.assertNotIn("country", created_profile)
+        self.assertNotIn("phone", created_profile)
+
+    def test_missing_parent_with_existing_account_is_registered_by_uid(self):
+        account = MagicMock()
+
+        response, profile_ref = self.request_profile(accounts=[account])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["uid"], self.uid)
+        self.assertTrue(response.get_json()["registrationComplete"])
+        self.assertEqual(profile_ref.create.call_args.args[0]["email"], "google@example.com")
+
+    def test_concurrent_profile_creation_uses_the_winning_uid_document(self):
+        missing_snapshot = MagicMock(exists=False)
+        existing_profile = {
+            "firstName": "Ada",
+            "lastName": "Lovelace",
+            "dateOfBirth": "1815-12-10",
+            "country": "GB",
+            "phone": "+441234567890",
+        }
+        winning_snapshot = MagicMock(exists=True)
+        winning_snapshot.to_dict.return_value = existing_profile
+        profile_ref = MagicMock()
+        profile_ref.get.side_effect = [missing_snapshot, winning_snapshot]
+        profile_ref.create.side_effect = app_module.AlreadyExists("profile already created")
+        collections = {
+            "purchases": MagicMock(limit=MagicMock(return_value=MagicMock(stream=MagicMock(return_value=[])))),
+            "accounts": MagicMock(limit=MagicMock(return_value=MagicMock(stream=MagicMock(return_value=[])))),
+        }
+        profile_ref.collection.side_effect = lambda name: collections[name]
+
+        with patch("app.firebase_auth.verify_id_token", return_value=self.claims):
+            with patch("app.get_firebase_app"):
+                with patch("app.user_document", return_value=profile_ref):
+                    response = self.client.get(
+                        "/api/auth/me",
+                        headers={"Authorization": "Bearer test-token"},
+                    )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["registrationComplete"])
+        self.assertEqual(response.get_json()["profile"], existing_profile)
+        profile_ref.create.assert_called_once()
+
+    def test_first_time_google_user_gets_partial_profile_and_completion_required(self):
+        response, profile_ref = self.request_profile()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.get_json()["registrationComplete"])
+        self.assertEqual(
+            profile_ref.create.call_args.args[0]["email"],
+            "google@example.com",
+        )
+        self.assertEqual(
+            profile_ref.create.call_args.args[0]["displayName"],
+            "Google User",
+        )
+
+    def test_incomplete_profile_without_existing_records_requires_completion(self):
+        profile = {"email": "google@example.com", "displayName": "Google User"}
+
+        response, profile_ref = self.request_profile(profile=profile, profile_exists=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.get_json()["registrationComplete"])
+        profile_ref.create.assert_not_called()
+
+    def test_firestore_failure_is_reported_as_service_unavailable(self):
+        response, profile_ref = self.request_profile(profile_error=RuntimeError("temporary failure"))
+
+        self.assertEqual(response.status_code, 503)
+        profile_ref.create.assert_not_called()
+
+
 class FirebaseAdminConfigurationTests(unittest.TestCase):
     def test_local_service_account_file_is_loaded_for_matching_project(self):
         fake_credential = MagicMock(project_id="daily-funded")
