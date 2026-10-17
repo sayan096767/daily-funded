@@ -13,7 +13,7 @@ body{display:grid;place-items:center}
 .b2{right:30px;background:linear-gradient(180deg,#28e0ff77,transparent 75%);animation:b2 7s ease-in-out infinite alternate}
 @keyframes b1{from{transform:rotate(-14deg)}to{transform:rotate(12deg)}}
 @keyframes b2{from{transform:rotate(14deg)}to{transform:rotate(-10deg)}}
-.pt{position:absolute;width:2px;height:2px;border-radius:50%;background:#fff;opacity:0;animation:pt 5s linear infinite}
+.pt{position:absolute;width:2px;height:2px;border-radius:50%;background:rgba(40,224,255,.7);box-shadow:0 0 6px rgba(40,224,255,.8);opacity:0;animation:pt 5s linear infinite}
 @keyframes pt{0%{opacity:0;transform:translateY(0)}20%{opacity:.7}100%{opacity:0;transform:translateY(-60px)}}
 .floor{position:absolute;left:34px;right:34px;top:99px;height:22px;border-radius:50%;background:radial-gradient(ellipse,#ff2d8766,transparent 70%)}
 #cam{position:absolute;inset:0;transform-style:preserve-3d;animation:sw 6s ease-in-out infinite}
@@ -31,7 +31,7 @@ body{display:grid;place-items:center}
 .ly.fr{color:transparent;background:linear-gradient(100deg,#ff9b2f 0,#ff2d87 42%,#ffe6f2 50%,#ff2d87 58%,#b80f64 100%);background-size:260% 100%;-webkit-background-clip:text;background-clip:text;animation:sh 2.6s linear infinite}
 @keyframes sh{from{background-position:130% 0}to{background-position:-130% 0}}
 .sg{position:absolute;left:0;right:0;bottom:9px;display:flex;justify-content:center;gap:5px}
-.sg i{width:36px;height:3px;border-radius:9px;background:#ffffff1c;overflow:hidden;position:relative}
+.sg i{width:36px;height:3px;border-radius:9px;background:rgba(40,224,255,.14);overflow:hidden;position:relative}
 .sg i::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--or),var(--pk));transform:scaleX(0);transform-origin:left;transition:transform .5s}
 .sg i.d::after{transform:scaleX(1)}
 .cf{position:absolute;top:-10px;width:6px;height:9px;border-radius:1px;opacity:0}
@@ -62,7 +62,7 @@ body{display:grid;place-items:center}
 .rain #rain{opacity:1}
 .co{position:absolute;bottom:-14px;width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 30% 28%,#fff4b8,#ffc83d 55%,#b57d00);font:900 8px/12px system-ui;color:#7a5200;text-align:center;box-shadow:0 0 8px #ffc83d88;animation:rs var(--d) linear infinite;animation-delay:var(--dl)}
 @keyframes rs{0%{transform:translateY(0) rotateY(0);opacity:0}10%{opacity:.95}100%{transform:translateY(-175px) rotateY(720deg);opacity:0}}
-.lane{position:absolute;left:20px;right:20px;top:104px;height:2px;background:linear-gradient(90deg,transparent,#ffffff26,transparent);opacity:0;transition:opacity .4s;pointer-events:none}
+.lane{position:absolute;left:20px;right:20px;top:104px;height:2px;background:linear-gradient(90deg,transparent,rgba(40,224,255,.35),transparent);opacity:0;transition:opacity .4s;pointer-events:none}
 .tr .lane{opacity:1}
 .lane i{position:absolute;top:-2px;width:16px;height:6px;border-radius:3px;background:linear-gradient(90deg,transparent,#37f0a0);box-shadow:0 0 8px #37f0a0;animation:pk 1.2s linear infinite;animation-delay:var(--dl)}
 @keyframes pk{from{left:-16px}to{left:100%}}
@@ -103,7 +103,7 @@ var BRAND='Crazy Funded',app=document.getElementById('app'),wd=document.getEleme
 function fitBanner(){app.style.setProperty('--banner-scale',Math.min(1,document.documentElement.clientWidth/347))}
 fitBanner();window.addEventListener('resize',fitBanner,{passive:true});new ResizeObserver(fitBanner).observe(document.documentElement);
 for(var i=0;i<14;i++){var p=document.createElement('i');p.className='pt';p.style.cssText='left:'+(20+Math.random()*300)+'px;top:'+(60+Math.random()*80)+'px;animation-delay:'+(Math.random()*5).toFixed(1)+'s';app.appendChild(p)}
-var cl=['#ff2d87','#ff9b2f','#28e0ff','#37f0a0','#ffffff'];for(var i=0;i<16;i++){var c=document.createElement('i');c.className='cf';c.style.cssText='left:'+(8+i*21)+'px;background:'+cl[i%5]+';--dl:'+(i*.15).toFixed(2)+'s';app.appendChild(c)}
+var cl=['#ff2d87','#ff9b2f','#28e0ff','#37f0a0'];for(var i=0;i<16;i++){var c=document.createElement('i');c.className='cf';c.style.cssText='left:'+(8+i*21)+'px;background:'+cl[i%4]+';--dl:'+(i*.15).toFixed(2)+'s';app.appendChild(c)}
 var T=[['Step 1 / 6','BUY ACCOUNT','<b>$200,000</b> challenge · account created'],['Step 2 / 6','TRADE','Live trade · <b>+$250.00</b>'],['Step 3 / 6','PROFIT','<b>+$18,283.51</b> · 91% of target'],['Step 4 / 6','REQUEST PAYOUT','<b>$18,283.51</b> · USDT TRC20 · Pending…'],['Step 5 / 6','TRANSFER MONEY','Processing your transfer…'],['Thank you for choosing','CRAZY FUNDED','Trade our capital. Keep up to <b>80%</b> of the profit.']],
 D=[3300,3300,3300,4300,4300,6500];
 T.forEach(function(){var s=document.createElement('i');sg.appendChild(s);G.push(s)});
@@ -118,7 +118,7 @@ for(var i=0;i<10;i++){var c=document.createElement('i');c.className='co';c.textC
 for(var i=0;i<4;i++){var q=document.createElement('i');q.style.setProperty('--dl',(i*.3)+'s');lane.appendChild(q)}
 function re(e,c,ms){e.classList.remove(c);void e.offsetWidth;e.classList.add(c);if(ms)setTimeout(function(){e.classList.remove(c)},ms)}
 function burst(cx,cy,n,dist,cols){for(var i=0;i<n;i++){var a=Math.random()*6.283,d=dist*(.5+Math.random()*.7),s=document.createElement('i');s.className='sk';s.style.cssText='left:'+cx+'px;top:'+cy+'px;--dx:'+(Math.cos(a)*d).toFixed(0)+'px;--dy:'+(Math.sin(a)*d*.75).toFixed(0)+'px;--c:'+cols[i%cols.length];spk.appendChild(s);(function(e){setTimeout(function(){e.remove()},950)})(s)}}
-function land(){re(rg,'go');re(fl,'go');re(shk,'go',400);burst(173,66,24,72,['#ff2d87','#ff9b2f','#ffffff','#28e0ff']);var f=wd.querySelector('.fr');if(f)re(f,'gl',320)}
+function land(){re(rg,'go');re(fl,'go');re(shk,'go',400);burst(173,66,24,72,['#ff2d87','#ff9b2f','#28e0ff','#37f0a0']);var f=wd.querySelector('.fr');if(f)re(f,'gl',320)}
 
 (function(){var xs=document.getElementById('xs');
  function ext3(par,x,w,h,n,gap,back,fbg,fhtml,clip,rad,cls){var c=document.createElement('div');c.className='e3 '+(cls||'');c.style.cssText='transform:translate3d('+x+'px,0,0)';par.appendChild(c);
@@ -131,7 +131,7 @@ function land(){re(rg,'go');re(fl,'go');re(shk,'go',400);burst(173,66,24,72,['#f
  var t=document.createElement('div');t.className='tag3';t.textContent='+$18,283.51';xs.appendChild(t);
  [['Your account',-112],['Your bank',112]].forEach(function(a){var l=document.createElement('div');l.className='lb3';l.style.left=a[1]+'px';l.textContent=a[0];xs.appendChild(l)})})();
 function show(k,first){cur=k;G.forEach(function(g,j){g.className=j<=k?'d':''});
- var go=function(){build(T[k][1]);lab.textContent=T[k][0];val.innerHTML=T[k][2];app.classList.toggle('fin',k==5);wd.className='in';setTimeout(land,650);app.classList.toggle('rain',k>=2);app.classList.toggle('x5',k==4);clearInterval(fw);if(k==5)fw=setInterval(function(){burst(40+Math.random()*267,18+Math.random()*50,16,36,['#ff2d87','#ff9b2f','#28e0ff','#37f0a0','#ffffff'])},850);lab.classList.remove('h');val.classList.remove('h')
+ var go=function(){build(T[k][1]);lab.textContent=T[k][0];val.innerHTML=T[k][2];app.classList.toggle('fin',k==5);wd.className='in';setTimeout(land,650);app.classList.toggle('rain',k>=2);app.classList.toggle('x5',k==4);clearInterval(fw);if(k==5)fw=setInterval(function(){burst(40+Math.random()*267,18+Math.random()*50,16,36,['#ff2d87','#ff9b2f','#28e0ff','#37f0a0'])},850);lab.classList.remove('h');val.classList.remove('h')
   if(k==3)setTimeout(function(){val.innerHTML='<b>$18,283.51</b> · USDT TRC20 · <span class="ok">Approved ✓</span>'},1900);
   if(k==4)setTimeout(function(){val.innerHTML='<b>$18,283.51</b> <span class="ok">sent to your account ✓</span>'},2100)};
  if(first){go()}else{wd.className='out';re(wp,'go',520);lab.classList.add('h');val.classList.add('h');setTimeout(go,480)}

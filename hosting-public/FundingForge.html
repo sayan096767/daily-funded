@@ -111,6 +111,10 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .stat::after{content:""; position:absolute; top:1px; left:12%; right:12%; z-index:0; height:1px; pointer-events:none; background:linear-gradient(90deg,transparent,rgba(235,255,241,.46),rgba(230,195,77,.28),transparent);}
   .stat>div{position:relative; z-index:1;}
   .stat .num{font-size:26px; font-weight:800; color:#f4fff8; text-shadow:0 1px 0 rgba(255,255,255,.18),0 0 14px rgba(120,255,181,.12);}
+  .stat .num.is-rolling{animation:statNumberRoll .45s ease-out;}
+  @keyframes statNumberRoll{from{transform:translateY(35%);opacity:.35;}to{transform:translateY(0);opacity:1;}}
+  .stats-note{margin:10px 0 0;text-align:center;color:var(--sub);font-size:10px;letter-spacing:.03em;}
+  @media(prefers-reduced-motion:reduce){.stat .num.is-rolling{animation:none;}}
   .stat .lbl{font-size:12px; color:var(--sub); margin-top:4px;}
   @media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr);}}
 
@@ -885,7 +889,23 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .info-ic .tip::after{content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color:#1b211e;}
   .info-ic:hover .tip, .info-ic:focus .tip, .info-ic.tap .tip{opacity:1; visibility:visible; transform:translateX(-50%) translateY(0);}
   .plan .btn{margin-top:16px; text-align:center; justify-content:center; width:100%;}
+  .challenge-guide{position:relative; max-width:1080px; margin:38px auto 0; padding:34px; overflow:hidden; border:1px solid #b7dce7; border-radius:16px; background:linear-gradient(135deg,rgba(255,255,255,.94),rgba(230,249,255,.82)); box-shadow:0 16px 42px rgba(24,111,142,.12),inset 0 1px 0 rgba(255,255,255,.95); text-align:left;}
+  .challenge-guide::before{position:absolute; top:-95px; right:-40px; width:240px; height:190px; border-radius:50%; background:radial-gradient(ellipse,rgba(41,190,224,.18),transparent 70%); content:""; pointer-events:none;}
+  .challenge-guide-heading{position:relative; margin-bottom:26px; text-align:center;}
+  .challenge-guide-eyebrow{display:inline-block; margin-bottom:9px; color:#087c91; font-size:12px; font-weight:800; letter-spacing:.15em;}
+  .challenge-guide h3{color:#102c3b; font-size:clamp(24px,3vw,34px); font-weight:800; letter-spacing:-.025em;}
+  .challenge-guide-heading p{margin-top:9px; color:#526875; font-size:16px; line-height:1.6;}
+  .challenge-guide-grid{position:relative; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px;}
+  .challenge-guide-option{position:relative; min-width:0; padding:22px; border:1px solid #c7e3eb; border-radius:14px; background:rgba(255,255,255,.86); box-shadow:0 5px 15px rgba(18,74,96,.06); transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;}
+  .challenge-guide-option:hover{transform:translateY(-3px); border-color:#59c8df; box-shadow:0 12px 24px rgba(18,128,158,.13);}
+  .challenge-guide-option-top{display:flex; align-items:center; gap:11px; margin-bottom:15px;}
+  .challenge-guide-number{display:grid; flex:none; width:38px; height:38px; place-items:center; border-radius:11px; background:linear-gradient(145deg,#36d79a,#087c91); box-shadow:0 4px 10px rgba(8,124,145,.22); color:#fff; font-size:14px; font-weight:800;}
+  .challenge-guide-tag{color:#087c91; font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase;}
+  .challenge-guide-option h4{color:#102c3b; font-size:19px; font-weight:800;}
+  .challenge-guide-option p{margin-top:9px; color:#526875; font-size:15px; line-height:1.7;}
   @media(max-width:760px){.plans{grid-template-columns:1fr;}}
+  @media(max-width:700px){.challenge-guide{padding:26px 18px;}.challenge-guide h3{font-size:25px;}.challenge-guide-heading p{font-size:15px;}.challenge-guide-grid{grid-template-columns:1fr;}.challenge-guide-option{padding:19px;}.challenge-guide-option h4{font-size:18px;}.challenge-guide-option p{font-size:15px;}}
+  @media(prefers-reduced-motion:reduce){.challenge-guide-option{transition:none;}}
   @media(prefers-reduced-motion:reduce){.plan::before{animation:none; opacity:.3;}}
 
   .tabs{display:inline-flex; border:1px solid var(--panel-b); border-radius:99px; padding:4px; margin-top:22px; gap:2px;}
@@ -935,6 +955,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .pcard .size{font-size:20px; font-weight:800;}
   .pcard .tag{font-size:11px; font-weight:700; background:rgba(62,207,126,.12); color:var(--green); padding:3px 9px; border-radius:99px;}
   .pcard .price{font-size:26px; font-weight:800; margin-top:10px;}
+  .pcard .price del{margin-right:4px; color:var(--sub-dim); font-size:14px; font-weight:500;}
   .pcard .price small{font-size:13px; font-weight:500; color:var(--sub-dim);}
   .pcard .perk{font-size:12px; color:var(--sub-dim);}
   .pcard ul{list-style:none; margin:16px 0 18px; font-size:13px; color:var(--sub);}
@@ -943,6 +964,16 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   @media(max-width:760px){.price-grid{grid-template-columns:1fr;}}
 
   .faq{max-width:680px; margin:30px auto 0;}
+  .faq-layout{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:32px; align-items:center; margin-top:30px;}
+  .faq-content{min-width:0;}
+  .faq-content .eyebrow,.faq-content h2{text-align:left;}
+  .faq-content .faq{max-width:none; margin:24px 0 0;}
+  .community-banner-frame{display:block; width:100%; height:520px; border:0; border-radius:18px; background:#050c0a;}
+  @media(max-width:860px){.faq-layout{grid-template-columns:minmax(0,1fr); gap:26px;}.community-banner-frame{height:520px;}}
+  @media(min-width:861px) and (max-width:1100px){.community-banner-frame{height:580px;}}
+  @media(max-width:760px){.community-banner-frame{height:610px;}}
+  @media(max-width:360px){.community-banner-frame{height:620px;}}
+  @media(max-width:340px){.community-banner-frame{height:680px;}}
   .fitem{border:1px solid var(--panel-b); border-radius:9px; margin-bottom:10px; overflow:hidden; background:var(--panel);}
   .fq{width:100%; text-align:left; padding:16px 18px; background:none; border:none; color:var(--text); font-family:inherit; font-size:14.5px; font-weight:600; display:flex; justify-content:space-between; align-items:center; cursor:pointer;}
   .fq .chev{color:var(--sub-dim); transition:transform .2s ease; font-size:13px;}
@@ -1006,7 +1037,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   @media(prefers-reduced-motion:reduce){.df-support-launcher,.df-support-panel{transition:none;}.df-support-launcher:hover{transform:none;}}
 
   /* Supplied human-support banner, scoped to avoid page-wide styles. */
-  .df-human-support{--bg:#020716;--blue:#1a8cff;--cyan:#22d3ee;--teal:#19e6c1;--text:#fff;--soft:#d6e4ff;display:block;position:relative;isolation:isolate;box-sizing:border-box;width:100%;padding:22px max(12px,env(safe-area-inset-right,0px)) calc(22px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));font-family:inherit;color:var(--text);}
+  .df-human-support{--bg:#020716;--blue:#1a8cff;--cyan:#22d3ee;--teal:#19e6c1;--text:#fff;--soft:#d6e4ff;display:block;position:relative;isolation:isolate;box-sizing:border-box;width:100%;padding:22px max(12px,env(safe-area-inset-right,0px)) calc(22px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));font-family:inherit;color:var(--text);background:linear-gradient(180deg,#e7faff 0px,#a6dce6 34px,#477788 68px,#1c3039 112px,#0a0d0c 172px);}
   @property --df-human-banner-angle{syntax:'<angle>';inherits:false;initial-value:0deg}
   .df-human-support *{box-sizing:border-box;margin:0}
   @keyframes dfHumanBannerDrift{to{transform:translate3d(4%,3%,0) scale(1.08)}}
@@ -1202,6 +1233,118 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .df-workspace-preview .p2{right:0;bottom:5em}}
   @media (prefers-reduced-motion:reduce){.df-workspace-preview *,.df-workspace-preview *::before,.df-workspace-preview *::after{animation:none!important;transition-duration:.01s!important}
   .df-workspace-preview .a,.df-workspace-preview .cd{opacity:1}}
+
+  /* Light homepage content from the steps section through the FAQ. */
+  #how,#challenges,#pricing,#faq{background:linear-gradient(135deg,#e7faff 0%,#f4fcff 48%,#eaf7ff 100%);color:#102c3b;}
+  #how{background:linear-gradient(180deg,#0a0d0c 0%,#1c3039 18px,#477788 42px,#a6dce6 76px,#e7faff 128px,#e7faff 100%);}
+  #how h2,#challenges h2,#pricing h2,#faq h2{color:#102c3b;}
+  #how .eyebrow,#challenges .eyebrow,#pricing .eyebrow,#faq .eyebrow{color:#08748b;}
+  #how .step{background:rgba(255,255,255,.88);border-color:#b7e8f2;}
+  #how .step .n{color:#087b99;text-shadow:0 1px 0 rgba(255,255,255,.9);}
+  #how .step p,#challenges .lead{color:#3c5865;}
+  #dfWorkspacePreview{background:radial-gradient(ellipse at 8% 12%,rgba(68,214,245,.2),transparent 42%),radial-gradient(ellipse at 92% 88%,rgba(70,157,255,.16),transparent 42%),linear-gradient(135deg,#e7faff,#f4fcff 52%,#eaf7ff);color:#102c3b;color-scheme:light;}
+  #dfWorkspacePreview .preview-label{color:#075f7b;}
+  #dfWorkspacePreview h2 em{background-image:linear-gradient(90deg,#075f98,#087a91,#075f98);}
+  #dfWorkspacePreview .sub{color:#3d5866;}
+  #dfWorkspacePreview .sample-note{color:#4b6572;}
+  #dfWorkspacePreview .it{color:#203e50;}
+  #dfWorkspacePreview .it span{color:#486777;}
+  #dfWorkspacePreview .it:hover{color:#12364d;background:#d8f4fb;}
+  #dfWorkspacePreview .it.on,#dfWorkspacePreview .it.on:hover{color:#fff;background:#123449;}
+  #challenges .plan{background:rgba(255,255,255,.9);border-color:#b7e8f2;}
+  #challenges .plan{box-shadow:0 0 20px rgba(14,174,220,.34),0 0 38px rgba(22,140,255,.14),0 8px 24px rgba(25,105,135,.12);}
+  #challenges .plan::before{padding:2px;opacity:1;background:conic-gradient(from var(--df-plan-light-angle),transparent 0deg 250deg,rgba(34,211,238,.16) 270deg,rgba(22,140,255,.75) 294deg,#16b8ff 315deg,#54f3ff 334deg,#fff 342deg,#16b8ff 352deg,transparent 360deg);filter:drop-shadow(0 0 6px rgba(22,175,255,1)) drop-shadow(0 0 14px rgba(34,211,238,.8));animation:dfPlanLightSweep 3.4s linear infinite;}
+  @media(prefers-reduced-motion:reduce){#challenges .plan::before{animation:none;opacity:1;}}
+  #challenges .plan .row{color:#3c5865;border-top-color:#d5eaf0;}
+  #challenges .plan .row b{color:#102c3b;}
+  #challenges .plan .btn-glossy{color:#eef1ef;}
+  #pricing .tabs{border-color:#b7dce7;}
+  #pricing .tab{color:#3c5865;}
+  #pricing .tab.active{color:#06140c;}
+  #pricing .lead,#pricing .futures-plans-intro{color:#3c5865;}
+  #pricing .futures-sizes-label{color:#3c5865;}
+  #pricing .pcard{background:#625ff5;border-color:#aaa8ff;color:#fff;}
+  #pricing .pcard .size,#pricing .pcard .price{color:#fff;}
+  #pricing .pcard .price del,#pricing .pcard .price small,#pricing .pcard .perk{color:#e6e5ff;}
+  #pricing .pcard ul{color:#f2f1ff;}
+  #pricing .pcard .tag{background:#d5f5e4;color:#075b37;}
+  #pricing .pcard li .ck{color:#8dffd0;}
+  #pricing .futures-plan-option{border-color:#b7dce7;background:rgba(255,255,255,.9);color:#3c5865;}
+  #pricing .futures-plan-option:hover{border-color:#39b9d1;background:#e4faff;}
+  #pricing .futures-plan-option.active{border-color:#087c91;background:#d8f7fc;}
+  #pricing .futures-plan-option strong{color:#102c3b;}
+  #pricing .futures-plan-option.active strong{color:#075f70;}
+  #pricing .futures-tier{border-color:#aaa8ff;background:#625ff5;color:#fff;}
+  #pricing .futures-tier.popular{border-color:#8dffd0;}
+  #pricing .futures-tier-top{border-bottom-color:rgba(255,255,255,.3);}
+  #pricing .futures-tier-size,#pricing .futures-tier-price,#pricing .futures-tier-row strong{color:#fff;}
+  #pricing .futures-tier-tag{background:#d5f5e4;color:#075b37;}
+  #pricing .futures-tier-price small,#pricing .futures-tier-row,#pricing .futures-tier.scale p{color:#e6e5ff;}
+  #pricing .futures-tier-row{border-top-color:rgba(255,255,255,.24);}
+  #pricing .futures-tier.scale{background:#625ff5;}
+  #pricing .futures-tier.scale .futures-tier-price{color:#fff2a8;}
+  #pricing .futures-other-plan{background:linear-gradient(110deg,#fff8df,#fff);border-color:#dfc979;color:#102c3b;}
+  #pricing .futures-other-plan p,#pricing .futures-scaling p{color:#526875;}
+  #pricing .futures-scaling{border-top-color:#b7dce7;}
+  #pricing .futures-scale-steps li::before{background:#eaf7ff;}
+  #pricing .futures-scale-steps strong{color:#087545;}
+  #pricing .futures-scale-steps span{color:#526875;}
+  #pricing .futures-scaling .futures-plan-note{background:#fff8df;color:#684e12;}
+  #faq .fitem{background:rgba(255,255,255,.9);border-color:#b7e8f2;}
+  #faq .fq{color:#102c3b;}
+  #faq .fq .chev{color:#3c5865;}
+  #faq .fa p{color:#3c5865;}
+  #faq .fa strong{color:#08704f;}
+  #faq .fa strong.challenge-step-number{color:#845b00;}
+  #faq .fa strong.challenge-step-two{color:#923d29;}
+  #faq .fa .faq-token.usdt{color:#116b4e;}
+  #faq .fa .faq-token.btc{color:#995300;}
+  #faq .fa .faq-token.eth{color:#4e5788;}
+  #faq .fa .faq-token.upi{color:#923c3c;}
+
+  /* Responsive, locally scoped adaptation of the supplied Why Choose Us section. */
+  #dfWhyChoose{position:relative;isolation:isolate;overflow:hidden;padding:clamp(76px,9vw,112px) 20px;background:radial-gradient(540px 300px at 12% 24%,rgba(89,112,255,.22),transparent 72%),radial-gradient(560px 320px at 90% 78%,rgba(44,214,236,.14),transparent 72%),linear-gradient(180deg,#e7faff 0%,#a6dce6 9%,#263c58 22%,#111735 37%,#111735 64%,#213b56 80%,#9bd4df 93%,#e7faff 100%);color:#fff;}
+  #dfWhyChoose::before{content:"";position:absolute;inset:0;z-index:-1;opacity:.38;pointer-events:none;background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);background-size:44px 44px;mask-image:radial-gradient(ellipse at center,#000 22%,transparent 78%);}
+  #dfWhyChoose .df-why-inner{position:relative;max-width:1240px;margin:0 auto;}
+  #dfWhyChoose .df-why-heading{max-width:720px;margin:0 auto 44px;text-align:center;}
+  #dfWhyChoose .df-why-tag{display:inline-block;padding:6px 14px;border:1px solid rgba(200,255,0,.4);border-radius:999px;background:rgba(200,255,0,.08);color:#d7ff4f;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;}
+  #dfWhyChoose .df-why-heading h2{margin-top:18px;color:#fff;font-size:clamp(30px,5vw,54px);font-weight:800;letter-spacing:-.5px;line-height:1.1;}
+  #dfWhyChoose .df-why-heading h2 span{color:#d7ff4f;text-shadow:0 0 28px rgba(200,255,0,.32);}
+  #dfWhyChoose .df-why-heading p{max-width:660px;margin:16px auto 0;color:#d0d8ef;font-size:clamp(14px,1.7vw,17px);line-height:1.65;}
+  #dfWhyChoose .df-why-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr));gap:18px;}
+  #dfWhyChoose .df-why-card{position:relative;isolation:isolate;min-width:0;overflow:hidden;padding:30px 25px 26px;border:1px solid rgba(198,209,255,.24);border-radius:20px;background:linear-gradient(155deg,rgba(255,255,255,.12),rgba(255,255,255,.045) 60%,rgba(63,207,224,.07));box-shadow:0 14px 34px rgba(4,10,32,.22),inset 0 1px 0 rgba(255,255,255,.12);transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease;}
+  #dfWhyChoose .df-why-card::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:0;background:radial-gradient(260px circle at var(--df-why-x,50%) var(--df-why-y,50%),rgba(200,255,0,.15),transparent 70%);transition:opacity .22s ease;}
+  #dfWhyChoose .df-why-card:hover{transform:translateY(-4px);border-color:rgba(200,255,0,.48);box-shadow:0 20px 46px rgba(4,10,32,.32),0 0 26px rgba(124,108,255,.18);}
+  #dfWhyChoose .df-why-card:hover::before{opacity:1;}
+  #dfWhyChoose .df-why-number{position:absolute;top:8px;right:17px;color:rgba(255,255,255,.2);font-size:76px;font-weight:900;letter-spacing:-4px;line-height:1;user-select:none;}
+  #dfWhyChoose .df-why-icon{position:relative;display:grid;place-items:center;width:54px;height:54px;margin-bottom:22px;border:1px solid rgba(200,255,0,.4);border-radius:16px;background:linear-gradient(135deg,rgba(200,255,0,.19),rgba(200,255,0,.04));box-shadow:0 0 22px rgba(200,255,0,.14);color:#d7ff4f;}
+  #dfWhyChoose .df-why-icon svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+  #dfWhyChoose .df-why-card h3{position:relative;margin-bottom:10px;color:#fff;font-size:19px;font-weight:750;line-height:1.3;}
+  #dfWhyChoose .df-why-card p{position:relative;color:#d0d8ef;font-size:14px;line-height:1.65;}
+  #dfWhyChoose .df-why-chip{display:inline-block;margin-top:17px;padding:5px 10px;border:1px solid rgba(200,255,0,.18);border-radius:7px;background:rgba(200,255,0,.94);color:#17202b;font-size:11px;font-weight:750;}
+  @media(max-width:600px){#dfWhyChoose{padding:68px 15px;background:radial-gradient(440px 260px at 12% 20%,rgba(89,112,255,.2),transparent 72%),radial-gradient(440px 260px at 90% 82%,rgba(44,214,236,.13),transparent 72%),linear-gradient(180deg,#e7faff 0%,#a6dce6 6%,#263c58 17%,#111735 30%,#111735 70%,#213b56 83%,#9bd4df 94%,#e7faff 100%);}#dfWhyChoose .df-why-heading{margin-bottom:30px;}#dfWhyChoose .df-why-grid{grid-template-columns:minmax(0,1fr);gap:13px;}#dfWhyChoose .df-why-card{padding:25px 22px 22px;border-radius:17px;}#dfWhyChoose .df-why-number{font-size:68px;}}
+  @media(prefers-reduced-motion:reduce){#dfWhyChoose .df-why-card,#dfWhyChoose .df-why-card::before{transition:none;}#dfWhyChoose .df-why-card:hover{transform:none;}}
+
+  /* One continuous scrolling row of trading rules. */
+  #dfRulesStrip{position:relative;overflow:hidden;padding:30px 0 34px;background:linear-gradient(180deg,#e7faff 0%,#729fb0 12%,#1a2d48 28%,#0b1024 50%,#1a2d48 72%,#729fb0 88%,#e7faff 100%);color:#fff;}
+  #dfRulesStrip .df-rules-rows{display:flex;flex-direction:column;gap:12px;}
+  #dfRulesStrip .df-rules-marquee{position:relative;overflow:hidden;padding:5px 0;mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);-webkit-mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);}
+  #dfRulesStrip .df-rules-track{display:flex;gap:16px;width:max-content;animation:dfRulesScroll var(--df-rules-duration,36s) linear infinite;will-change:transform;}
+  #dfRulesStrip .df-rules-marquee:hover .df-rules-track,#dfRulesStrip .df-rules-marquee:focus-within .df-rules-track{animation-play-state:paused;}
+  @keyframes dfRulesScroll{to{transform:translateX(calc(-50% - 8px));}}
+  #dfRulesStrip .df-rules-set{display:flex;flex:none;gap:16px;}
+  #dfRulesStrip .df-rule-card{position:relative;display:flex;flex:none;align-items:center;gap:20px;width:300px;min-height:100px;padding:20px 25px;overflow:hidden;border:1px solid rgba(255,255,255,.09);border-radius:20px;background:linear-gradient(145deg,#151a25 0%,#10131d 60%,#0c1018 100%);box-shadow:0 8px 24px rgba(2,8,25,.22);transition:border-color .25s,box-shadow .25s;}
+  #dfRulesStrip .df-rule-card::before{position:absolute;top:22%;bottom:22%;left:0;width:3px;border-radius:0 4px 4px 0;background:linear-gradient(180deg,transparent,#3b8cff,transparent);box-shadow:0 0 18px 2px rgba(59,140,255,.65);content:"";}
+  #dfRulesStrip .df-rule-card:hover{border-color:rgba(59,140,255,.5);box-shadow:0 14px 34px -16px rgba(59,140,255,.6);}
+  #dfRulesStrip .df-rule-icon{display:grid;flex:none;place-items:center;width:32px;height:32px;color:#3b8cff;}
+  #dfRulesStrip .df-rule-icon svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 6px rgba(59,140,255,.5));}
+  #dfRulesStrip .df-rule-label{color:#9ab9e7;font-size:11px;font-weight:650;letter-spacing:.09em;text-transform:uppercase;white-space:nowrap;}
+  #dfRulesStrip .df-rule-value{margin-top:6px;color:#fff;font-size:21px;font-weight:750;letter-spacing:-.2px;white-space:nowrap;}
+  @media(max-width:600px){#dfRulesStrip{padding:24px 0 28px;}#dfRulesStrip .df-rule-card{width:250px;min-height:86px;padding:17px 20px;gap:16px;}#dfRulesStrip .df-rule-value{font-size:18px;}}
+  @media(prefers-reduced-motion:reduce){#dfRulesStrip .df-rules-marquee{overflow-x:auto;mask-image:none;-webkit-mask-image:none;scrollbar-width:thin;}#dfRulesStrip .df-rules-track{animation:none;will-change:auto;}}
+  .payout-mission-banner{position:relative;padding:0;overflow:hidden;background:#02030a;}
+  .payout-mission-banner iframe{display:block;width:100%;height:660px;border:0;}
+  @media(max-width:700px){.payout-mission-banner iframe{height:680px;}}
 </style>
 <link rel="stylesheet" href="hero-background.css">
 </head>
@@ -1244,11 +1387,31 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
       <span class="t-green">80% profit split</span>
     </div>
     <div class="stats">
-      <div class="stat"><div class="num">120K+</div><div class="lbl">Traders funded</div></div>
-      <div class="stat"><div class="num">$48M</div><div class="lbl">Paid out</div></div>
+      <div class="stat"><div class="num" data-demo-counter="traders" aria-live="off">120K+</div><div class="lbl">Traders funded</div></div>
+      <div class="stat"><div class="num" data-demo-counter="payout" aria-live="off">$48M</div><div class="lbl">Paid out</div></div>
       <div class="stat"><div class="num">80%</div><div class="lbl">Profit split</div></div>
       <div class="stat"><div class="num">4.9/5</div><div class="lbl">Trader rating</div></div>
     </div>
+    <p class="stats-note">Illustrative demo figures · counters update every 3 hours</p>
+    <script>
+    (function(){
+      var counters={
+        traders:{value:120000,increment:100,node:document.querySelector('[data-demo-counter="traders"]'),format:function(value){return (value/1000).toFixed(1).replace(/\.0$/,'')+'K+';}},
+        payout:{value:48000000,increment:10000,node:document.querySelector('[data-demo-counter="payout"]'),format:function(value){return '$'+(value/1000000).toFixed(2).replace(/\.00$/,'')+'M';}}
+      };
+      window.setInterval(function(){
+        Object.keys(counters).forEach(function(key){
+          var counter=counters[key];
+          if(!counter.node)return;
+          counter.value+=counter.increment;
+          counter.node.textContent=counter.format(counter.value);
+          counter.node.classList.remove('is-rolling');
+          void counter.node.offsetWidth;
+          counter.node.classList.add('is-rolling');
+        });
+      },3*60*60*1000);
+    })();
+    </script>
   </div>
 </section>
 
@@ -1397,7 +1560,35 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
         <a href="#pricing" class="btn btn-glossy">View pricing</a>
       </div>
     </div>
+    <aside class="challenge-guide" aria-labelledby="challengeGuideTitle">
+      <div class="challenge-guide-heading">
+        <span class="challenge-guide-eyebrow">FIND YOUR FIT</span>
+        <h3 id="challengeGuideTitle">Which path matches your trading style?</h3>
+        <p>Three ways to get funded. Choose the route that feels right for you.</p>
+      </div>
+      <div class="challenge-guide-grid">
+        <article class="challenge-guide-option">
+          <div class="challenge-guide-option-top"><span class="challenge-guide-number">01</span><span class="challenge-guide-tag">One evaluation</span></div>
+          <h4>1-Step Challenge</h4>
+          <p>Reach one 10% profit target. A direct route if you’re confident in your strategy and want fewer phases.</p>
+        </article>
+        <article class="challenge-guide-option">
+          <div class="challenge-guide-option-top"><span class="challenge-guide-number">02</span><span class="challenge-guide-tag">Two phases</span></div>
+          <h4>2-Step Challenge</h4>
+          <p>Work through two 6% targets at your own pace, with a 90% profit split when funded.</p>
+        </article>
+        <article class="challenge-guide-option">
+          <div class="challenge-guide-option-top"><span class="challenge-guide-number">03</span><span class="challenge-guide-tag">Skip evaluation</span></div>
+          <h4>Instant Funding</h4>
+          <p>Skip the evaluation and start trading right away, with no profit target or minimum trading days.</p>
+        </article>
+      </div>
+    </aside>
   </div>
+</section>
+
+<section class="payout-mission-banner" aria-label="Your mission to a payout">
+  <iframe src="./payout-mission-banner.html" title="Animated guide to your payout journey" loading="lazy"></iframe>
 </section>
 
 <section id="pricing" class="center">
@@ -1931,11 +2122,123 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
   </div>
     </section>
 
+    <section id="dfWhyChoose" aria-labelledby="dfWhyChooseTitle">
+      <div class="df-why-inner">
+        <div class="df-why-heading">
+          <span class="df-why-tag">Why traders choose us</span>
+          <h2 id="dfWhyChooseTitle">Why <span>Daily Funded?</span></h2>
+          <p>Clear plan rules, transparent profit splits and payout cycles you can review before getting started.</p>
+        </div>
+        <div class="df-why-grid">
+          <article class="df-why-card">
+            <span class="df-why-number" aria-hidden="true">01</span>
+            <div class="df-why-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></svg></div>
+            <h3>Clear Challenge Rules</h3>
+            <p>Review each plan’s profit target, drawdown limits, minimum trading days and reward cycle before choosing.</p>
+            <span class="df-why-chip">Rules shown up front</span>
+          </article>
+          <article class="df-why-card">
+            <span class="df-why-number" aria-hidden="true">02</span>
+            <div class="df-why-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v18M17 7.5c0-1.7-2.2-3-5-3s-5 1.3-5 3 1.7 2.7 5 3.5 5 1.8 5 3.5-2.2 3-5 3-5-1.3-5-3"/></svg></div>
+            <h3>Plan-Based Profit Splits</h3>
+            <p>Profit split depends on the plan: 1-Step 80%, 2-Step 90%, and Instant Funding 80%.</p>
+            <span class="df-why-chip">Up to 90% share</span>
+          </article>
+          <article class="df-why-card">
+            <span class="df-why-number" aria-hidden="true">03</span>
+            <div class="df-why-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></div>
+            <h3>Know the Payout Cycle</h3>
+            <p>Reward cycles are 5 days for 1-Step, 7 days for 2-Step and daily for Instant Funding. Payouts remain subject to eligibility.</p>
+            <span class="df-why-chip">Cycles by plan</span>
+          </article>
+          <article class="df-why-card">
+            <span class="df-why-number" aria-hidden="true">04</span>
+            <div class="df-why-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 3z"/><path d="M8 9h8M8 12h5"/></svg></div>
+            <h3>Helpful FAQ Guidance</h3>
+            <p>Find information about challenge rules, payment steps and account access in the site’s FAQ and Support FAQ.</p>
+            <span class="df-why-chip">Find answers</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <script>
+    (function(){
+      function init(){
+        var strip=document.getElementById('dfRulesStrip');
+        if(!strip)return;
+        var marquees=Array.from(strip.querySelectorAll('.df-rules-marquee'));
+        function sizeTracks(){
+          marquees.forEach(function(marquee){
+            var track=marquee.querySelector('.df-rules-track');
+            var set=track&&track.querySelector('.df-rules-set');
+            if(!track||!set)return;
+            var originals=Array.from(set.children);
+            track.querySelectorAll('.df-rules-set[aria-hidden="true"]').forEach(function(copy){copy.remove();});
+            set.replaceChildren.apply(set,originals.map(function(card){return card.cloneNode(true);}));
+            while(set.getBoundingClientRect().width<strip.clientWidth*1.3&&set.children.length<24){
+              originals.forEach(function(card){set.appendChild(card.cloneNode(true));});
+            }
+            var duplicate=set.cloneNode(true);
+            duplicate.setAttribute('aria-hidden','true');
+            duplicate.querySelectorAll('[id]').forEach(function(el){el.removeAttribute('id');});
+            track.appendChild(duplicate);
+            track.style.setProperty('--df-rules-duration',Math.max(24,set.getBoundingClientRect().width/60)+'s');
+          });
+        }
+        sizeTracks();
+        var resizeTimer;
+        window.addEventListener('resize',function(){clearTimeout(resizeTimer);resizeTimer=setTimeout(sizeTracks,120);},{passive:true});
+      }
+      if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});
+      else init();
+    })();
+    </script>
+    <section id="dfRulesStrip" aria-label="Trading rules at a glance">
+      <div class="df-rules-rows">
+        <div class="df-rules-marquee">
+          <div class="df-rules-track">
+            <div class="df-rules-set">
+              <article class="df-rule-card">
+                <span class="df-rule-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/><path d="m15 16 2 2 4-5"/></svg></span>
+                <div><div class="df-rule-label">News Trading</div><div class="df-rule-value">Allowed</div></div>
+              </article>
+              <article class="df-rule-card">
+                <span class="df-rule-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16"/><path d="m7 15 4-4 3 2 6-7"/><path d="M16 6h4v4"/></svg></span>
+                <div><div class="df-rule-label">Weekend Holding</div><div class="df-rule-value">Allowed</div></div>
+              </article>
+              <article class="df-rule-card">
+                <span class="df-rule-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg></span>
+                <div><div class="df-rule-label">Leverage</div><div class="df-rule-value">Up to 1:100</div></div>
+              </article>
+              <article class="df-rule-card">
+                <span class="df-rule-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"/><path d="M8 12h8"/></svg></span>
+                <div><div class="df-rule-label">Swap Free</div><div class="df-rule-value">All Accounts</div></div>
+              </article>
+              <article class="df-rule-card">
+                <span class="df-rule-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"/><path d="m8.5 12 2.3 2.3 4.7-5"/></svg></span>
+                <div><div class="df-rule-label">Martingale</div><div class="df-rule-value">Allowed</div></div>
+              </article>
+              <article class="df-rule-card">
+                <span class="df-rule-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+                <div><div class="df-rule-label">60 Sec Holding</div><div class="df-rule-value">No Rule</div></div>
+              </article>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
     <section id="faq">
       <div class="wrap">
-        <div class="eyebrow center" style="text-align:center;">FAQ</div>
-        <h2 class="center">Questions, answered</h2>
-        <div class="faq" id="faqList"></div>
+        <div class="faq-layout">
+          <div class="faq-content">
+            <div class="eyebrow">FAQ</div>
+            <h2>Questions, answered</h2>
+            <div class="faq" id="faqList"></div>
+          </div>
+          <iframe class="community-banner-frame" src="community-banner.html" title="Daily Funded community banner" loading="lazy"></iframe>
+        </div>
       </div>
     </section>
 
@@ -2185,9 +2488,9 @@ document.querySelectorAll('.brand').forEach(brand=>{
 
 const sizes = [5000,10000,25000,50000,100000,200000];
 const pricing = {
-  '1step': {perK:6.40, min:32, label:'1-Step', target:'10% profit target', extra:['5% daily drawdown','10% max drawdown','3 min trading days','5 day reward cycle','80% profit split','No consistency rules']},
-  '2step': {perK:5.20, min:27, label:'2-Step', target:'Ph 1: 6% / Ph 2: 6%', extra:['5% daily drawdown','10% max drawdown','5 min trading days','7 day reward cycle','90% profit split','No consistency rules']},
-  'instant': {perK:9.80, min:49, label:'Instant', target:'No profit target', extra:['5% daily drawdown','10% max drawdown','0 min trading days','Daily reward cycle','80% profit split','No consistency rules']}
+  '1step': {perK:6.40, min:32, discount:.20, label:'1-Step', target:'10% profit target', extra:['5% daily drawdown','10% max drawdown','3 min trading days','5 day reward cycle','80% profit split','No consistency rules']},
+  '2step': {perK:5.20, min:27, discount:.40, label:'2-Step', target:'Ph 1: 6% / Ph 2: 6%', extra:['5% daily drawdown','10% max drawdown','5 min trading days','7 day reward cycle','90% profit split','No consistency rules']},
+  'instant': {perK:9.80, min:49, discount:.20, prices:{25000:190,50000:349,100000:689,200000:1299}, label:'Instant', target:'No profit target', extra:['5% daily drawdown','10% max drawdown','0 min trading days','Daily reward cycle','80% profit split','No consistency rules']}
 };
 function renderPlans(tab){
   const p = pricing[tab];
@@ -2195,11 +2498,12 @@ function renderPlans(tab){
   const grid = document.createElement('div');
   grid.className = 'price-grid';
   planSizes.forEach(s=>{
-    const price = s === 2500 ? Math.round(s*p.perK/1000) : Math.max(p.min, Math.round(s*p.perK/1000));
+    const basePrice = s === 2500 ? Math.round(s*p.perK/1000) : Math.max(p.min, Math.round(s*p.perK/1000));
+    const price = p.prices?.[s] ?? Math.round(basePrice*(1-p.discount));
     const perThousand = (price/(s/1000)).toFixed(2);
     grid.innerHTML += `<div class="pcard tilt">
       <div class="pcard-top"><div class="size">$${s.toLocaleString()}</div><span class="tag">${p.label}</span></div>
-      <div class="price">$${price}<small> one-time</small></div>
+      <div class="price"><del>$${basePrice}</del> $${price}<small> one-time</small></div>
       <div class="perk">$${perThousand} per $1K</div>
       <ul>
         <li><span class="ck">✓</span>${p.target}</li>
@@ -2260,6 +2564,16 @@ document.getElementById('tabs').addEventListener('click', e=>{
   renderPlans(btn.dataset.tab);
 });
 renderPlans('1step');
+window.addEventListener('message',event=>{
+  const bannerFrame = document.querySelector('.payout-mission-banner iframe');
+  const planTabs = { '1-Step':'1step', '2-Step':'2step', Instant:'instant' };
+  if(event.source !== bannerFrame.contentWindow || !event.data || event.data.type !== 'daily-funded:select-pricing-plan') return;
+  const plan = planTabs[event.data.plan];
+  if(!plan) return;
+  document.querySelector('#marketTabs [data-market="forex"]').click();
+  document.querySelector(`#tabs [data-tab="${plan}"]`).click();
+  document.getElementById('pricing').scrollIntoView({behavior:'smooth'});
+});
 
 const faqs = [
   {q:'What happens after I pass the challenge?', a:'You receive a funded simulated account at the same size you purchased. From there, every profitable trade you log builds your withdrawable balance, with <strong>90%</strong> of the profit yours to cash out.'},
