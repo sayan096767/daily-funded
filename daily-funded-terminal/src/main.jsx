@@ -843,7 +843,7 @@ function getTimeZoneOffsetMinutes(timeZone, date) {
   return (zoneDate - roundedDate) / 60000;
 }
 const TRADING_ERROR_MESSAGES = {
-  authentication_required: "Sign in with your Daily Funded account to use trading.",
+  authentication_required: "Sign in with your CRAZY FUNDED account to use trading.",
   trading_disabled: "Trading is disabled until this account is approved and active.",
   trading_account_not_found: "This trading account is unavailable.",
   trading_account_unavailable: "This trading account is unavailable.",
@@ -1877,7 +1877,7 @@ function useCandles(symbol, interval) {
 
 function BrandMark() {
   return (
-    <div className="brand-lockup" aria-label="Daily Funded">
+    <div className="brand-lockup" aria-label="Crazy Funded">
       <span className="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 24 24" focusable="false">
           <path d="M7 18V7.5c0-.8.7-1.5 1.5-1.5H18" />
@@ -1885,7 +1885,7 @@ function BrandMark() {
           <path d="M15 9h3v3" />
         </svg>
       </span>
-      <span className="brand-name">Daily <span>Funded</span></span>
+      <span className="brand-name">CRAZY <span>FUNDED</span></span>
     </div>
   );
 }
@@ -2095,7 +2095,7 @@ function Watchlist({
             </>
           )}
         </div>
-        <div className="watchlist-foot"><span className="live-led" />Prices from Daily Funded market data</div>
+        <div className="watchlist-foot"><span className="live-led" />Prices from CRAZY FUNDED market data</div>
       </aside>
     </>
   );
@@ -3912,9 +3912,9 @@ function App() {
     return (
       <main className="auth-required-screen">
         <section className="auth-required-card">
-          <h1>Please sign in to Daily Funded to trade</h1>
-          <p>Your existing Daily Funded session will be used here.</p>
-          <a href="/">Return to Daily Funded</a>
+          <h1>Please sign in to CRAZY FUNDED to trade</h1>
+          <p>Your existing CRAZY FUNDED session will be used here.</p>
+          <a href="/">Return to CRAZY FUNDED</a>
         </section>
       </main>
     );

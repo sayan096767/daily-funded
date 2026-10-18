@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Daily Funded — Trade our capital</title>
+<title>Crazy Funded — Trade our capital</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -67,7 +67,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .brand{display:flex; align-items:center; gap:9px; font-weight:700; font-size:16px;}
   .brand .mark{width:26px; height:26px; border-radius:7px; display:block; object-fit:contain;}
   .brand-symbol{width:30px; height:30px; flex:0 0 30px; display:block; filter:drop-shadow(0 2px 5px rgba(0,0,0,.28));}
-  .brand-symbol svg{display:block; width:100%; height:100%;}
+  .brand-symbol img{display:block; width:100%; height:100%; object-fit:contain;}
   .brand-name{display:flex; align-items:baseline; gap:4px; white-space:nowrap;}
   .brand-funded{color:var(--green);}
   .navlinks{display:flex; gap:28px; font-size:14px; color:var(--sub);}
@@ -177,7 +177,8 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .payout-empty-art svg{width:112px; height:154px; filter:drop-shadow(0 7px 6px rgba(0,0,0,.5));}
   .payout-empty-copy{position:relative; z-index:1; text-align:center;}
   .payout-empty-brand{display:flex; align-items:center; justify-content:center; gap:7px; margin-bottom:13px; color:var(--text); font-size:11px; font-weight:800;}
-  .payout-empty-brand .brand-symbol{width:24px; height:24px; flex:0 0 24px; filter:none;}
+  .payout-empty-brand .brand-symbol{width:24px; height:24px; flex:0 0 24px; filter:none; background:url("./crazy-funded-logo.png") center / contain no-repeat;}
+  .payout-empty-brand .brand-symbol svg{display:none;}
   .payout-empty-brand span:last-child{color:var(--gold);}
   .payout-empty-stamp{display:inline-block; padding:5px 8px; border:1px solid rgba(230,195,77,.4); border-radius:4px; color:#f0d67f; font-size:8px; font-weight:800; letter-spacing:.06em;}
   .payout-empty-copy h3{margin:12px 0 7px; color:#f1cf6b; font-size:22px;}
@@ -196,8 +197,8 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .dashboard-sidebar{position:fixed; top:0; bottom:0; left:0; display:flex; flex-direction:column; width:248px; height:100vh; padding:22px 14px 16px; border-right:1px solid var(--panel-b); background:#0d1310; z-index:5;}
   .dashboard-brand{display:flex; align-items:center; gap:10px; padding:2px 9px 23px; color:var(--text); font-size:13px; font-weight:800; white-space:nowrap;}
   .dashboard-brand b{color:var(--green);}
-  .dashboard-brand-mark{display:grid; place-items:center; width:34px; height:34px; flex:0 0 34px; overflow:hidden; border:1px solid rgba(62,207,126,.36); border-radius:8px; background:linear-gradient(145deg,#1b3024,#0e1711); box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 3px 9px rgba(0,0,0,.25);}
-  .dashboard-brand-mark svg{display:block; width:100%; height:100%;}
+  .dashboard-brand-mark{display:grid; place-items:center; width:34px; height:34px; flex:0 0 34px; overflow:hidden; border:1px solid rgba(62,207,126,.36); border-radius:8px; background: url("./crazy-funded-logo.png") center / contain no-repeat; box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 3px 9px rgba(0,0,0,.25);}
+  .dashboard-brand-mark svg{display:none;}
   .dashboard-sidebar-label{padding:9px 11px 8px; color:var(--sub-dim); font-size:9px; font-weight:700;}
   .dashboard-side-nav{display:grid; gap:4px;}
   .dashboard-side-nav a{display:flex; align-items:center; gap:11px; min-height:42px; padding:0 11px; border-radius:6px; color:var(--sub); font-size:12.5px; transition:background .16s ease,color .16s ease;}
@@ -638,8 +639,8 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .registration-story{min-width:0; padding:16px 0;}
   .registration-brand{display:flex; align-items:center; gap:10px; color:var(--text); font-size:14px; font-weight:800;}
   .registration-brand b{color:var(--green);}
-  .registration-brand-mark{display:grid; place-items:center; width:34px; height:34px; border:1px solid rgba(62,207,126,.36); border-radius:9px; background:linear-gradient(145deg,#1b3024,#0e1711); box-shadow:inset 0 1px 0 rgba(255,255,255,.12);}
-  .registration-brand-mark svg{width:100%; height:100%;}
+  .registration-brand-mark{display:grid; place-items:center; width:34px; height:34px; border:1px solid rgba(62,207,126,.36); border-radius:9px; background: url("./crazy-funded-logo.png") center / contain no-repeat; box-shadow:inset 0 1px 0 rgba(255,255,255,.12);}
+  .registration-brand-mark svg{display:none;}
   .registration-kicker{margin-top:76px; color:var(--green); font-size:10px; font-weight:800; letter-spacing:.12em;}
   .registration-story h1{max-width:620px; margin-top:14px; font-size:48px; line-height:1.12; font-weight:800;}
   .registration-story h1 span{color:var(--green);}
@@ -1418,7 +1419,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
 <div class="ticker-wrap">
   <div class="wrap">
     <div class="payout-heading">
-      <div><div class="eyebrow">DAILY FUNDED · PAYOUT PROOF</div><h2>Trader payout ledger</h2></div>
+      <div><div class="eyebrow">CRAZY FUNDED · PAYOUT PROOF</div><h2>Trader payout ledger</h2></div>
       <span class="payout-feed-state" id="payoutFeedState">PAYOUT PREVIEW</span>
     </div>
   </div>
@@ -1429,7 +1430,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
     <div class="payout-track-empty" id="payoutEmpty" role="status" style="display:none;">
       <div class="payout-empty-art" aria-hidden="true"><svg viewBox="0 0 120 160" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M60 8 105 25 102 76C100 105 83 126 60 143 37 126 20 105 18 76L15 25 60 8Z" fill="#DFE9E3" fill-opacity=".12" stroke="#F4E6BB" stroke-opacity=".82" stroke-width="3"/><path d="M60 20 92 32 90 76C88 97 76 113 60 126 44 113 32 97 30 76L28 32 60 20Z" fill="#10221A" stroke="#B9CABC" stroke-opacity=".62" stroke-width="1.5"/><path d="M60 49 78 56v16c0 12-7 21-18 27-11-6-18-15-18-27V56l18-7Z" fill="#C99739" stroke="#F4D77B" stroke-width="2"/><path d="M50 76V68a10 10 0 0 1 20 0v8M50 75h5v-5h5v-5h8" stroke="#DDF3E2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="69" cy="65" r="2.5" fill="#62D99A"/><path d="M52 81h16" stroke="#62D99A" stroke-width="2" stroke-linecap="round"/><path d="M47 127h26v10H47zM37 138h46v8H37z" fill="#BFC9C0" fill-opacity=".75" stroke="#F1E5C6" stroke-width="1.5"/></svg></div>
       <div class="payout-empty-copy">
-        <div class="payout-empty-brand"><span class="brand-symbol" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="1.5" width="33" height="33" rx="10" fill="#13251A" stroke="#31543C"/><path d="M8.5 27.5V17a9.5 9.5 0 0 1 19 0v10.5" stroke="#55DB8D" stroke-width="1.8" stroke-linecap="round"/><path d="M11.5 24.5h4v-4h4v-4h4v-4h3" stroke="#D9E9DC" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="27" cy="12.5" r="2.3" fill="#E6C34D"/><path d="M8.5 28h19" stroke="#55DB8D" stroke-width="1.8" stroke-linecap="round"/></svg></span><span>DAILY</span><span>FUNDED</span></div>
+        <div class="payout-empty-brand"><span class="brand-symbol" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="1.5" width="33" height="33" rx="10" fill="#13251A" stroke="#31543C"/><path d="M8.5 27.5V17a9.5 9.5 0 0 1 19 0v10.5" stroke="#55DB8D" stroke-width="1.8" stroke-linecap="round"/><path d="M11.5 24.5h4v-4h4v-4h4v-4h3" stroke="#D9E9DC" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="27" cy="12.5" r="2.3" fill="#E6C34D"/><path d="M8.5 28h19" stroke="#55DB8D" stroke-width="1.8" stroke-linecap="round"/></svg></span><span>CRAZY</span><span>FUNDED</span></div>
         <span class="payout-empty-stamp">AWAITING FIRST VERIFIED PAYOUT</span>
         <h3>Your payout certificate</h3>
         <div class="payout-empty-minimum"><strong>$50+</strong><span>MINIMUM<br>PAYOUT</span></div>
@@ -1777,9 +1778,9 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
 
 <section id="registration" aria-labelledby="registrationTitle">
   <div class="registration-story">
-    <div class="registration-brand" aria-label="Daily Funded">
+    <div class="registration-brand" aria-label="Crazy Funded">
       <span class="registration-brand-mark" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="1.5" width="33" height="33" rx="10" fill="#13251A" stroke="#31543C"/><path d="M8.5 27.5V17a9.5 9.5 0 0 1 19 0v10.5" stroke="#55DB8D" stroke-width="1.8" stroke-linecap="round"/><path d="M11.5 24.5h4v-4h4v-4h4v-4h3" stroke="#D9E9DC" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="27" cy="12.5" r="2.3" fill="#E6C34D"/><path d="M8.5 28h19" stroke="#55DB8D" stroke-width="1.8" stroke-linecap="round"/></svg></span>
-      <span>DAILY <b>FUNDED</b></span>
+      <span>CRAZY <b>FUNDED</b></span>
     </div>
     <div class="registration-kicker">A CLEARER ROUTE TO FUNDED</div>
     <h1>Trade with purpose.<br><span>Build your record.</span></h1>
@@ -1898,13 +1899,13 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
       <p class="registration-status" id="resetStatus" role="status" aria-live="polite"></p>
       <p class="registration-account">Link expired? <button type="button" id="resetBackToForgot">Request another reset link</button></p>
     </form>
-    <a class="registration-back" href="#pricing" id="registrationBack">← Back to Daily Funded</a>
+    <a class="registration-back" href="#pricing" id="registrationBack">← Back to Crazy Funded</a>
   </div>
 </section>
 
 <section id="dashboard">
   <aside class="dashboard-sidebar">
-    <a class="dashboard-brand" href="#dashTop" aria-label="Daily Funded trader desk">
+    <a class="dashboard-brand" href="#dashTop" aria-label="Crazy Funded trader desk">
       <span class="dashboard-brand-mark" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="1.5" width="33" height="33" rx="10" fill="#13251A" stroke="#31543C"/><path d="M8.5 27.5V17a9.5 9.5 0 0 1 19 0v10.5" stroke="#55DB8D" stroke-width="1.8" stroke-linecap="round"/><path d="M11.5 24.5h4v-4h4v-4h4v-4h3" stroke="#D9E9DC" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="27" cy="12.5" r="2.3" fill="#E6C34D"/><path d="M8.5 28h19" stroke="#55DB8D" stroke-width="1.8" stroke-linecap="round"/></svg></span>
       <span>DAILY <b>FUNDED</b></span>
     </a>
@@ -1919,7 +1920,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
     </nav>
     <div class="dashboard-sidebar-foot">
       <div class="dashboard-sidebar-status">TRADING WORKSPACE</div>
-      <a href="#pricing" class="open-dash-close">← Back to Daily Funded</a>
+      <a href="#pricing" class="open-dash-close">← Back to Crazy Funded</a>
       <a href="#pricing" class="open-dash-close" id="dashboardAccountAction">Sign out</a>
     </div>
   </aside>
@@ -1944,7 +1945,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
     </div>
 
     <div id="dashEmpty" class="dash-panel" style="text-align:center; display:none;">
-      <h4 style="margin-bottom:8px;">No Daily Funded challenge account yet</h4>
+      <h4 style="margin-bottom:8px;">No Crazy Funded challenge account yet</h4>
       <p style="color:var(--sub); font-size:13.5px; margin-bottom:18px;">Your purchased challenge and performance details will appear here.</p>
       <a href="#pricing" class="btn btn-primary open-dash-close">See pricing →</a>
     </div>
@@ -2126,7 +2127,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
       <div class="df-why-inner">
         <div class="df-why-heading">
           <span class="df-why-tag">Why traders choose us</span>
-          <h2 id="dfWhyChooseTitle">Why <span>Daily Funded?</span></h2>
+          <h2 id="dfWhyChooseTitle">Why <span>Crazy Funded?</span></h2>
           <p>Clear plan rules, transparent profit splits and payout cycles you can review before getting started.</p>
         </div>
         <div class="df-why-grid">
@@ -2237,7 +2238,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
             <h2>Questions, answered</h2>
             <div class="faq" id="faqList"></div>
           </div>
-          <iframe class="community-banner-frame" src="community-banner.html" title="Daily Funded community banner" loading="lazy"></iframe>
+          <iframe class="community-banner-frame" src="community-banner.html" title="Crazy Funded community banner" loading="lazy"></iframe>
         </div>
       </div>
     </section>
@@ -2314,12 +2315,12 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
       <div class="fcol"><h4>Company</h4><a href="#how">How it works</a><a href="#faq">FAQ</a></div>
       <div class="fcol"><h4>Account</h4><a href="#dashboard" class="open-dash">Sign in</a><a href="#dashboard" class="open-dash">Register</a></div>
     </div>
-    <div class="disclaimer">Trading derivatives carries a high level of risk. This is a simulated evaluation service and does not constitute financial advice.<br>© 2026 Daily Funded. All rights reserved.</div>
+    <div class="disclaimer">Trading derivatives carries a high level of risk. This is a simulated evaluation service and does not constitute financial advice.<br>© 2026 Crazy Funded. All rights reserved.</div>
   </div>
 </footer>
 
 <div class="df-support-widget">
-  <button type="button" class="df-support-launcher" id="dfSupportLauncher" aria-label="Open Daily Funded support FAQ demo" aria-controls="dfSupportPanel" aria-expanded="false">
+  <button type="button" class="df-support-launcher" id="dfSupportLauncher" aria-label="Open Crazy Funded support FAQ demo" aria-controls="dfSupportPanel" aria-expanded="false">
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-2.5 2v-5.1A7.5 7.5 0 1 1 20 11.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8 11h8M8 14.5h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
     <span>Support FAQ</span>
   </button>
@@ -2327,7 +2328,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
     <div class="df-support-head">
       <span class="df-support-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-2.5 2v-5.1A7.5 7.5 0 1 1 20 11.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8 11h8M8 14.5h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
       <div class="df-support-heading">
-        <h2 id="dfSupportTitle">Daily Funded FAQ</h2>
+        <h2 id="dfSupportTitle">Crazy Funded FAQ</h2>
         <p>Quick answers for common questions</p>
         <span class="df-support-demo-tag">LOCAL DEMO · SAMPLE ANSWERS</span>
       </div>
@@ -2472,16 +2473,16 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
 document.querySelectorAll('.brand').forEach(brand=>{
   const name = document.createElement('span');
   name.className = 'brand-name';
-  name.innerHTML = '<span>Daily</span> <span class="brand-funded">Funded</span>';
+  name.innerHTML = '<span>Crazy</span> <span class="brand-funded">Funded</span>';
   brand.replaceChild(name, brand.lastChild);
   brand.insertBefore(document.createTextNode(' '), name);
-  brand.setAttribute('aria-label', 'Daily Funded');
+  brand.setAttribute('aria-label', 'Crazy Funded');
   const logo = brand.querySelector('img');
   if(logo){
     const mark = document.createElement('span');
     mark.className = 'brand-symbol';
     mark.setAttribute('aria-hidden', 'true');
-    mark.innerHTML = '<svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="1.5" width="33" height="33" rx="10" fill="#13251A" stroke="#31543C"/><path d="M8.5 27.5V17a9.5 9.5 0 0 1 19 0v10.5" stroke="#55DB8D" stroke-width="1.8" stroke-linecap="round"/><path d="M11.5 24.5h4v-4h4v-4h4v-4h3" stroke="#D9E9DC" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="27" cy="12.5" r="2.3" fill="#E6C34D"/><path d="M8.5 28h19" stroke="#55DB8D" stroke-width="1.8" stroke-linecap="round"/></svg>';
+    mark.innerHTML = '<img src="./crazy-funded-logo.png" alt="">';
     logo.replaceWith(mark);
   }
 });
@@ -2687,7 +2688,7 @@ function buildPayoutCard(payout,verified){
     trophyBrand.appendChild(trophyBrandMark);
   }
   const trophyDaily = document.createElement('span');
-  trophyDaily.textContent = 'DAILY';
+  trophyDaily.textContent = 'CRAZY';
   const trophyFunded = document.createElement('span');
   trophyFunded.className = 'payout-brand-funded';
   trophyFunded.textContent = 'FUNDED';
@@ -2784,7 +2785,7 @@ function buildPayoutCard(payout,verified){
     backBrand.appendChild(backMark);
   }
   const backDaily = document.createElement('span');
-  backDaily.textContent = 'DAILY';
+  backDaily.textContent = 'CRAZY';
   const backFunded = document.createElement('span');
   backFunded.textContent = 'FUNDED';
   backBrand.append(backDaily,backFunded);
@@ -2818,7 +2819,7 @@ function buildPayoutCard(payout,verified){
   });
   const backNote = document.createElement('div');
   backNote.className = 'payout-back-note';
-  backNote.textContent = payout.isSample ? 'Illustrative preview only · Not evidence of an actual payout.' : verified ? 'Daily Funded · verified payout record' : '';
+  backNote.textContent = payout.isSample ? 'Illustrative preview only · Not evidence of an actual payout.' : verified ? 'Crazy Funded · verified payout record' : '';
   back.append(backBrand,backTitle,backGrid,backNote);
 
   content.append(header, title, presented, recipient, shareLabel, amountPlate, footer);
@@ -2847,7 +2848,7 @@ function renderRewardsCertificate(){
   card.removeAttribute('tabindex');
   card.removeAttribute('aria-pressed');
   card.setAttribute('role','img');
-  card.setAttribute('aria-label','Daily Funded certificate preview; payout amount appears after a verified payout');
+  card.setAttribute('aria-label','Crazy Funded certificate preview; payout amount appears after a verified payout');
   card.querySelector('.payout-stamp').remove();
   card.querySelector('.payout-amount').textContent = '';
   card.querySelector('.payout-certificate-back').remove();
@@ -3175,7 +3176,7 @@ const firebaseHeaderAccountLink = document.querySelector('.navright .open-dash')
 const dashboardAccountAction = document.getElementById('dashboardAccountAction');
 function updateFirebaseAccountControls(user){
   if(firebaseHeaderAccountLink) firebaseHeaderAccountLink.textContent = user ? 'Sign out' : 'Sign in';
-  if(dashboardAccountAction) dashboardAccountAction.textContent = user ? 'Sign out' : '← Back to Daily Funded';
+  if(dashboardAccountAction) dashboardAccountAction.textContent = user ? 'Sign out' : '← Back to Crazy Funded';
 }
 function updateDashboardGreeting(user){
   const greeting = document.getElementById('dashboardGreeting');
@@ -4231,7 +4232,7 @@ if(attachPopupEl){
 async function refreshDashboard(preferredAccountId){
   try{
     await loadDashboardAccounts();
-    document.querySelector('#dashEmpty h4').textContent = 'No Daily Funded challenge account yet';
+    document.querySelector('#dashEmpty h4').textContent = 'No Crazy Funded challenge account yet';
     document.querySelector('#dashEmpty p').textContent = 'Your purchased challenge and performance details will appear here.';
   }catch(error){
     dashboardAccounts = [];
@@ -5777,7 +5778,7 @@ if(payoutRequestForm){
     panel.setAttribute('aria-hidden','true');
     panel.inert = true;
     launcher.setAttribute('aria-expanded','false');
-    launcher.setAttribute('aria-label','Open Daily Funded support FAQ demo');
+    launcher.setAttribute('aria-label','Open Crazy Funded support FAQ demo');
     input.value = '';
     input.disabled = false;
     sendButton.disabled = false;
@@ -5794,7 +5795,7 @@ if(payoutRequestForm){
     panel.inert = false;
     panel.setAttribute('aria-hidden','false');
     launcher.setAttribute('aria-expanded','true');
-    launcher.setAttribute('aria-label','Close Daily Funded support FAQ demo');
+    launcher.setAttribute('aria-label','Close Crazy Funded support FAQ demo');
     window.requestAnimationFrame(()=>{
       panel.classList.add('is-open');
       input.focus();
