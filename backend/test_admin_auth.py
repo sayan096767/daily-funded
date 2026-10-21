@@ -51,16 +51,26 @@ class PurchaseApiTests(unittest.TestCase):
         )
         return fake_firestore, fake_r2_client, user_ref, purchase_ref, account_ref
 
-    def submit(self, coupon="", include_proof=True, claims=None, existing_purchase=None, r2_error=None, firestore_error=None):
+    def submit(
+        self, coupon="", include_proof=True, claims=None, existing_purchase=None,
+        r2_error=None, firestore_error=None, product_model=None, product_id=None,
+        client_price=None, plan_key="1step", size=5000,
+    ):
         claims = claims or {"uid": "verified-user-a", "email": "a@example.com", "name": "User A"}
         fake_firestore, fake_r2_client, user_ref, purchase_ref, account_ref = self.purchase_fakes(
             existing_purchase, r2_error, firestore_error
         )
         payload = {
-            "plan": "1step", "size": "5000", "coupon": coupon,
+            "plan": plan_key, "size": str(size), "coupon": coupon,
             "submissionId": self.submission_id, "currency": "usdt", "network": "trc20",
             "ownerUid": "user-b-supplied-by-browser",
         }
+        if product_model is not None:
+            payload["productModel"] = product_model
+        if product_id is not None:
+            payload["productId"] = product_id
+        if client_price is not None:
+            payload["price"] = client_price
         if include_proof:
             payload["proof"] = (io.BytesIO(self.proof_bytes), "payment.png")
         with patch("app.firebase_auth.verify_id_token", return_value=claims):
@@ -76,7 +86,9 @@ class PurchaseApiTests(unittest.TestCase):
         return response, fake_firestore, fake_r2_client, user_ref, purchase_ref, account_ref
 
     def test_no_coupon_creates_pending_purchase_and_owner_account(self):
-        response, fake_firestore, fake_r2_client, _user_ref, _purchase_ref, _account_ref = self.submit()
+        response, fake_firestore, fake_r2_client, _user_ref, _purchase_ref, _account_ref = self.submit(
+            product_model="classic", product_id="1step", client_price="1"
+        )
 
         self.assertEqual(response.status_code, 201)
         result = response.get_json()
@@ -115,13 +127,31 @@ class PurchaseApiTests(unittest.TestCase):
         self.assertNotIn("ACL", put_kwargs)
 
     def test_valid_coupon_is_server_calculated(self):
-        response, fake_firestore, *_ = self.submit(coupon="dailyfunded30")
+        response, fake_firestore, *_ = self.submit(coupon="crazyfunded30")
+
+        with self.assertRaisesRegex(ValueError, "Invalid coupon"):
+            app_module.calculate_purchase_amount("1step", 5000, "DAILYFUNDED30")
 
         self.assertEqual(response.status_code, 201)
         result = response.get_json()
         self.assertEqual((result["priceCents"], result["discountCents"], result["totalCents"]), (3200, 960, 2240))
         purchase_data = fake_firestore.batch.return_value.create.call_args_list[0].args[1]
-        self.assertEqual(purchase_data["couponCode"], "DAILYFUNDED30")
+        self.assertEqual(purchase_data["couponCode"], "CRAZYFUNDED30")
+
+    def test_classic_coupon_is_rejected_for_spark_before_writes(self):
+        response, firestore_client, r2_client, *_ = self.submit(
+            product_model="spark",
+            product_id="MODEL_FX_SPARK_1STEP",
+            plan_key="spark_1step",
+            size=25000,
+            coupon="CRAZYFUNDED30",
+            include_proof=False,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("only available for Classic", response.get_json()["error"])
+        firestore_client.collection.assert_not_called()
+        r2_client.put_object.assert_not_called()
 
     def test_invalid_coupon_is_rejected_before_r2_or_firestore(self):
         with patch("app.firebase_auth.verify_id_token", return_value={"uid": "verified-user-a"}):
@@ -138,6 +168,68 @@ class PurchaseApiTests(unittest.TestCase):
         self.assertIn("Invalid coupon", response.get_json()["error"])
         firestore_client.assert_not_called()
         r2_client.assert_not_called()
+
+    def test_unconfigured_model_or_product_id_is_rejected_before_writes(self):
+        product_options = (
+            ("spark", "1step"),
+            ("classic", "unknown"),
+        )
+        for product_model, product_id in product_options:
+            with self.subTest(product_model=product_model, product_id=product_id):
+                response, firestore_client, r2_client, *_ = self.submit(
+                    include_proof=False,
+                    product_model=product_model,
+                    product_id=product_id,
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("product is not available", response.get_json()["error"])
+                firestore_client.assert_not_called()
+                r2_client.assert_not_called()
+
+    def test_spark_prices_are_backend_authoritative_for_all_supported_products(self):
+        products = (
+            ("spark_1step", "MODEL_FX_SPARK_1STEP", {25000: 39, 50000: 59, 100000: 79}),
+            ("spark_instant", "MODEL_FX_SPARK_INSTANT", {25000: 59, 50000: 79, 100000: 99}),
+        )
+        for plan_key, product_id, prices in products:
+            for size, price in prices.items():
+                with self.subTest(plan_key=plan_key, size=size):
+                    response, fake_firestore, *_ = self.submit(
+                        product_model="spark",
+                        product_id=product_id,
+                        plan_key=plan_key,
+                        size=size,
+                        client_price="1",
+                    )
+                    self.assertEqual(response.status_code, 201)
+                    self.assertEqual(response.get_json()["priceCents"], price * 100)
+                    purchase_data = fake_firestore.batch.return_value.create.call_args_list[0].args[1]
+                    self.assertEqual(purchase_data["planKey"], plan_key)
+                    self.assertEqual(purchase_data["accountSize"], size)
+
+    def test_spark_catalog_keeps_instant_profit_target_absent(self):
+        one_step = app_module.CATALOG["spark_1step"]
+        instant = app_module.CATALOG["spark_instant"]
+
+        self.assertEqual(one_step["profit_target_percent"], 6)
+        self.assertEqual(instant["profit_target_percent"], None)
+        self.assertNotIn("profit target", " ".join(instant["rules"]).lower())
+        self.assertEqual(one_step["prices"], {25000: 39, 50000: 59, 100000: 79})
+        self.assertEqual(instant["prices"], {25000: 59, 50000: 79, 100000: 99})
+
+    def test_spark_rejects_unsupported_size_and_wrong_product_identifier(self):
+        for product_id, size in (("MODEL_FX_SPARK_1STEP", 5000), ("wrong-id", 25000)):
+            with self.subTest(product_id=product_id, size=size):
+                response, firestore_client, r2_client, *_ = self.submit(
+                    include_proof=False,
+                    product_model="spark",
+                    product_id=product_id,
+                    plan_key="spark_1step",
+                    size=size,
+                )
+                self.assertEqual(response.status_code, 400)
+                firestore_client.collection.assert_not_called()
+                r2_client.put_object.assert_not_called()
 
     def test_missing_screenshot_does_not_access_r2_or_firestore(self):
         with patch("app.firebase_auth.verify_id_token", return_value={"uid": "verified-user-a"}):
@@ -603,7 +695,7 @@ class AdminPurchaseReviewApiTests(unittest.TestCase):
             "planKey": "1step",
             "accountSize": 50000,
             "listPriceCents": 32000,
-            "couponCode": "DAILYFUNDED30",
+            "couponCode": "CRAZYFUNDED30",
             "discountCents": 9600,
             "totalCents": 22400,
             "paymentCurrency": "usdt",
@@ -642,7 +734,7 @@ class AdminPurchaseReviewApiTests(unittest.TestCase):
         self.assertEqual(payload["purchases"][0]["plan"], "1step")
         self.assertEqual(payload["purchases"][0]["planLabel"], "1-Step")
         self.assertEqual(payload["purchases"][0]["originalPriceCents"], 32000)
-        self.assertEqual(payload["purchases"][0]["couponCode"], "DAILYFUNDED30")
+        self.assertEqual(payload["purchases"][0]["couponCode"], "CRAZYFUNDED30")
         self.assertEqual(payload["purchases"][0]["discountCents"], 9600)
         self.assertEqual(payload["purchases"][0]["amountCents"], 22400)
         self.assertEqual(payload["purchases"][0]["paymentNetwork"], "trc20")

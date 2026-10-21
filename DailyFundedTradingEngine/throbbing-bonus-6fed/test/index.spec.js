@@ -23,6 +23,8 @@ function makeCatalog({ inactivePlan = null, omitPhase = null } = {}) {
 		{ key: "1step", code: "1_STEP", id: "MODEL_1", phaseNumbers: [1] },
 		{ key: "2step", code: "2_STEP", id: "MODEL_2", phaseNumbers: [1, 2] },
 		{ key: "instant", code: "INSTANT", id: "MODEL_INSTANT", phaseNumbers: [1] },
+		{ key: "spark_1step", code: "SPARK_1_STEP", id: "MODEL_FX_SPARK_1STEP", phaseNumbers: [1] },
+		{ key: "spark_instant", code: "SPARK_INSTANT", id: "MODEL_FX_SPARK_INSTANT", phaseNumbers: [1] },
 	];
 	const models = [
 		...planDefinitions.map(({ code, id }) => ({
@@ -31,13 +33,13 @@ function makeCatalog({ inactivePlan = null, omitPhase = null } = {}) {
 			name: `${code} model`,
 			currency: "USD",
 			leverage: 100,
-			profit_split_percent: 80,
+			profit_split_percent: code.startsWith("SPARK_") ? 70 : 80,
 			minimum_payout: null,
 			maximum_payout: null,
-			payout_frequency: null,
+			payout_frequency: code.startsWith("SPARK_") ? "on_demand" : null,
 			payout_waiting_period_days: null,
 			status: inactivePlan === code ? "disabled" : "active",
-			custom_rules_json: "{}",
+			custom_rules_json: code.startsWith("SPARK_") ? '{"reward_cycle_label":"On demand"}' : "{}",
 		})),
 		{
 			id: "MODEL_UNKNOWN",
@@ -53,12 +55,12 @@ function makeCatalog({ inactivePlan = null, omitPhase = null } = {}) {
 				model_id: id,
 				phase_number: phaseNumber,
 				phase_name: `${code} phase ${phaseNumber}`,
-				profit_target_percent: 10,
-				daily_drawdown_percent: 5,
-				max_drawdown_percent: 10,
-				max_drawdown_type: "STATIC",
+				profit_target_percent: code === "SPARK_INSTANT" ? null : code === "SPARK_1_STEP" ? 6 : 10,
+				daily_drawdown_percent: code.startsWith("SPARK_") ? 3 : 5,
+				max_drawdown_percent: code.startsWith("SPARK_") ? 7 : 10,
+				max_drawdown_type: code.startsWith("SPARK_") ? "TRAILING" : "STATIC",
 				daily_drawdown_type: "START_OF_DAY_EQUITY",
-				minimum_trading_days: 0,
+				minimum_trading_days: code.startsWith("SPARK_") ? 5 : 0,
 				maximum_trading_days: 30,
 				minimum_profitable_days: 0,
 				max_lot_size: null,
@@ -78,7 +80,7 @@ function makeCatalog({ inactivePlan = null, omitPhase = null } = {}) {
 				pass_rule: null,
 				fail_rule: null,
 				next_phase_number: code === "2_STEP" && phaseNumber === 1 ? 2 : null,
-				custom_rules_json: "{}",
+				custom_rules_json: code.startsWith("SPARK_") ? '{"consistency_rule_percent":30}' : "{}",
 				status: "active",
 			}))
 			.filter(
@@ -405,7 +407,7 @@ function mockDb({
 					changes = Number(result?.meta?.changes || 1);
 				}
 				if (lower.includes("insert into trading_accounts")) {
-					const [id, userId, purchaseId, modelCode, phaseNumber, size, startingBalance, balance, equity] = statement.values;
+					const [id, userId, purchaseId, modelCode, phaseNumber, size, startingBalance, balance, equity, profitTargetPercent] = statement.values;
 					accounts.push({
 						id,
 						user_id: userId,
@@ -416,6 +418,7 @@ function mockDb({
 						starting_balance: startingBalance,
 						balance,
 						equity,
+						profit_target_percent: profitTargetPercent,
 						status: "active",
 					});
 				}
@@ -2671,6 +2674,8 @@ describe("Flexible provisioning worker", () => {
 		["1step", "1_STEP", 1],
 		["2step", "2_STEP", 1],
 		["instant", "INSTANT", 1],
+		["spark_1step", "SPARK_1_STEP", 1],
+		["spark_instant", "SPARK_INSTANT", 1],
 	])("maps %s to model %s phase %i", async (planKey, modelCode, phaseNumber) => {
 		const { db, state } = mockDb();
 		const response = await provision(db, payloadFor(planKey, {
@@ -2698,6 +2703,35 @@ describe("Flexible provisioning worker", () => {
 		expect(state.accounts[0].balance).toBe(100);
 		expect(state.accounts[0].equity).toBe(100);
 		expect(state.snapshots).toHaveLength(1);
+	});
+
+	it.each([
+		["spark_1step", "SPARK_1_STEP", 6],
+		["spark_instant", "SPARK_INSTANT", null],
+	])("creates %s with its configured target and immutable Spark rule snapshot", async (planKey, modelCode, target) => {
+		const { db, state } = mockDb();
+		const response = await provision(db, payloadFor(planKey));
+		const payload = await response.json();
+		const rules = payload.rules;
+		const snapshot = state.snapshots[0];
+		const customRules = JSON.parse(rules.custom_rules_json);
+
+		expect(response.status).toBe(201);
+		expect(payload.account.model_code).toBe(modelCode);
+		expect(payload.account.status).toBe("active");
+		expect(rules.profit_target_percent).toBe(target);
+		expect(rules).toMatchObject({
+			daily_drawdown_percent: 3,
+			max_drawdown_percent: 7,
+			max_drawdown_type: "TRAILING",
+			minimum_trading_days: 5,
+			profit_split_percent: 70,
+			payout_frequency: "on_demand",
+		});
+		expect(customRules.phase).toMatchObject({ consistency_rule_percent: 30 });
+		expect(customRules.model).toMatchObject({ reward_cycle_label: "On demand" });
+		expect(snapshot.profit_target_percent).toBe(target);
+		expect(state.accounts[0].profit_target_percent).toBe(target ?? 0);
 	});
 
 	it.each(["random-value", "UNKNOWN_PLAN"])("rejects unknown plan key %s without model fallback", async (planKey) => {
@@ -3380,7 +3414,7 @@ describe("Flexible provisioning worker", () => {
 	it("loads all approved symbol metadata without adding Futures symbols", () => {
 		const database = new DatabaseSync(":memory:");
 		try {
-			for (const file of ["../schema.sql", "../migration_002.sql", "../seed_forex.sql", "../migration_005.sql"]) {
+			for (const file of ["../schema.sql", "../migration_002.sql", "../seed_forex.sql", "../migration_005.sql", "../migration_009_spark_products.sql"]) {
 				database.exec(readFileSync(new URL(file, import.meta.url), "utf8"));
 			}
 
@@ -3394,16 +3428,18 @@ describe("Flexible provisioning worker", () => {
 				"NZDUSD", "XAUUSD", "XAGUSD", "BTCUSD", "ETHUSD", "USOIL",
 			];
 			expect(database.prepare("SELECT code FROM challenge_models ORDER BY code").all().map((row) => row.code)).toEqual([
-				"1_STEP", "2_STEP", "INSTANT",
+				"1_STEP", "2_STEP", "INSTANT", "SPARK_1_STEP", "SPARK_INSTANT",
 			]);
 			const models = database.prepare("SELECT code, profit_split_percent, payout_frequency, custom_rules_json FROM challenge_models ORDER BY code").all();
-			expect(models.map((row) => [row.code, row.profit_split_percent, row.payout_frequency, JSON.parse(row.custom_rules_json).reward_cycle_days])).toEqual([
-				["1_STEP", 80, "every_5_days", 5],
-				["2_STEP", 90, "every_7_days", 7],
-				["INSTANT", 80, "daily", 1],
+			expect(models.map((row) => [row.code, row.profit_split_percent, row.payout_frequency, JSON.parse(row.custom_rules_json)])).toEqual([
+				["1_STEP", 80, "every_5_days", { reward_cycle_days: 5, reward_cycle_label: "5 days" }],
+				["2_STEP", 90, "every_7_days", { reward_cycle_days: 7, reward_cycle_label: "7 days" }],
+				["INSTANT", 80, "daily", { reward_cycle_days: 1, reward_cycle_label: "daily" }],
+				["SPARK_1_STEP", 70, "on_demand", { reward_cycle_label: "On demand" }],
+				["SPARK_INSTANT", 70, "on_demand", { reward_cycle_label: "On demand" }],
 			]);
-			expect(database.prepare("SELECT COUNT(*) AS count FROM challenge_model_phases").get().count).toBe(4);
-			expect(database.prepare("SELECT COUNT(*) AS count FROM challenge_model_sizes").get().count).toBe(19);
+			expect(database.prepare("SELECT COUNT(*) AS count FROM challenge_model_phases").get().count).toBe(6);
+			expect(database.prepare("SELECT COUNT(*) AS count FROM challenge_model_sizes").get().count).toBe(25);
 			const sizes = database.prepare("SELECT m.code, s.size, s.price, s.currency, s.status FROM challenge_model_sizes s JOIN challenge_models m ON m.id = s.model_id ORDER BY m.code, s.size").all();
 			expect(sizes.map((row) => [row.code, row.size, row.price])).toEqual([
 				["1_STEP", 5000, 32], ["1_STEP", 10000, 64], ["1_STEP", 25000, 160],
@@ -3413,6 +3449,8 @@ describe("Flexible provisioning worker", () => {
 				["INSTANT", 2500, 25], ["INSTANT", 5000, 49], ["INSTANT", 10000, 98],
 				["INSTANT", 25000, 245], ["INSTANT", 50000, 490], ["INSTANT", 100000, 980],
 				["INSTANT", 200000, 1960],
+				["SPARK_1_STEP", 25000, 39], ["SPARK_1_STEP", 50000, 59], ["SPARK_1_STEP", 100000, 79],
+				["SPARK_INSTANT", 25000, 59], ["SPARK_INSTANT", 50000, 79], ["SPARK_INSTANT", 100000, 99],
 			]);
 			expect(sizes.every((row) => row.currency === "USD" && row.status === "active")).toBe(true);
 			const phases = database.prepare("SELECT m.code, p.phase_number, p.profit_target_percent, p.daily_drawdown_percent, p.max_drawdown_percent, p.max_drawdown_type, p.daily_drawdown_type, p.minimum_trading_days, p.next_phase_number FROM challenge_model_phases p JOIN challenge_models m ON m.id = p.model_id ORDER BY m.code, p.phase_number").all();
@@ -3421,6 +3459,8 @@ describe("Flexible provisioning worker", () => {
 				["2_STEP", 1, 6, 5, 10, "STATIC", "START_OF_DAY_EQUITY", 5, 2],
 				["2_STEP", 2, 6, 5, 10, "STATIC", "START_OF_DAY_EQUITY", 5, null],
 				["INSTANT", 1, null, 5, 10, "STATIC", "START_OF_DAY_EQUITY", 0, null],
+				["SPARK_1_STEP", 1, 6, 3, 7, "TRAILING", "START_OF_DAY_EQUITY", 5, null],
+				["SPARK_INSTANT", 1, null, 3, 7, "TRAILING", "START_OF_DAY_EQUITY", 5, null],
 			]);
 
 			const symbolRows = database.prepare("SELECT symbol, category, base_currency, quote_currency, volume_unit, contract_size, price_decimals, pip_size, minimum_lot, lot_step, maximum_lot, trading_enabled FROM trading_symbols ORDER BY rowid").all();
@@ -3464,7 +3504,7 @@ describe("Flexible provisioning worker", () => {
 			expect(database.prepare("SELECT COUNT(*) AS count FROM position_calculation_snapshots").get().count).toBe(0);
 
 			const phaseAllowlists = database.prepare("SELECT allowed_symbols_json FROM challenge_model_phases").all();
-			expect(phaseAllowlists).toHaveLength(4);
+			expect(phaseAllowlists).toHaveLength(6);
 			expect(phaseAllowlists.every((row) => JSON.parse(row.allowed_symbols_json).join(",") === originalTradingAllowlist.join(","))).toBe(true);
 			expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
 		} finally {

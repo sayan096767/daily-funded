@@ -632,6 +632,10 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
 
   #checkout{display:none;}
   #checkout.active{display:block;}
+  body.checkout-open{min-height:100vh;}
+  body.checkout-open>:not(#checkout):not(script):not(style):not(.popup-overlay):not(.qr-modal):not(.upi-status-box){display:none!important;}
+  body.checkout-open #checkout{min-height:100vh; padding-top:24px;}
+  body.registration-open>:not(#registration):not(.df-support-widget):not(script):not(style):not(.popup-overlay):not(.qr-modal):not(.upi-status-box){display:none!important;}
   #registration{display:none;}
   #registration.active{position:relative; isolation:isolate; display:grid; grid-template-columns:minmax(0,1fr) minmax(340px,440px); align-items:center; gap:clamp(48px,8vw,112px); width:min(100%,1120px); min-height:100vh; margin:0 auto; padding:54px 32px;}
   #registration.active::before{content:''; position:absolute; inset:0; z-index:-1; background-image:linear-gradient(rgba(62,207,126,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(62,207,126,.035) 1px,transparent 1px); background-size:42px 42px; mask-image:linear-gradient(90deg,#000,transparent 76%); pointer-events:none;}
@@ -910,8 +914,21 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   @media(prefers-reduced-motion:reduce){.plan::before{animation:none; opacity:.3;}}
 
   .tabs{display:inline-flex; border:1px solid var(--panel-b); border-radius:99px; padding:4px; margin-top:22px; gap:2px;}
+  #pricing #marketTabs,#pricing #forexModels,#pricing #tabs{display:flex; width:max-content; max-width:100%; flex-wrap:wrap; justify-content:center; margin-left:auto; margin-right:auto;}
   .tab{padding:8px 18px; border-radius:99px; font-size:13.5px; font-weight:600; color:var(--sub); cursor:pointer; border:none; background:transparent; font-family:inherit;}
   .tab.active{background:var(--green); color:#06140c;}
+  #forexModels [data-forex-model="spark"]{position:relative; isolation:isolate; overflow:visible;}
+  #forexModels [data-forex-model="spark"].spark-bursting{z-index:1; animation:spark-option-glow 1.3s ease-out both;}
+  #forexModels [data-forex-model="spark"].spark-bursting::before{content:""; position:absolute; inset:-5px; z-index:-1; border:1px solid rgba(87,226,255,.95); border-radius:inherit; box-shadow:0 0 7px #39dfff,0 0 17px rgba(28,171,255,.8),inset 0 0 9px rgba(52,216,255,.55); pointer-events:none; animation:spark-ring-flash 1.3s ease-out both;}
+  #forexModels [data-forex-model="spark"].spark-reduced-glow{box-shadow:0 0 9px rgba(55,205,255,.55),0 0 18px rgba(50,126,255,.28);}
+  .spark-particle,.spark-streak{position:absolute; left:50%; top:50%; z-index:2; pointer-events:none;}
+  .spark-particle{width:3px; height:3px; border-radius:50%; background:#c6fbff; box-shadow:0 0 4px 2px #41ddff,0 0 10px 3px #248cff; animation:spark-particle-flight 900ms cubic-bezier(.12,.72,.22,1) var(--spark-delay) both;}
+  .spark-streak{width:var(--spark-length); height:1px; border-radius:50%; background:linear-gradient(90deg,transparent,#b7faff 25%,#39dbff 72%,transparent); box-shadow:0 0 5px 1px #2cbcff; transform:rotate(var(--spark-angle)); transform-origin:left center; animation:spark-streak-flash 520ms ease-out var(--spark-delay) both;}
+  @keyframes spark-option-glow{0%,100%{filter:none}12%,34%{filter:drop-shadow(0 0 5px #3bdfff) drop-shadow(0 0 13px rgba(35,140,255,.85))}23%,55%{filter:drop-shadow(0 0 2px #8df5ff) drop-shadow(0 0 7px rgba(35,140,255,.48))}}
+  @keyframes spark-ring-flash{0%{opacity:0;transform:scale(.92)}18%,40%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.12)}}
+  @keyframes spark-particle-flight{0%{opacity:0;transform:translate(-50%,-50%) scale(.25)}12%{opacity:1}100%{opacity:0;transform:translate(calc(-50% + var(--spark-x)),calc(-50% + var(--spark-y))) scale(0)}}
+  @keyframes spark-streak-flash{0%,100%{opacity:0;scale:.2}18%{opacity:1;scale:1}55%{opacity:.8}75%{opacity:0;scale:.35}}
+  @media(prefers-reduced-motion:reduce){#forexModels [data-forex-model="spark"].spark-bursting{animation:none}#forexModels [data-forex-model="spark"].spark-bursting::before{animation:none;opacity:.72;transform:none}.spark-particle,.spark-streak{display:none}}
 
   .price-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:30px;}
   .futures-plans{max-width:1180px; margin:24px auto 0; text-align:left;}
@@ -998,7 +1015,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .fbrand p{font-size:13px; color:var(--sub-dim); max-width:260px; margin-top:10px; line-height:1.6;}
   .disclaimer{border-top:1px solid var(--panel-b); margin-top:34px; padding-top:20px; font-size:12px; color:var(--sub-dim); text-align:center;}
 
-  /* Local support FAQ demo */
+  /* Local FAQ support assistant */
   .df-support-launcher{position:fixed; right:calc(22px + env(safe-area-inset-right,0px)); bottom:calc(22px + env(safe-area-inset-bottom,0px)); z-index:40; display:flex; align-items:center; gap:9px; min-height:54px; padding:0 19px; border:1px solid rgba(99,218,255,.72); border-radius:999px; background:linear-gradient(135deg,#087fa7,#07506f 72%); box-shadow:0 0 18px rgba(20,190,255,.34),0 8px 28px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.22); color:#effaff; font:700 13px 'Inter',system-ui,sans-serif; cursor:pointer; transition:transform .18s ease,box-shadow .18s ease;}
   .df-support-launcher:hover{transform:translateY(-2px); box-shadow:0 0 25px rgba(20,190,255,.48),0 10px 30px rgba(0,0,0,.42);}
   .df-support-launcher:focus-visible,.df-support-close:focus-visible,.df-support-topic:focus-visible,.df-support-send:focus-visible,.df-support-input:focus-visible{outline:2px solid #8ee9ff; outline-offset:3px;}
@@ -1015,16 +1032,24 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .df-support-demo-tag{display:inline-flex; margin-top:5px; padding:3px 6px; border:1px solid rgba(103,224,255,.22); border-radius:99px; color:#8fe6fc; font-size:8px; font-weight:800; letter-spacing:.09em;}
   .df-support-close{display:grid; place-items:center; width:34px; height:34px; flex:none; border:1px solid rgba(181,218,229,.16); border-radius:9px; background:rgba(255,255,255,.04); color:#d7eaf0; font-size:22px; line-height:1; cursor:pointer;}
   .df-support-close:hover{background:rgba(255,255,255,.1);}
-  .df-support-content{display:flex; flex:1; flex-direction:column; gap:13px; min-height:0; padding:16px;}
+  .df-support-content{display:flex; flex:1; flex-direction:column; gap:10px; min-height:0; overflow:hidden; padding:16px;}
   .df-support-welcome{color:#dcebef; font-size:13px; line-height:1.55;}
   .df-support-welcome strong{color:#90e7fb;}
+  .df-support-welcome .df-support-faq-link{margin-left:4px; white-space:nowrap;}
   .df-support-topics{display:grid; grid-template-columns:1fr 1fr; gap:7px;}
   .df-support-topic{min-height:36px; padding:7px 9px; border:1px solid rgba(108,190,211,.2); border-radius:9px; background:rgba(255,255,255,.035); color:#c5dbe1; font:600 10px 'Inter',system-ui,sans-serif; text-align:left; cursor:pointer;}
   .df-support-topic:hover{border-color:rgba(101,218,245,.55); background:rgba(34,163,194,.1); color:#eafaff;}
-  .df-support-messages{display:flex; flex:1; flex-direction:column; gap:9px; min-height:28px; overflow:auto; overscroll-behavior:contain; padding:1px 2px;}
+  .df-support-messages{display:flex; flex:1 1 100px; flex-direction:column; gap:9px; min-height:100px; overflow:auto; overscroll-behavior:contain; padding:1px 2px;}
   .df-support-answer{align-self:flex-start; max-width:100%; padding:10px 12px; border:1px solid rgba(96,195,220,.17); border-radius:4px 12px 12px 12px; background:rgba(35,106,126,.17); color:#d4e8ed; font-size:12px; line-height:1.55; overflow-wrap:anywhere;}
+  .df-support-question{align-self:flex-end; max-width:90%; padding:9px 12px; border:1px solid rgba(75,188,226,.25); border-radius:12px 4px 12px 12px; background:rgba(34,130,160,.22); color:#effaff; font-size:12px; line-height:1.5; overflow-wrap:anywhere;}
+  .df-support-answer p{margin:0;}
+  .df-support-answer-links{display:flex; flex-wrap:wrap; gap:8px; margin-top:9px;}
+  .df-support-answer-links a{color:#91e9ff; font-size:11px; font-weight:700; text-decoration:underline; text-underline-offset:2px;}
+  .df-support-faq-link{display:inline-flex; align-self:flex-start; color:#91e9ff; font-size:11px; font-weight:700; text-decoration:underline; text-underline-offset:2px;}
   .df-support-answer-label{display:block; margin-bottom:4px; color:#80dff5; font-size:9px; font-weight:800; letter-spacing:.07em; text-transform:uppercase;}
   .df-support-status{min-height:16px; color:#8fcddd; font-size:11px; line-height:1.4;}
+  .df-support-status.is-searching:before{display:inline-block; width:6px; height:6px; margin:0 7px 1px 1px; border-radius:50%; background:#69dcf5; box-shadow:0 0 8px rgba(105,220,245,.8); content:""; animation:df-support-search-pulse .7s ease-in-out infinite alternate;}
+  @keyframes df-support-search-pulse{to{opacity:.35; transform:scale(.7);}}
   .df-support-status.error{color:#ffb1a7;}
   .df-support-form{display:flex; gap:8px; align-items:center;}
   .df-support-input{min-width:0; flex:1; height:42px; padding:0 12px; border:1px solid rgba(118,192,211,.25); border-radius:10px; background:rgba(4,12,16,.56); color:#f1fbff; font:12px 'Inter',system-ui,sans-serif;}
@@ -1035,7 +1060,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .df-support-privacy{color:#829ba2; font-size:9px; line-height:1.4;}
   .df-support-sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;}
   @media(max-width:520px){.df-support-launcher{right:calc(14px + env(safe-area-inset-right,0px)); bottom:calc(14px + env(safe-area-inset-bottom,0px)); min-height:50px; padding:0 16px;}.df-support-panel{left:calc(10px + env(safe-area-inset-left,0px)); right:calc(10px + env(safe-area-inset-right,0px)); bottom:calc(76px + env(safe-area-inset-bottom,0px)); width:auto; height:min(570px,calc(100vh - 98px - env(safe-area-inset-bottom,0px))); height:min(570px,calc(100dvh - 98px - env(safe-area-inset-bottom,0px))); min-height:210px; border-radius:15px;}.df-support-content{gap:10px; padding:13px;}.df-support-topics{gap:6px;}.df-support-topic{font-size:9px;}}
-  @media(prefers-reduced-motion:reduce){.df-support-launcher,.df-support-panel{transition:none;}.df-support-launcher:hover{transform:none;}}
+  @media(prefers-reduced-motion:reduce){.df-support-launcher,.df-support-panel{transition:none;}.df-support-launcher:hover{transform:none;}.df-support-status.is-searching:before{animation:none;}}
 
   /* Supplied human-support banner, scoped to avoid page-wide styles. */
   .df-human-support{--bg:#020716;--blue:#1a8cff;--cyan:#22d3ee;--teal:#19e6c1;--text:#fff;--soft:#d6e4ff;display:block;position:relative;isolation:isolate;box-sizing:border-box;width:100%;padding:22px max(12px,env(safe-area-inset-right,0px)) calc(22px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));font-family:inherit;color:var(--text);background:linear-gradient(180deg,#e7faff 0px,#a6dce6 34px,#477788 68px,#1c3039 112px,#0a0d0c 172px);}
@@ -1376,9 +1401,9 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
       <a href="#pricing" class="btn btn-primary btn-lg">Start your challenge →</a>
       <a href="#how" class="btn btn-outline btn-lg">See how it works</a>
     </div>
-    <button type="button" class="hero-coupon" id="heroCouponCheckoutBtn" aria-label="Copy coupon DAILYFUNDED30 and choose an account">
+    <button type="button" class="hero-coupon" id="heroCouponCheckoutBtn" aria-label="Copy coupon CRAZYFUNDED30 and choose a Classic account">
       <span class="hero-coupon-label">LIMITED OFFER</span>
-      <span class="hero-coupon-code">DAILYFUNDED30</span>
+      <span class="hero-coupon-code">CRAZYFUNDED30</span>
       <span class="hero-coupon-discount">30% OFF</span>
       <span class="hero-coupon-link">Copy code &amp; choose account →</span>
     </button>
@@ -1596,18 +1621,23 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
   <div class="wrap">
     <div class="eyebrow">Pricing</div>
     <h2>Choose your account market</h2>
+    <p class="lead" style="margin:12px auto 0;">One-time fee. No hidden costs. Refund the fee on your first payout.</p>
     <div class="tabs" id="marketTabs" role="tablist" aria-label="Account market">
       <button class="tab active" type="button" role="tab" aria-selected="true" aria-controls="forexPricingSection" data-market="forex">Forex Accounts</button>
       <button class="tab" type="button" role="tab" aria-selected="false" aria-controls="futuresPricingSection" data-market="futures">Futures Accounts</button>
     </div>
+    <div class="tabs" id="forexModels" role="group" aria-label="Forex product model">
+      <button class="tab active" type="button" aria-pressed="true" data-forex-model="classic">Classic</button>
+      <button class="tab" type="button" aria-pressed="false" data-forex-model="spark">Spark</button>
+    </div>
     <div id="forexPricingSection" role="tabpanel">
-      <p class="lead" style="margin:12px auto 0;">One-time fee. No hidden costs. Refund the fee on your first payout.</p>
       <div class="tabs" id="tabs" role="tablist" aria-label="Forex account type">
         <button class="tab active" type="button" role="tab" aria-selected="true" data-tab="1step">1-Step Challenge</button>
         <button class="tab" type="button" role="tab" aria-selected="false" data-tab="2step">2-Step Challenge</button>
         <button class="tab" type="button" role="tab" aria-selected="false" data-tab="instant">Instant Funding</button>
       </div>
-      <div id="priceGrids"></div>
+      <p id="checkoutSelectionNotice" role="status" aria-live="polite" hidden></p>
+      <div id="priceGrids" aria-live="polite"></div>
     </div>
     <div id="futuresPricingSection" role="tabpanel" hidden>
       <div class="futures-plans">
@@ -1765,7 +1795,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
           <p class="coupon-status" id="couponStatus" role="status" aria-live="polite"></p>
         </div>
         <div class="co-summary-row" id="coSubtotalRow" style="display:none;"><span>Subtotal</span><b id="coSubtotal">$0</b></div>
-        <div class="co-summary-row coupon-discount-row" id="coDiscountRow" style="display:none;"><span>DAILYFUNDED30 · 30% off</span><b id="coDiscount">−$0</b></div>
+        <div class="co-summary-row coupon-discount-row" id="coDiscountRow" style="display:none;"><span>CRAZYFUNDED30 · 30% off</span><b id="coDiscount">−$0</b></div>
         <div class="co-total"><span>Total due</span><span id="coTotal">$0</span></div>
         <div class="co-rules">
           <h4>Challenge rules</h4>
@@ -2320,9 +2350,9 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
 </footer>
 
 <div class="df-support-widget">
-  <button type="button" class="df-support-launcher" id="dfSupportLauncher" aria-label="Open Crazy Funded support FAQ demo" aria-controls="dfSupportPanel" aria-expanded="false">
+  <button type="button" class="df-support-launcher" id="dfSupportLauncher" aria-label="Open Crazy Funded FAQ assistant" aria-controls="dfSupportPanel" aria-expanded="false">
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-2.5 2v-5.1A7.5 7.5 0 1 1 20 11.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8 11h8M8 14.5h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-    <span>Support FAQ</span>
+    <span>Support assistant</span>
   </button>
   <section class="df-support-panel" id="dfSupportPanel" role="dialog" aria-modal="false" aria-labelledby="dfSupportTitle" aria-hidden="true" hidden inert>
     <div class="df-support-head">
@@ -2330,28 +2360,28 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
       <div class="df-support-heading">
         <h2 id="dfSupportTitle">Crazy Funded FAQ</h2>
         <p>Quick answers for common questions</p>
-        <span class="df-support-demo-tag">LOCAL DEMO · SAMPLE ANSWERS</span>
+        <span class="df-support-demo-tag">AUTOMATED FAQ MATCHING</span>
       </div>
       <button type="button" class="df-support-close" id="dfSupportClose" aria-label="Close support FAQ">×</button>
     </div>
     <div class="df-support-content">
-      <p class="df-support-welcome"><strong>Welcome.</strong> Pick a topic or ask a question. This demo works locally and does not contact support.</p>
+      <p class="df-support-welcome"><strong>Welcome.</strong> Ask a question or pick a suggestion. I match your wording to Crazy Funded’s published FAQ; I’m an automated FAQ assistant, not a live person or general AI. <a class="df-support-faq-link" href="#faq">Browse the full FAQ</a></p>
       <div class="df-support-topics" aria-label="Common support topics">
-        <button type="button" class="df-support-topic" data-question="What are the challenge rules?">Challenge rules</button>
-        <button type="button" class="df-support-topic" data-question="What are the profit splits?">Profit splits</button>
-        <button type="button" class="df-support-topic" data-question="Can you approve my payment?">Payment approval</button>
-        <button type="button" class="df-support-topic" data-question="I need help accessing my account.">Account access</button>
+        <button type="button" class="df-support-topic"></button>
+        <button type="button" class="df-support-topic"></button>
+        <button type="button" class="df-support-topic"></button>
+        <button type="button" class="df-support-topic"></button>
       </div>
-      <div class="df-support-messages" id="dfSupportMessages" role="log" aria-label="Sample FAQ responses" aria-live="polite" aria-relevant="additions"></div>
+      <div class="df-support-messages" id="dfSupportMessages" role="log" aria-label="Support conversation" aria-live="polite" aria-relevant="additions"></div>
       <p class="df-support-status" id="dfSupportStatus" role="status" aria-live="polite"></p>
       <form class="df-support-form" id="dfSupportForm">
-        <label class="df-support-sr-only" for="dfSupportInput">Ask a support FAQ question</label>
+        <label class="df-support-sr-only" for="dfSupportInput">Ask a question about Crazy Funded</label>
         <input class="df-support-input" id="dfSupportInput" name="question" type="text" maxlength="300" autocomplete="off" placeholder="Ask a question…" aria-describedby="dfSupportPrivacy">
         <button type="submit" class="df-support-send" id="dfSupportSend" aria-label="Send question">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 4 16 7-16 9 3-8-3-8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M7 12h13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
       </form>
-      <p class="df-support-privacy" id="dfSupportPrivacy">Local sample only: questions are not sent or saved. No account or payment data is available here.</p>
+      <p class="df-support-privacy" id="dfSupportPrivacy">Questions are matched locally and are not sent or saved. For account-specific help, sign in to your dashboard. Never enter passwords or payment credentials here.</p>
     </div>
   </section>
 </div>
@@ -2488,13 +2518,53 @@ document.querySelectorAll('.brand').forEach(brand=>{
 });
 
 const sizes = [5000,10000,25000,50000,100000,200000];
+const sparkSizes = [25000,50000,100000];
+let selectedForexModel = 'classic';
 const pricing = {
   '1step': {perK:6.40, min:32, discount:.20, label:'1-Step', target:'10% profit target', extra:['5% daily drawdown','10% max drawdown','3 min trading days','5 day reward cycle','80% profit split','No consistency rules']},
   '2step': {perK:5.20, min:27, discount:.40, label:'2-Step', target:'Ph 1: 6% / Ph 2: 6%', extra:['5% daily drawdown','10% max drawdown','5 min trading days','7 day reward cycle','90% profit split','No consistency rules']},
-  'instant': {perK:9.80, min:49, discount:.20, prices:{25000:190,50000:349,100000:689,200000:1299}, label:'Instant', target:'No profit target', extra:['5% daily drawdown','10% max drawdown','0 min trading days','Daily reward cycle','80% profit split','No consistency rules']}
+  'instant': {perK:9.80, min:49, discount:.20, prices:{25000:190,50000:349,100000:689,200000:1299}, label:'Instant', target:'No profit target', extra:['5% daily drawdown','10% max drawdown','0 min trading days','Daily reward cycle','80% profit split','No consistency rules']},
+  'spark_1step': {prices:{25000:39,50000:59,100000:79}, label:'Spark 1-Step', target:'6% profit target', extra:['3% daily drawdown','7% trailing max drawdown','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_1STEP'},
+  'spark_instant': {prices:{25000:59,50000:79,100000:99}, label:'Spark Instant', target:null, extra:['3% daily drawdown','7% trailing max drawdown','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_INSTANT'}
 };
 function renderPlans(tab){
-  const p = pricing[tab];
+  const checkoutNotice = document.getElementById('checkoutSelectionNotice');
+  checkoutNotice.hidden = true;
+  checkoutNotice.textContent = '';
+  if(selectedForexModel === 'spark' && tab === '2step') tab = '1step';
+  const planKey = selectedForexModel === 'spark'
+    ? (tab === 'instant' ? 'spark_instant' : 'spark_1step')
+    : tab;
+  const p = pricing[planKey];
+  if(selectedForexModel === 'spark'){
+    const grid = document.createElement('div');
+    grid.className = 'price-grid';
+    grid.innerHTML = sparkSizes.map(size=>{
+      const price = p.prices[size];
+      const perThousand = (price/(size/1000)).toFixed(2);
+      return `<div class="pcard tilt">
+        <div class="pcard-top"><div class="size">$${size.toLocaleString()}</div><span class="tag">${p.label}</span></div>
+        <div class="price">$${price}<small> one-time</small></div>
+        <div class="perk">$${perThousand} per $1K</div>
+        <ul>
+          ${p.target ? `<li><span class="ck">✓</span>${p.target}</li>` : ''}
+          ${p.extra.map(rule=>`<li><span class="ck">✓</span>${rule}</li>`).join('')}
+        </ul>
+        <a href="#" class="btn btn-primary buy-btn" style="width:100%; justify-content:center;" data-size="${size}" data-label="${p.label}" data-price="${price}" data-split="70% profit split" data-plan="${planKey}" data-product-id="${p.productId}">Get started →</a>
+      </div>`;
+    }).join('');
+    document.getElementById('priceGrids').replaceChildren(grid);
+    grid.querySelectorAll('.buy-btn').forEach(btn=>{
+      btn.addEventListener('click',event=>{
+        event.preventDefault();
+        openCheckout(Number(btn.dataset.size),btn.dataset.label,Number(btn.dataset.price),btn.dataset.split,btn.dataset.plan,btn.dataset.productId);
+      });
+    });
+    if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches && typeof attachTilt === 'function'){
+      grid.querySelectorAll('.tilt').forEach(attachTilt);
+    }
+    return;
+  }
   const planSizes = tab === 'instant' ? [2500,...sizes] : sizes;
   const grid = document.createElement('div');
   grid.className = 'price-grid';
@@ -2536,6 +2606,73 @@ document.getElementById('marketTabs').addEventListener('click',e=>{
   });
   document.getElementById('forexPricingSection').hidden = !forexSelected;
   document.getElementById('futuresPricingSection').hidden = forexSelected;
+  document.getElementById('forexModels').hidden = !forexSelected;
+  if(forexSelected) setForexModel('classic');
+  else stopSparkEffect();
+});
+let sparkEffectTimeout = 0;
+function stopSparkEffect(){
+  window.clearTimeout(sparkEffectTimeout);
+  sparkEffectTimeout = 0;
+  const sparkButton = document.querySelector('#forexModels [data-forex-model="spark"]');
+  if(!sparkButton) return;
+  sparkButton.classList.remove('spark-bursting','spark-reduced-glow');
+  sparkButton.querySelectorAll('.spark-particle,.spark-streak').forEach(effect=>effect.remove());
+}
+function playSparkEffect(){
+  stopSparkEffect();
+  const sparkButton = document.querySelector('#forexModels [data-forex-model="spark"]');
+  if(!sparkButton || document.getElementById('futuresPricingSection').hidden === false) return;
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    sparkButton.classList.add('spark-reduced-glow');
+  }else{
+    sparkButton.classList.add('spark-bursting');
+    for(let index=0;index<12;index++){
+      const angle = (Math.PI * 2 * index / 12) + (Math.random() - .5) * .7;
+      const distance = 19 + Math.random() * 23;
+      const particle = document.createElement('span');
+      particle.className = 'spark-particle';
+      particle.setAttribute('aria-hidden','true');
+      particle.style.setProperty('--spark-x',Math.cos(angle) * distance + 'px');
+      particle.style.setProperty('--spark-y',Math.sin(angle) * distance + 'px');
+      particle.style.setProperty('--spark-delay',Math.random() * 180 + 'ms');
+      sparkButton.appendChild(particle);
+    }
+    for(let index=0;index<4;index++){
+      const streak = document.createElement('span');
+      streak.className = 'spark-streak';
+      streak.setAttribute('aria-hidden','true');
+      streak.style.setProperty('--spark-angle',Math.random() * 360 + 'deg');
+      streak.style.setProperty('--spark-length',8 + Math.random() * 11 + 'px');
+      streak.style.setProperty('--spark-delay',Math.random() * 240 + 'ms');
+      sparkButton.appendChild(streak);
+    }
+  }
+  sparkEffectTimeout = window.setTimeout(stopSparkEffect,1400);
+}
+function setForexModel(model){
+  if(model === 'spark') playSparkEffect();
+  else stopSparkEffect();
+  selectedForexModel = model;
+  document.querySelectorAll('#forexModels [data-forex-model]').forEach(button=>{
+    const selected = button.dataset.forexModel === model;
+    button.classList.toggle('active',selected);
+    button.setAttribute('aria-pressed',String(selected));
+  });
+  const challengeTabs = [...document.querySelectorAll('#tabs [data-tab]')];
+  const activeTab = challengeTabs.find(button=>button.classList.contains('active'));
+  const nextTab = model === 'spark' && activeTab?.dataset.tab === '2step' ? '1step' : activeTab?.dataset.tab || '1step';
+  challengeTabs.forEach(button=>{
+    button.hidden = model === 'spark' && button.dataset.tab === '2step';
+    const selected = button.dataset.tab === nextTab;
+    button.classList.toggle('active',selected);
+    button.setAttribute('aria-selected',String(selected));
+  });
+  renderPlans(nextTab);
+}
+document.getElementById('forexModels').addEventListener('click',event=>{
+  const button = event.target.closest('[data-forex-model]');
+  if(button) setForexModel(button.dataset.forexModel);
 });
 document.getElementById('futuresPlanPicker').addEventListener('click',event=>{
   const button = event.target.closest('[data-futures-plan]');
@@ -2558,10 +2695,12 @@ document.getElementById('futuresPlanPicker').addEventListener('click',event=>{
 });
 document.getElementById('tabs').addEventListener('click', e=>{
   const btn = e.target.closest('.tab');
-  if(!btn) return;
-  document.querySelectorAll('#tabs .tab').forEach(t=>t.classList.remove('active'));
-  btn.classList.add('active');
-  document.querySelectorAll('#tabs .tab').forEach(tab=>tab.setAttribute('aria-selected',String(tab === btn)));
+  if(!btn || (selectedForexModel === 'spark' && btn.dataset.tab === '2step')) return;
+  document.querySelectorAll('#tabs .tab').forEach(tab=>{
+    const selected = tab === btn;
+    tab.classList.toggle('active',selected);
+    tab.setAttribute('aria-selected',String(selected));
+  });
   renderPlans(btn.dataset.tab);
 });
 renderPlans('1step');
@@ -2587,6 +2726,32 @@ const faqs = [
   {q:'What is the difference between the challenge types?', a:'The <strong class="challenge-step-number">1</strong>-Step challenge has a <strong>10%</strong> profit target. The <strong class="challenge-step-number challenge-step-two">2</strong>-Step challenge has targets of <strong>6%</strong> in Phase <strong class="challenge-step-number">1</strong> and <strong>6%</strong> in Phase <strong class="challenge-step-number challenge-step-two">2</strong>. Instant Funding has no profit target. Daily and overall drawdown limits are shown with each plan.'},
   {q:'What account sizes are available?', a:'Evaluation accounts range from <strong>$5,000</strong> to <strong>$200,000</strong>. Instant Funding starts at <strong>$2,500</strong>. Prices are listed under each challenge type.'},
   {q:'Which payment methods can I use?', a:'Crypto checkout supports <span class="faq-token usdt">USDT</span>, <span class="faq-token btc">BTC</span>, and <span class="faq-token eth">ETH</span> on the networks listed at checkout. Attach a payment screenshot with your confirmation. <span class="faq-token upi">UPI</span> is temporarily unavailable; the checkout will show a notice when you select it.'},
+  {q:'What is Spark 1-Step?', model:'spark_1step', a:'Spark 1-Step is a Forex challenge with a <strong>6% profit target</strong>, <strong>3% daily drawdown</strong>, <strong>7% trailing maximum drawdown</strong>, and <strong>5 minimum trading days</strong>. The profit split is <strong>70%</strong>, the consistency rule is <strong>30%</strong>, and rewards may be requested on demand according to the applicable program terms.'},
+  {q:'What is Spark Instant Funding?', model:'spark_instant', a:'Spark Instant Funding is a Forex account with <strong>no profit target</strong>. It has <strong>3% daily drawdown</strong>, <strong>7% trailing maximum drawdown</strong>, and <strong>5 minimum trading days</strong>. The profit split is <strong>70%</strong>, the consistency rule is <strong>30%</strong>, and rewards may be requested on demand according to the applicable program terms.'},
+  {q:'What is the difference between Spark 1-Step and Spark Instant Funding?', model:'spark', a:'Spark 1-Step has a <strong>6% profit target</strong>; Spark Instant Funding has <strong>no profit target</strong>. Both have 3% daily drawdown, 7% trailing maximum drawdown, 5 minimum trading days, a 70% profit split, a 30% consistency rule, and on-demand rewards according to the applicable program terms. Spark 1-Step costs $39 / $59 / $79 for $25,000 / $50,000 / $100,000. Spark Instant Funding costs $59 / $79 / $99 for those sizes.'},
+  {q:'Which account sizes are available for Spark?', model:'spark', a:'Spark accounts are available in <strong>$25,000</strong>, <strong>$50,000</strong>, and <strong>$100,000</strong> sizes.'},
+  {q:'How much does each Spark account cost?', model:'spark', keywords:['spark price','spark prices','spark cost','spark 25k price','spark 50k price','spark 100k price','spark 25,000 price','spark 50,000 price','spark 100,000 price'], a:'Spark 1-Step: <strong>$25,000 — $39</strong>, <strong>$50,000 — $59</strong>, and <strong>$100,000 — $79</strong>. Spark Instant Funding: <strong>$25,000 — $59</strong>, <strong>$50,000 — $79</strong>, and <strong>$100,000 — $99</strong>.'},
+  {q:'How do I select a Spark challenge?', model:'spark', a:'In Pricing, select <strong>Forex Accounts</strong>, then <strong>Spark</strong>, then choose <strong>1-Step Challenge</strong> or <strong>Instant Funding</strong>. Select an available account size from the pricing cards. Spark does not offer a 2-Step challenge.'},
+  {q:'Can I purchase Spark without logging in?', model:'spark', a:'No. You need to sign in or create an account before checkout. After authentication, continue to checkout for the Spark account you selected.'},
+  {q:'How do I access checkout after signing in?', model:'spark', a:'Choose a Spark account and select Get Started. Sign in or create an account when prompted; the selected account is carried through authentication and checkout resumes for that selection. Checkout and payment proof submission are still required.'},
+  {q:'What is the Spark 1-Step profit target?', model:'spark_1step', a:'Spark 1-Step has a <strong>6% profit target</strong>.'},
+  {q:'What is the Spark 1-Step daily drawdown?', model:'spark_1step', a:'Spark 1-Step has a <strong>3% daily drawdown</strong>.'},
+  {q:'What is the Spark 1-Step maximum drawdown?', model:'spark_1step', a:'Spark 1-Step has a <strong>7% trailing maximum drawdown</strong>.'},
+  {q:'How many minimum trading days are required for Spark 1-Step?', model:'spark_1step', a:'Spark 1-Step requires <strong>5 minimum trading days</strong>.'},
+  {q:'What is the Spark 1-Step profit split?', model:'spark_1step', a:'The Spark 1-Step profit split is <strong>70%</strong>.'},
+  {q:'Does Spark 1-Step have a consistency rule?', model:'spark_1step', a:'Yes. Spark 1-Step has a <strong>30% consistency rule</strong>.'},
+  {q:'When can I request Spark 1-Step rewards?', model:'spark_1step', a:'Spark 1-Step rewards may be requested <strong>on demand</strong>, according to the applicable program terms.'},
+  {q:'Does Spark Instant Funding have a profit target?', model:'spark_instant', a:'No. Spark Instant Funding has <strong>no profit target</strong>.'},
+  {q:'What are the Spark Instant Funding drawdown rules?', model:'spark_instant', a:'Spark Instant Funding has a <strong>3% daily drawdown</strong> and a <strong>7% trailing maximum drawdown</strong>.'},
+  {q:'What is the Spark Instant Funding minimum trading-days requirement?', model:'spark_instant', a:'Spark Instant Funding requires <strong>5 minimum trading days</strong>.'},
+  {q:'What is the Spark Instant Funding profit split?', model:'spark_instant', a:'The Spark Instant Funding profit split is <strong>70%</strong>.'},
+  {q:'Does Spark Instant Funding have a consistency rule?', model:'spark_instant', a:'Yes. Spark Instant Funding has a <strong>30% consistency rule</strong>.'},
+  {q:'When can I request Spark Instant Funding rewards?', model:'spark_instant', a:'Spark Instant Funding rewards may be requested <strong>on demand</strong>, according to the applicable program terms.'},
+  {q:'How do I buy a Spark account?', model:'spark', a:'Select Forex Accounts, Spark, a challenge type, and an account size. Choose Get Started, sign in or create an account, then complete checkout and submit the required payment proof. The purchase is subject to review and approval.'},
+  {q:'What happens after I submit payment proof for a Spark account?', model:'spark', a:'Your payment proof and purchase submission may require review. Submission is not payment approval, and Spark account details are not available until the purchase is approved. Check your signed-in dashboard for the purchase status.'},
+  {q:'When will my Spark account details be available?', model:'spark', a:'Spark account details are made available after the purchase is approved. Payment proof may require review; no approval time is guaranteed. Sign in and check your dashboard for the purchase status.'},
+  {q:'Where can I see my purchase or account status?', model:'spark', a:'Sign in to your account and check your dashboard for purchase and account status. This FAQ assistant cannot view individual records.'},
+  {q:'What should I do if my Spark payment is pending or rejected?', model:'spark', a:'Sign in and check your dashboard for the current purchase status and any instructions shown there. A pending submission may still require review; this FAQ assistant cannot determine or change an individual payment decision.'},
 ];
 const faqList = document.getElementById('faqList');
 faqs.forEach((f,i)=>{
@@ -3233,15 +3398,34 @@ if(firebaseAuth){
         googleProfileRouteUid = '';
         googleProfileRoutePromise = null;
       }
-      if(firebaseAuthStateInitialized) return;
+      if(firebaseAuthStateInitialized){
+        if(!user && checkout.classList.contains('active')){
+          if(pendingPurchase) savePendingCheckout(pendingPurchase);
+          closeCheckout(true);
+          openRegistration();
+          showLoginForm();
+          loginStatus.textContent = 'Your sign-in session ended. Sign in again to return to checkout.';
+        }
+        return;
+      }
       firebaseAuthStateInitialized = true;
       resolveFirebaseAuthState(user);
       const authActionParams = new URLSearchParams(window.location.search);
       if(user && !authActionParams.has('oobCode') && !authActionParams.has('reset_token')){
-        if(Array.isArray(user.providerData) && user.providerData.some(provider=>provider.providerId === 'google.com')){
+        if(hasPendingCheckout()){
+          routeAuthenticatedCheckout(user).catch(error=>showCheckoutAuthError(error));
+        }else if(Array.isArray(user.providerData) && user.providerData.some(provider=>provider.providerId === 'google.com')){
           continueWithGoogleUser(user).catch(error=>showGoogleProfileCheckError(error));
         }else{
           openDashboard();
+        }
+      }else if(!user && hasPendingCheckout()){
+        const selection = readPendingCheckout();
+        if(selection){
+          openRegistration();
+          showLoginForm();
+        }else{
+          showPendingCheckoutError('The selected account is no longer available. Please choose another account.');
         }
       }
     },error=>{
@@ -3381,7 +3565,8 @@ async function continueWithGoogleUser(user){
       }
       const profile = result.profile;
       if(result.registrationComplete === true || isGoogleProfileComplete(profile)){
-        openDashboard();
+        if(hasPendingCheckout()) await finishPendingCheckout(user);
+        else openDashboard();
         return;
       }
       openRegistration();
@@ -3476,9 +3661,10 @@ loginForm.addEventListener('submit',async event=>{
   loginStatus.textContent = 'Signing in…';
   try{
     await firebaseAuthPersistenceReady;
-    await requireFirebaseAuth().signInWithEmailAndPassword(email,password);
+    const credential = await requireFirebaseAuth().signInWithEmailAndPassword(email,password);
     loginForm.reset();
-    openDashboard();
+    if(hasPendingCheckout()) await routeAuthenticatedCheckout(credential.user);
+    else openDashboard();
   }catch(error){
     loginStatus.className = 'registration-status error';
     loginStatus.textContent = error.message;
@@ -3806,6 +3992,7 @@ registrationForm.addEventListener('submit',async event=>{
   submit.disabled = true;
   status.className = 'registration-status';
   status.textContent = googleRegistrationMode ? 'Saving your profile…' : 'Creating your account…';
+  let createdAccountUser = null;
   try{
     await firebaseAuthPersistenceReady;
     if(googleRegistrationMode && !requireFirebaseAuth().currentUser){
@@ -3813,6 +4000,7 @@ registrationForm.addEventListener('submit',async event=>{
     }
     if(!googleRegistrationMode){
       const credential = await requireFirebaseAuth().createUserWithEmailAndPassword(email,password);
+      createdAccountUser = credential.user;
       const displayName = [firstName,lastName].filter(Boolean).join(' ');
       if(displayName) await credential.user.updateProfile({displayName});
     }
@@ -3820,11 +4008,15 @@ registrationForm.addEventListener('submit',async event=>{
     const profileResult = await profileResponse.json();
     if(!profileResponse.ok) throw new Error(profileResult.error || 'Could not save your profile.');
     status.className = 'registration-status';
-    status.textContent = 'Registration complete. Opening your dashboard…';
+    status.textContent = hasPendingCheckout() ? 'Registration complete. Opening checkout…' : 'Registration complete. Opening your dashboard…';
     setGoogleRegistrationMode(false);
     registrationForm.reset();
-    openDashboard();
+    if(hasPendingCheckout()) await finishPendingCheckout(requireFirebaseAuth().currentUser);
+    else openDashboard();
   }catch(error){
+    if(createdAccountUser && requireFirebaseAuth().currentUser?.uid === createdAccountUser.uid){
+      setGoogleRegistrationMode(true,createdAccountUser,{firstName,lastName,dateOfBirth,country,phone});
+    }
     status.className = 'registration-status error';
     status.textContent = error.message;
   }finally{
@@ -3833,6 +4025,8 @@ registrationForm.addEventListener('submit',async event=>{
 });
 document.getElementById('registrationBack').addEventListener('click',event=>{
   event.preventDefault();
+  clearPendingCheckout();
+  pendingPurchase = null;
   closeRegistration();
   document.getElementById('pricing').scrollIntoView({behavior:'smooth'});
 });
@@ -3854,6 +4048,8 @@ async function createPurchase(purchase){
   const proof = proofInput && proofInput.files[0];
   if(!proof) throw new Error('Attach a payment screenshot before submitting.');
   const form = new FormData();
+  form.set('productModel',purchase.productModel);
+  form.set('productId',purchase.productId);
   form.set('plan',purchase.planKey);
   form.set('size',String(purchase.size));
   form.set('coupon',document.getElementById('couponCodeInput').value.trim());
@@ -3927,10 +4123,142 @@ let currentCurrency = 'usdt';
 let pendingPurchase = null;
 let pendingSubmissionId = '';
 let qrInstance = null;
-const activeCouponCode = 'DAILYFUNDED30';
+const activeCouponCode = 'CRAZYFUNDED30';
 let checkoutBasePrice = 0;
 let couponApplied = false;
 let pendingHomepageCoupon = '';
+const pendingCheckoutStorageKey = 'dailyFundedPendingCheckout';
+
+function normalizeCheckoutSelection(model, size, planKey, productId, submittedPrice){
+  if(typeof model !== 'string' || typeof planKey !== 'string' || typeof productId !== 'string') return null;
+  const plan = pricing[planKey];
+  const expectedModel = planKey.startsWith('spark_') ? 'spark' : ['1step','2step','instant'].includes(planKey) ? 'classic' : '';
+  const validSize = Number.isInteger(size) && (expectedModel === 'spark'
+    ? sparkSizes.includes(size)
+    : expectedModel === 'classic' && (sizes.includes(size) || planKey === 'instant' && size === 2500));
+  if(!plan || !expectedModel || model !== expectedModel || !validSize || productId !== (plan.productId || planKey)) return null;
+  let price;
+  if(plan.prices){
+    price = plan.prices[size];
+  }else{
+    const basePrice = size === 2500 ? Math.round(size * plan.perK / 1000) : Math.max(plan.min,Math.round(size * plan.perK / 1000));
+    price = Math.round(basePrice * (1 - plan.discount));
+  }
+  if(!Number.isFinite(price) || (submittedPrice !== undefined && submittedPrice !== price)) return null;
+  return {
+    market:'forex',
+    size,
+    label:plan.label,
+    planKey,
+    productModel:expectedModel,
+    productId:plan.productId || planKey,
+    price,
+    split:plan.extra.find(rule=>rule.includes('profit split')) || ''
+  };
+}
+
+function hasPendingCheckout(){
+  if(pendingPurchase) return true;
+  try{return sessionStorage.getItem(pendingCheckoutStorageKey) !== null;}
+  catch(error){
+    console.error('Could not inspect the pending checkout selection:',error);
+    return false;
+  }
+}
+
+function savePendingCheckout(selection){
+  try{
+    sessionStorage.setItem(pendingCheckoutStorageKey,JSON.stringify({
+      version:1,
+      market:selection.market,
+      productModel:selection.productModel,
+      planKey:selection.planKey,
+      size:selection.size,
+      productId:selection.productId
+    }));
+  }catch(error){
+    console.error('Could not persist the pending checkout selection:',error);
+  }
+}
+
+function clearPendingCheckout(){
+  try{sessionStorage.removeItem(pendingCheckoutStorageKey);}
+  catch(error){console.error('Could not clear the pending checkout selection:',error);}
+}
+
+function readPendingCheckout(){
+  let serialized;
+  try{serialized = sessionStorage.getItem(pendingCheckoutStorageKey);}
+  catch(error){
+    console.error('Could not read the pending checkout selection:',error);
+    return pendingPurchase ? normalizeCheckoutSelection(
+      pendingPurchase.productModel,pendingPurchase.size,pendingPurchase.planKey,pendingPurchase.productId,pendingPurchase.price
+    ) : null;
+  }
+  if(serialized === null) return pendingPurchase ? normalizeCheckoutSelection(
+    pendingPurchase.productModel,pendingPurchase.size,pendingPurchase.planKey,pendingPurchase.productId,pendingPurchase.price
+  ) : null;
+  let saved;
+  try{saved = JSON.parse(serialized);}
+  catch(error){
+    clearPendingCheckout();
+    return null;
+  }
+  if(!saved || saved.version !== 1 || saved.market !== 'forex'){
+    clearPendingCheckout();
+    return null;
+  }
+  const selection = normalizeCheckoutSelection(saved.productModel,saved.size,saved.planKey,saved.productId);
+  if(!selection) clearPendingCheckout();
+  return selection;
+}
+
+function showPendingCheckoutError(message){
+  clearPendingCheckout();
+  pendingPurchase = null;
+  if(checkout.classList.contains('active')) closeCheckout();
+  if(registrationSection.classList.contains('active')) closeRegistration();
+  const notice = document.getElementById('checkoutSelectionNotice');
+  notice.textContent = message;
+  notice.hidden = false;
+  document.getElementById('pricing').scrollIntoView({behavior:'smooth'});
+}
+
+async function routeAuthenticatedCheckout(user){
+  if(Array.isArray(user && user.providerData) && user.providerData.some(provider=>provider.providerId === 'google.com')){
+    await continueWithGoogleUser(user);
+    return;
+  }
+  await finishPendingCheckout(user);
+}
+
+function showCheckoutAuthError(error){
+  console.error('Could not continue to the selected checkout:',error);
+  openRegistration();
+  showLoginForm();
+  loginStatus.className = 'registration-status error';
+  loginStatus.textContent = error.message || 'Could not continue to checkout. Please try signing in again.';
+}
+
+async function finishPendingCheckout(user){
+  await firebaseAuthPersistenceReady;
+  const auth = requireFirebaseAuth();
+  const currentUser = auth.currentUser;
+  if(!currentUser){
+    openRegistration();
+    showLoginForm();
+    return;
+  }
+  if(user && user.uid !== currentUser.uid) throw new Error('Your sign-in session changed. Please try again.');
+  const selection = readPendingCheckout();
+  if(!selection){
+    showPendingCheckoutError('The selected account is no longer available. Please choose another account.');
+    return;
+  }
+  if(registrationSection.classList.contains('active')) closeRegistration();
+  pendingPurchase = selection;
+  renderCheckout(selection);
+}
 
 function formatCheckoutAmount(amount){
   const rounded = Math.round(amount * 100) / 100;
@@ -3952,6 +4280,14 @@ function updateCheckoutPrice(){
 function applyCheckoutCoupon(){
   const input = document.getElementById('couponCodeInput');
   const status = document.getElementById('couponStatus');
+  if(pendingPurchase && pendingPurchase.productModel !== 'classic'){
+    couponApplied = false;
+    input.value = '';
+    status.className = 'coupon-status error';
+    status.textContent = 'CRAZYFUNDED30 is only available for Classic accounts.';
+    updateCheckoutPrice();
+    return;
+  }
   couponApplied = input.value.trim().toUpperCase() === activeCouponCode;
   status.className = 'coupon-status ' + (couponApplied ? 'success' : 'error');
   status.textContent = couponApplied ? 'Coupon applied: 30% off.' : 'Invalid coupon code.';
@@ -3985,31 +4321,61 @@ document.getElementById('heroCouponCheckoutBtn').addEventListener('click',async(
   document.getElementById('pricing').scrollIntoView({behavior:'smooth'});
 });
 
-function openCheckout(size, label, price, split, planKey){
-  pendingPurchase = { size, label, planKey };
+async function openCheckout(size, label, price, split, planKey, productId=planKey){
+  const selection = normalizeCheckoutSelection(selectedForexModel,size,planKey,productId,price);
+  if(!selection){
+    showPendingCheckoutError('This product is not configured for checkout. Please choose another account.');
+    return;
+  }
+  pendingPurchase = selection;
+  savePendingCheckout(selection);
+  try{
+    await firebaseAuthStateReady;
+    if(!firebaseAuth || !firebaseAuth.currentUser){
+      openRegistration();
+      showLoginForm();
+      loginStatus.textContent = 'Sign in or create an account to continue to checkout.';
+      return;
+    }
+    await routeAuthenticatedCheckout(firebaseAuth.currentUser);
+  }catch(error){
+    showCheckoutAuthError(error);
+  }
+}
+
+function renderCheckout(selection){
+  pendingPurchase = selection;
   pendingSubmissionId = getPendingSubmissionId(pendingPurchase);
-  checkoutBasePrice = price;
-  const couponForCheckout = pendingHomepageCoupon;
+  checkoutBasePrice = selection.price;
+  const classicCouponEligible = selection.productModel === 'classic';
+  const couponForCheckout = classicCouponEligible ? pendingHomepageCoupon : '';
   pendingHomepageCoupon = '';
   couponApplied = false;
-  document.getElementById('couponCodeInput').value = couponForCheckout;
-  document.getElementById('couponStatus').textContent = '';
+  const couponBox = document.querySelector('.coupon-box');
+  const couponInput = document.getElementById('couponCodeInput');
+  const applyCouponButton = document.getElementById('applyCouponBtn');
+  couponBox.hidden = !classicCouponEligible;
+  couponInput.disabled = !classicCouponEligible;
+  applyCouponButton.disabled = !classicCouponEligible;
+  couponInput.value = couponForCheckout;
+  document.getElementById('couponStatus').textContent = classicCouponEligible ? '' : 'CRAZYFUNDED30 is only available for Classic accounts.';
   document.getElementById('couponStatus').className = 'coupon-status';
   mainSections.forEach(sel=>{ const el = document.querySelector(sel); if(el) el.style.display = 'none'; });
   document.querySelector('footer').style.display = 'none';
   checkout.classList.add('active');
+  document.body.classList.add('checkout-open');
   window.scrollTo({top:0, behavior:'instant'});
 
-  document.getElementById('coLabel').textContent = label === 'Instant' ? 'Instant Funding' : label + ' Challenge';
-  document.getElementById('coSize').textContent = '$' + size.toLocaleString();
-  document.getElementById('coSplit').textContent = split || '—';
+  document.getElementById('coLabel').textContent = selection.planKey === 'instant' || selection.planKey === 'spark_instant' ? 'Instant Funding' : selection.label + ' Challenge';
+  document.getElementById('coSize').textContent = '$' + selection.size.toLocaleString();
+  document.getElementById('coSplit').textContent = selection.split || '—';
   updateCheckoutPrice();
   if(couponForCheckout) applyCheckoutCoupon();
-  const plan = pricing[planKey];
   const rules = document.getElementById('coRules');
   rules.replaceChildren();
+  const plan = pricing[selection.planKey];
   if(plan){
-    [plan.target,...plan.extra.filter(rule=>!rule.toLowerCase().includes('profit split'))].forEach(rule=>{
+    [...(plan.target ? [plan.target] : []),...plan.extra.filter(rule=>!rule.toLowerCase().includes('profit split'))].forEach(rule=>{
       const item = document.createElement('li');
       item.textContent = rule;
       rules.appendChild(item);
@@ -4025,12 +4391,17 @@ function openCheckout(size, label, price, split, planKey){
 
   setCurrency('usdt');
 }
-function closeCheckout(){
+function closeCheckout(preservePending=false){
   closeQrPopup(false);
   closeUpiPopup(false);
+  if(!preservePending){
+    clearPendingCheckout();
+    pendingPurchase = null;
+  }
   mainSections.forEach(sel=>{ const el = document.querySelector(sel); if(el) el.style.display = ''; });
   document.querySelector('footer').style.display = '';
   checkout.classList.remove('active');
+  document.body.classList.remove('checkout-open');
 }
 function setCurrency(cur){
   currentCurrency = cur;
@@ -5716,58 +6087,186 @@ if(payoutRequestForm){
   let closeTimer = 0;
   let requestNumber = 0;
 
-  function addSampleResponse(label,text){
-    const message = document.createElement('div');
-    message.className = 'df-support-answer';
-    const responseLabel = document.createElement('span');
-    responseLabel.className = 'df-support-answer-label';
-    responseLabel.textContent = label;
-    const responseText = document.createElement('p');
-    responseText.textContent = text;
-    message.append(responseLabel,responseText);
-    messages.replaceChildren(message);
+  const suggestions = Array.from(document.querySelectorAll('.df-support-topic'));
+  suggestions.forEach((button,index)=>{
+    const faq = faqs[index];
+    if(!faq){button.remove();return;}
+    button.textContent = faq.q;
+    button.dataset.question = faq.q;
+    button.setAttribute('aria-label',`Ask: ${faq.q}`);
+  });
+
+  const ignoredWords = new Set(['a','about','after','all','am','an','and','are','as','at','be','can','do','does','for','from','get','how','i','in','is','it','me','my','of','on','or','the','there','this','to','what','when','where','which','who','why','with','you','your']);
+  const aliases = new Map([['payouts','payout'],['withdrawals','withdrawal'],['fees','fee'],['prices','cost'],['price','cost'],['rules','rule'],['challenges','challenge'],['evaluations','evaluation'],['limits','limit'],['methods','method'],['days','day'],['targets','target'],['instnat','instant'],['instent','instant'],['drawdwon','drawdown'],['drawdownn','drawdown'],['acount','account'],['accont','account'],['avaliable','available'],['prcie','cost'],['purhcase','purchase'],['purchse','purchase']]);
+  const planDependentFaqs = new Set([faqs[0].q,faqs[2].q,faqs[3].q,faqs[4].q,faqs[6].q,faqs[7].q,faqs[8].q]);
+  const sparkSpecificFaqs = new Set(faqs.filter(faq=>faq.model).map(faq=>faq.q));
+
+  function normalize(text){
+    return text.toLocaleLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/).filter(Boolean).map(word=>aliases.get(word)||word);
   }
 
-  function getLocalMockResponse(question){
-    const text = question.toLowerCase();
-    if(/\b(profit|split|share)\b/.test(text)){
-      return {label:'Sample FAQ answer',text:'Plan splits shown on this page: 1-Step 80%, 2-Step 90%, and Instant Funding 80%.'};
+  function distanceWithin(left,right,maxDistance){
+    if(Math.abs(left.length-right.length)>maxDistance) return false;
+    let previous = Array.from({length:right.length+1},(_,index)=>index);
+    for(let i=1;i<=left.length;i++){
+      const current = [i];
+      let rowMinimum = i;
+      for(let j=1;j<=right.length;j++){
+        const cost = left[i-1]===right[j-1] ? 0 : 1;
+        current[j] = Math.min(current[j-1]+1,previous[j]+1,previous[j-1]+cost);
+        rowMinimum = Math.min(rowMinimum,current[j]);
+      }
+      if(rowMinimum>maxDistance) return false;
+      previous = current;
     }
-    if(/\b(challenge|drawdown|evaluation|time limit|rules?)\b/.test(text)){
-      return {label:'Sample FAQ answer',text:'The page FAQ says challenges have no maximum time limit. Follow the drawdown rules and any minimum trading days shown for your plan.'};
+    return previous[right.length]<=maxDistance;
+  }
+
+  function tokensMatch(left,right){
+    if(left===right) return true;
+    const maxDistance = Math.max(left.length,right.length)>=8 ? 2 : 1;
+    return Math.min(left.length,right.length)>=4 && distanceWithin(left,right,maxDistance);
+  }
+
+  function extractFaqAnswer(faq){
+    const template = document.createElement('template');
+    template.innerHTML = faq.a;
+    return (template.content.textContent||'').replace(/\s+/g,' ').trim();
+  }
+
+  function findFaqAnswer(question){
+    const queryTokens = normalize(question).filter(token=>!ignoredWords.has(token));
+    if(!queryTokens.length) return null;
+    const normalizedQuestion = normalize(question).join(' ');
+    const explicitSpark = queryTokens.some(token=>tokensMatch(token,'spark'));
+    const explicitInstant = queryTokens.some(token=>tokensMatch(token,'instant'));
+    const explicitOneStep = /(?:^| )1 step(?: |$)/.test(normalizedQuestion) || /(?:^| )one step(?: |$)/.test(normalizedQuestion) || queryTokens.some(token=>tokensMatch(token,'1step'));
+    const selectedSparkModel = getSelectedSparkModel();
+    const requestedSparkModel = explicitSpark && explicitInstant ? 'spark_instant' : explicitSpark && explicitOneStep ? 'spark_1step' : null;
+    const preferredSparkModel = requestedSparkModel || selectedSparkModel;
+    const priceIntent = queryTokens.some(token=>tokensMatch(token,'cost')) || /\bhow much\b/i.test(question);
+    if(priceIntent && (explicitSpark || selectedSparkModel)){
+      return faqs.find(faq=>faq.q==='How much does each Spark account cost?') || null;
     }
-    if(/\b(payment|approval|approved|transaction|checkout)\b/.test(text)){
-      return {label:'Sample FAQ answer',text:'This local demo cannot inspect or approve payments. Use the existing checkout and dashboard to review your purchase status.'};
+    const ranked = faqs.map(faq=>{
+      const faqTokens = normalize([faq.q,...(faq.keywords||[])].join(' ')).filter(token=>!ignoredWords.has(token));
+      const queryMatches = queryTokens.filter(token=>faqTokens.some(candidate=>tokensMatch(token,candidate))).length;
+      const faqMatches = faqTokens.filter(token=>queryTokens.some(candidate=>tokensMatch(candidate,token))).length;
+      const baseScore = .72*(queryMatches/queryTokens.length)+.28*(faqMatches/faqTokens.length);
+      let score = baseScore;
+      if(faq.model === preferredSparkModel) score += .45;
+      else if(faq.model === 'spark' && preferredSparkModel) score += .25;
+      else if(faq.model && preferredSparkModel && faq.model !== 'spark' && faq.model !== preferredSparkModel) score -= .35;
+      if(explicitSpark && faq.model && !String(faq.model).startsWith('spark')) score -= .35;
+      return {faq,score,baseScore,queryMatches};
+    }).sort((left,right)=>right.score-left.score);
+    const best = ranked[0];
+    const margin = best.score-(ranked[1]?.score||0);
+    if(best.queryMatches===0 || best.baseScore<.42 || (best.score<.68 && margin<.09)) return null;
+    if(explicitSpark && !requestedSparkModel && !selectedSparkModel && best.faq.model && best.faq.model !== 'spark'){
+      const broadSparkQuestion = faqs.find(faq=>faq.q==='What is the difference between Spark 1-Step and Spark Instant Funding?');
+      return broadSparkQuestion || best.faq;
     }
-    if(/\b(account|access|sign[\s-]?in|login|password)\b/.test(text)){
-      return {label:'Sample FAQ answer',text:'Use the site’s existing Sign in flow. This local demo cannot inspect, recover, or change accounts.'};
+    return best.faq;
+  }
+
+  function getSelectedSparkModel(){
+    if(document.querySelector('#marketTabs [data-market="futures"][aria-selected="true"]')) return null;
+    if(document.querySelector('[data-forex-model="spark"][aria-pressed="true"]')){
+      return document.querySelector('#tabs [data-tab="instant"][aria-selected="true"]') ? 'spark_instant' : 'spark_1step';
     }
-    return {label:'Demo fallback',text:'I do not have a matching sample answer. Please review the FAQ on this page. This widget does not contact support or access account or payment records.'};
+    return null;
+  }
+
+  function needsAccountSupport(question){
+    return /\b(my|mine|i paid|i purchased|i bought|my payment|my purchase|my payout|my withdrawal|my account|payment status|purchase status|payout status|withdrawal status|account status|order status|where is (my|the) (payment|purchase|payout|withdrawal|account)|when (will|was) (my|the) (payment|purchase|payout|withdrawal)|did (you|i) (receive|approve|process)|has (my|the) (payment|purchase|payout|account).*(approved|arrived|processed)|approve my payment)\b/i.test(question);
+  }
+
+  function needsSpecificProductRules(question){
+    return /\b(spark|classic|futures?)\b/i.test(question) && /\b(price|cost|drawdown|profit target|target|reward cycle|minimum trading days|profit split|consistency|account size|rules?)\b/i.test(question);
+  }
+
+  function canAnswerForSelectedProduct(faq){
+    if(sparkSpecificFaqs.has(faq.q)){
+      const query = input.dataset.currentQuestion || '';
+      const explicitSpark = normalize(query).some(token=>tokensMatch(token,'spark'));
+      return explicitSpark || !!getSelectedSparkModel() || !document.querySelector('#marketTabs [data-market="futures"][aria-selected="true"]');
+    }
+    if(!planDependentFaqs.has(faq.q)) return true;
+    const futuresSelected = document.querySelector('#marketTabs [data-market="futures"][aria-selected="true"]');
+    const sparkSelected = document.querySelector('[data-forex-model="spark"][aria-pressed="true"]');
+    return !futuresSelected && !sparkSelected;
+  }
+
+  function appendMessage(className,text,links=[]){
+    const message = document.createElement('div');
+    message.className = className;
+    message.textContent = text;
+    if(links.length){
+      const linkGroup = document.createElement('div');
+      linkGroup.className = 'df-support-answer-links';
+      links.forEach(({label,href,openDash})=>{
+        const link = document.createElement('a');
+        link.href = href;
+        link.textContent = label;
+        if(openDash){
+          link.className = 'open-dash';
+          link.addEventListener('click',event=>{
+            event.preventDefault();
+            const existingSignInLink = document.querySelector('.navright .open-dash');
+            if(existingSignInLink) existingSignInLink.click();
+            else window.location.hash = '#dashboard';
+          });
+        }
+        linkGroup.appendChild(link);
+      });
+      message.appendChild(linkGroup);
+    }
+    messages.appendChild(message);
+    messages.scrollTop = messages.scrollHeight;
   }
 
   async function answerLocally(question){
     const currentRequest = ++requestNumber;
     sendButton.disabled = true;
     input.disabled = true;
+    input.dataset.currentQuestion = question;
+    appendMessage('df-support-question',question);
+    status.className = 'df-support-status is-searching';
+    status.textContent = 'Searching the published FAQ…';
+    await new Promise(resolve=>window.setTimeout(resolve,reducedMotion ? 0 : 220));
+    if(currentRequest !== requestNumber) return;
     status.className = 'df-support-status';
-    status.textContent = 'Checking the sample FAQ…';
-    try{
-      await new Promise(resolve=>window.setTimeout(resolve,260));
-      const result = getLocalMockResponse(question);
-      if(currentRequest !== requestNumber) return;
-      addSampleResponse(result.label,result.text);
-      status.textContent = 'Local sample response shown.';
-    }catch(error){
-      if(currentRequest !== requestNumber) return;
-      status.className = 'df-support-status error';
-      status.textContent = 'The sample response could not be shown. Please try again.';
-    }finally{
-      if(currentRequest === requestNumber){
-        sendButton.disabled = false;
-        input.disabled = false;
-        input.focus();
+    if(needsAccountSupport(question)){
+      appendMessage('df-support-answer','I can’t access individual account, purchase, payment, or payout records. Sign in to your dashboard for account-specific information, or browse the published FAQ.',[
+        {label:'Sign in to dashboard',href:'#dashboard',openDash:true},
+        {label:'Browse the FAQ',href:'#faq'}
+      ]);
+    }else if(needsSpecificProductRules(question) && !normalize(question).some(token=>tokensMatch(token,'spark'))){
+      appendMessage('df-support-answer','I can’t confidently confirm product-specific pricing or rules here. Please check the current pricing cards and product rules before purchasing, or browse the published FAQ.',[
+        {label:'View pricing',href:'#pricing'},
+        {label:'Browse the FAQ',href:'#faq'}
+      ]);
+    }else{
+      const faq = findFaqAnswer(question);
+      if(faq && canAnswerForSelectedProduct(faq)){
+        appendMessage('df-support-answer',extractFaqAnswer(faq));
+      }else if(faq){
+        appendMessage('df-support-answer','The published FAQ may not cover the currently selected product’s terms. Please check the selected product’s pricing card and rules before purchasing, or browse the full FAQ.',[
+          {label:'View pricing',href:'#pricing'},
+          {label:'Browse the FAQ',href:'#faq'}
+        ]);
+      }else{
+        appendMessage('df-support-answer','I couldn’t confidently match that to a published FAQ answer, so I don’t want to guess. Browse the full FAQ or sign in to your dashboard for account-specific help.',[
+          {label:'Browse the FAQ',href:'#faq'},
+          {label:'Sign in to dashboard',href:'#dashboard',openDash:true}
+        ]);
       }
     }
+    status.textContent = '';
+    sendButton.disabled = false;
+    input.disabled = false;
+    input.focus();
   }
 
   function closePanel(){
@@ -5778,13 +6277,12 @@ if(payoutRequestForm){
     panel.setAttribute('aria-hidden','true');
     panel.inert = true;
     launcher.setAttribute('aria-expanded','false');
-    launcher.setAttribute('aria-label','Open Crazy Funded support FAQ demo');
+    launcher.setAttribute('aria-label','Open Crazy Funded FAQ assistant');
     input.value = '';
     input.disabled = false;
     sendButton.disabled = false;
     status.textContent = '';
     status.className = 'df-support-status';
-    messages.replaceChildren();
     launcher.focus();
     closeTimer = window.setTimeout(()=>{panel.hidden = true;},reducedMotion ? 0 : 190);
   }
@@ -5795,7 +6293,7 @@ if(payoutRequestForm){
     panel.inert = false;
     panel.setAttribute('aria-hidden','false');
     launcher.setAttribute('aria-expanded','true');
-    launcher.setAttribute('aria-label','Close Crazy Funded support FAQ demo');
+    launcher.setAttribute('aria-label','Close Crazy Funded FAQ assistant');
     window.requestAnimationFrame(()=>{
       panel.classList.add('is-open');
       input.focus();
@@ -5818,7 +6316,7 @@ if(payoutRequestForm){
     const question = input.value.trim();
     if(!question){
       status.className = 'df-support-status error';
-      status.textContent = 'Enter a question or choose one of the sample topics.';
+      status.textContent = 'Enter a question or choose a suggested FAQ question.';
       input.setAttribute('aria-invalid','true');
       input.focus();
       return;

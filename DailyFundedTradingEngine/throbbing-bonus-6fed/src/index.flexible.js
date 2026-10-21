@@ -702,6 +702,8 @@ function planCodeForKey(planKey) {
     "1step": "1_STEP",
     "2step": "2_STEP",
     instant: "INSTANT",
+    spark_1step: "SPARK_1_STEP",
+    spark_instant: "SPARK_INSTANT",
   };
 
   return planCodeMap[normalizedPlanKey] || null;

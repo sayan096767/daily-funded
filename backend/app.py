@@ -53,8 +53,46 @@ CATALOG = {
         "rules": ["No profit target", "5% daily drawdown", "10% max drawdown", "0 min trading days", "Daily reward cycle"],
         "profit_split": "80% profit split",
     },
+    "spark_1step": {
+        "label": "Spark 1-Step",
+        "product_model": "spark",
+        "product_id": "MODEL_FX_SPARK_1STEP",
+        "prices": {25000: 39, 50000: 59, 100000: 79},
+        "profit_target_percent": 6,
+        "daily_drawdown_percent": 3,
+        "max_drawdown_percent": 7,
+        "max_drawdown_type": "TRAILING",
+        "minimum_trading_days": 5,
+        "consistency_rule_percent": 30,
+        "reward_cycle": "On demand",
+        "rules": [
+            "6% profit target", "3% daily drawdown", "7% trailing max drawdown",
+            "5 min trading days", "70% profit split", "30% consistency rule",
+            "On-demand reward cycle",
+        ],
+        "profit_split": "70% profit split",
+    },
+    "spark_instant": {
+        "label": "Spark Instant",
+        "product_model": "spark",
+        "product_id": "MODEL_FX_SPARK_INSTANT",
+        "prices": {25000: 59, 50000: 79, 100000: 99},
+        "profit_target_percent": None,
+        "daily_drawdown_percent": 3,
+        "max_drawdown_percent": 7,
+        "max_drawdown_type": "TRAILING",
+        "minimum_trading_days": 5,
+        "consistency_rule_percent": 30,
+        "reward_cycle": "On demand",
+        "rules": [
+            "3% daily drawdown", "7% trailing max drawdown",
+            "5 min trading days", "70% profit split", "30% consistency rule",
+            "On-demand reward cycle",
+        ],
+        "profit_split": "70% profit split",
+    },
 }
-COUPON_CODE = "DAILYFUNDED30"
+COUPON_CODE = "CRAZYFUNDED30"
 NETWORKS = {
     "usdt": {"trc20", "erc20", "bep20"},
     "btc": {"btc_native", "btc_bep20"},
@@ -298,10 +336,13 @@ def purchase_status_is_pending(status):
 
 
 def calculate_purchase_amount(plan_key, size, coupon_code):
-    list_price = CATALOG[plan_key]["prices"][size] * 100
+    plan = CATALOG[plan_key]
+    list_price = plan["prices"][size] * 100
     normalized_coupon = str(coupon_code or "").strip().upper()
     if normalized_coupon and normalized_coupon != COUPON_CODE:
         raise ValueError("Invalid coupon code.")
+    if normalized_coupon == COUPON_CODE and plan.get("product_model", "classic") != "classic":
+        raise ValueError("This coupon is only available for Classic accounts.")
     discount = (list_price * 30 + 50) // 100 if normalized_coupon == COUPON_CODE else 0
     return list_price, discount, list_price - discount, (COUPON_CODE if discount else None)
 
@@ -1212,6 +1253,13 @@ def create_purchase():
     plan = CATALOG.get(plan_key)
     if not plan or size not in plan["prices"]:
         return jsonify(error="That challenge is not available."), 400
+    product_model = request.form.get("productModel", "classic").strip().lower()
+    product_id = request.form.get("productId", plan_key).strip()
+    if (
+        product_model != plan.get("product_model", "classic")
+        or product_id != plan.get("product_id", plan_key)
+    ):
+        return jsonify(error="That challenge product is not available."), 400
 
     currency = request.form.get("currency", "").lower()
     network = request.form.get("network", "").lower()
@@ -1596,7 +1644,7 @@ def admin_approve_purchase(purchase_id):
             "planKey": values["planKey"],
             "accountSize": values["accountSize"],
             "userUid": values["ownerUid"],
-            "phase": "instant" if values["planKey"] == "instant" else "phase_1",
+            "phase": "instant" if values["planKey"] in {"instant", "spark_instant"} else "phase_1",
         }
 
         if status != "approved":
@@ -1729,7 +1777,7 @@ def admin_approve_purchase(purchase_id):
         reviewed_by = current_purchase.get("reviewedBy") or g.firebase_uid
         transaction.update(account_ref, {
             "userUid": purchase_values["ownerUid"],
-            "phase": "instant" if purchase_values["planKey"] == "instant" else "phase_1",
+            "phase": "instant" if purchase_values["planKey"] in {"instant", "spark_instant"} else "phase_1",
             "balance": purchase_values["accountSize"],
             "equity": purchase_values["accountSize"],
             "status": "active",
