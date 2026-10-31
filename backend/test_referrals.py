@@ -24,20 +24,26 @@ class FakeSnapshot:
 class FakeReference:
     def __init__(self, database, collection, document_id):
         self.database = database
-        self.collection = collection
+        self.collection_path = collection
         self.id = document_id
 
     def get(self, transaction=None):
-        return FakeSnapshot(self.id, self.database.documents.get((self.collection, self.id)))
+        return FakeSnapshot(self.id, self.database.documents.get((self.collection_path, self.id)))
+
+    def collection(self, name):
+        return FakeCollection(
+            self.database,
+            f"{self.collection_path}/{self.id}/{name}",
+        )
 
     def create(self, data):
-        key = (self.collection, self.id)
+        key = (self.collection_path, self.id)
         if key in self.database.documents:
             raise ValueError("Document already exists.")
         self.database.documents[key] = dict(data)
 
     def set(self, data, merge=False):
-        key = (self.collection, self.id)
+        key = (self.collection_path, self.id)
         existing = self.database.documents.get(key, {}) if merge else {}
         self.database.documents[key] = {**existing, **data}
 
@@ -185,6 +191,30 @@ class ReferralTokenTests(unittest.TestCase):
 class ReferralPersistenceTests(unittest.TestCase):
     def setUp(self):
         self.database = FakeDatabase()
+
+    def test_firebase_creation_time_uses_auth_metadata(self):
+        created_at_ms = int(
+            datetime(2025, 1, 1, tzinfo=timezone.utc).timestamp() * 1000
+        )
+        firebase_user = SimpleNamespace(
+            user_metadata=SimpleNamespace(creation_timestamp=created_at_ms)
+        )
+        with patch("app.firebase_auth.get_user", return_value=firebase_user):
+            with patch("app.get_firebase_app"):
+                created_at = app_module.firebase_user_creation_datetime("user-uid")
+
+        self.assertEqual(
+            created_at,
+            datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )
+        with patch(
+            "app.firebase_auth.get_user",
+            return_value=SimpleNamespace(user_metadata=None),
+        ):
+            with patch("app.get_firebase_app"):
+                self.assertIsNone(
+                    app_module.firebase_user_creation_datetime("user-without-metadata")
+                )
 
     def test_referral_code_is_persistent_and_mapped_to_the_owner(self):
         with patch("app.firestore.transactional", side_effect=lambda function: function):
@@ -418,19 +448,22 @@ class ReferralApiTests(unittest.TestCase):
 
     def test_dashboard_returns_private_summary_without_referred_user_ids(self):
         code = "1" * 32
+        referred_created_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
         database = FakeDatabase({
             ("referralCodes", code): {"ownerUid": "owner-uid"},
             ("users", "owner-uid"): {"referralCode": code},
             ("referralAttributions", "referred-private-uid"): {
                 "referrerUid": "owner-uid",
                 "referredUid": "referred-private-uid",
-                "createdAt": datetime(2025, 1, 1, tzinfo=timezone.utc),
+                "createdAt": referred_created_at,
             },
             ("referralRewards", "referred-private-uid"): {
                 "referrerUid": "owner-uid",
                 "referredUid": "referred-private-uid",
                 "amountCents": 1000,
                 "status": "credited",
+                "qualifyingPurchaseId": "approved-purchase",
+                "creditEvent": "first_approved_purchase",
             },
             ("referralAttributions", "another-referred-uid"): {
                 "referrerUid": "owner-uid",
@@ -443,7 +476,69 @@ class ReferralApiTests(unittest.TestCase):
                 "amountCents": 1000,
                 "status": "paid",
             },
+            ("referralAttributions", "pending-referred-uid"): {
+                "referrerUid": "owner-uid",
+                "referredUid": "pending-referred-uid",
+            },
+            ("referralAttributions", "profileless-referred-uid"): {
+                "referrerUid": "owner-uid",
+                "referredUid": "profileless-referred-uid",
+            },
+            ("users", "referred-private-uid"): {
+                "firstName": "Referred",
+                "lastName": "Friend",
+                "email": "private@example.test",
+                "createdAt": referred_created_at,
+            },
+            ("users", "another-referred-uid"): {
+                "displayName": "Paid Friend",
+                "createdAt": datetime(2025, 1, 2, tzinfo=timezone.utc),
+            },
+            ("users/another-referred-uid/purchases", "paid-purchase"): {
+                "ownerUid": "another-referred-uid",
+                "status": "approved",
+                "createdAt": datetime(2025, 1, 3, tzinfo=timezone.utc),
+            },
+            ("users", "pending-referred-uid"): {
+                "firstName": "Pending",
+                "lastName": "Friend",
+                "createdAt": datetime(2025, 1, 4, tzinfo=timezone.utc),
+            },
+            ("users/pending-referred-uid/purchases", "pending-purchase"): {
+                "ownerUid": "pending-referred-uid",
+                "status": "pending_payment_verification",
+            },
+            ("referralAttributions", "not-owned-referred-uid"): {
+                "referrerUid": "someone-else",
+                "referredUid": "not-owned-referred-uid",
+            },
+            ("referralRewards", "not-owned-referred-uid"): {
+                "referrerUid": "someone-else",
+                "referredUid": "not-owned-referred-uid",
+                "amountCents": 999999,
+                "status": "paid",
+            },
         })
+        auth_creation_times = {
+            "referred-private-uid": int(referred_created_at.timestamp() * 1000),
+            "another-referred-uid": int(
+                datetime(2025, 1, 2, tzinfo=timezone.utc).timestamp() * 1000
+            ),
+            "pending-referred-uid": int(
+                datetime(2025, 1, 4, tzinfo=timezone.utc).timestamp() * 1000
+            ),
+            "profileless-referred-uid": None,
+        }
+        creation_time_patch = patch(
+            "app.firebase_user_creation_datetime",
+            side_effect=lambda uid: (
+                datetime.fromtimestamp(auth_creation_times[uid] / 1000, tz=timezone.utc)
+                if auth_creation_times[uid] is not None
+                else None
+            ),
+        )
+        creation_time_patch.start()
+        self.addCleanup(creation_time_patch.stop)
         with patch("app.firebase_auth.verify_id_token", return_value={"uid": "owner-uid"}):
             with patch("app.get_firebase_app"):
                 with patch("app.get_firestore", return_value=database):
@@ -455,9 +550,34 @@ class ReferralApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         result = response.get_json()
+        self.assertEqual(result["invitedCount"], 4)
+        self.assertEqual(result["qualifiedCount"], 2)
+        self.assertEqual(result["pendingReferralCount"], 2)
+        self.assertEqual(result["totalEarningsAmountCents"], 2000)
+        self.assertFalse(result["pendingRewardsTracked"])
+        self.assertIsNone(result["pendingRewardCount"])
+        self.assertIsNone(result["pendingRewardAmountCents"])
         self.assertEqual(result["availableCount"], 1)
         self.assertEqual(result["paidCount"], 1)
         self.assertEqual(result["availableAmountCents"], 1000)
-        statuses = {entry["status"] for entry in result["history"]}
-        self.assertEqual(statuses, {"available", "paid"})
+        self.assertEqual(result["paidAmountCents"], 1000)
+        history_by_name = {
+            entry["displayName"]: entry
+            for entry in result["history"]
+        }
+        self.assertEqual(
+            history_by_name["Referred Friend"]["accountCreatedAt"],
+            "2025-01-01T00:00:00Z",
+        )
+        self.assertEqual(history_by_name["Referred Friend"]["purchaseStatus"], "approved")
+        self.assertEqual(history_by_name["Referred Friend"]["status"], "available")
+        self.assertEqual(history_by_name["Paid Friend"]["purchaseStatus"], "approved")
+        self.assertEqual(history_by_name["Paid Friend"]["status"], "paid")
+        self.assertEqual(history_by_name["Pending Friend"]["purchaseStatus"], "pending")
+        self.assertEqual(
+            history_by_name["Pending Friend"]["status"],
+            "awaiting_first_approved_purchase",
+        )
+        self.assertIsNone(history_by_name[None]["accountCreatedAt"])
+        self.assertNotIn("private@example.test", response.get_data(as_text=True))
         self.assertNotIn("referred-private-uid", response.get_data(as_text=True))

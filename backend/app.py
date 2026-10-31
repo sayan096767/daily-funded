@@ -480,6 +480,18 @@ def record_referral_attribution(uid, token, database):
     return create_attribution(database.transaction())
 
 
+def firebase_user_creation_datetime(uid):
+    try:
+        firebase_user = firebase_auth.get_user(uid, app=get_firebase_app())
+    except firebase_auth.UserNotFoundError:
+        return None
+    metadata = getattr(firebase_user, "user_metadata", None)
+    created_at_ms = getattr(metadata, "creation_timestamp", None)
+    if not isinstance(created_at_ms, int) or isinstance(created_at_ms, bool):
+        return None
+    return datetime.fromtimestamp(created_at_ms / 1000, tz=timezone.utc)
+
+
 def award_referral_reward(transaction, database, referred_uid, purchase_id):
     attribution_ref = database.collection("referralAttributions").document(referred_uid)
     reward_ref = database.collection("referralRewards").document(referred_uid)
@@ -1339,46 +1351,181 @@ def referral_dashboard():
             .where("referrerUid", "==", uid)
             .stream()
         )
+        referred_users = {}
+        for document in attribution_documents:
+            attribution = document.to_dict() or {}
+            referred_uid = attribution.get("referredUid")
+            if (
+                attribution.get("referrerUid") != uid
+                or referred_uid != document.id
+                or referred_uid in referred_users
+            ):
+                continue
+            referred_users[referred_uid] = {
+                "attribution": attribution,
+                "profile": {},
+                "purchases": [],
+            }
+
+        activity_users = dict(
+            sorted(
+                referred_users.items(),
+                key=lambda item: str(
+                    firestore_json(item[1]["attribution"].get("createdAt")) or ""
+                ),
+                reverse=True,
+            )[:100]
+        )
+        for referred_uid, activity in activity_users.items():
+            user_ref = database.collection("users").document(referred_uid)
+            profile_snapshot = user_ref.get()
+            activity["profile"] = profile_snapshot.to_dict() or {}
+            activity["createdAt"] = firebase_user_creation_datetime(referred_uid)
+            activity["purchases"] = [
+                (purchase_document.id, purchase_document.to_dict() or {})
+                for purchase_document in user_ref.collection("purchases").stream()
+            ]
     except Exception as error:
         app.logger.exception("Could not load referral dashboard for user %s", uid)
         return referral_service_error(error)
 
-    rewards_by_referred_uid = {
-        document.id: document.to_dict() or {}
-        for document in reward_documents
-    }
+    rewards_by_referred_uid = {}
+    for document in reward_documents:
+        reward = document.to_dict() or {}
+        if (
+            document.id in referred_users
+            and reward.get("referrerUid") == uid
+            and reward.get("referredUid") == document.id
+        ):
+            rewards_by_referred_uid[document.id] = reward
+
     history = []
-    for document in attribution_documents:
-        reward = rewards_by_referred_uid.get(document.id)
+    for referred_uid, activity in activity_users.items():
+        reward = rewards_by_referred_uid.get(referred_uid)
         reward_status = reward.get("status") if reward else None
         if reward_status == "credited":
             reward_status = "available"
+        reward_amount_cents = (
+            reward.get("amountCents")
+            if reward
+            and isinstance(reward.get("amountCents"), int)
+            and not isinstance(reward.get("amountCents"), bool)
+            and reward.get("amountCents") >= 0
+            else None
+        )
+        purchase_documents = [
+            (purchase_id, purchase)
+            for purchase_id, purchase in activity["purchases"]
+            if purchase.get("ownerUid") in {None, referred_uid}
+        ]
+        qualifying_purchase_id = reward.get("qualifyingPurchaseId") if reward else None
+        purchase = next(
+            (
+                purchase_data
+                for purchase_id, purchase_data in purchase_documents
+                if purchase_id == qualifying_purchase_id
+            ),
+            None,
+        )
+        if purchase is None and purchase_documents:
+            purchase_documents.sort(
+                key=lambda item: (
+                    str(firestore_json(item[1].get("createdAt")) or ""),
+                    item[0],
+                ),
+                reverse=True,
+            )
+            purchase = purchase_documents[0][1]
+
+        purchase_status = "no_purchase"
+        if purchase is not None:
+            stored_purchase_status = purchase.get("status")
+            if stored_purchase_status == "approved":
+                purchase_status = "approved"
+            elif purchase_status_is_pending(stored_purchase_status):
+                purchase_status = "pending"
+            elif stored_purchase_status in {"rejected", "payment_rejected"}:
+                purchase_status = "rejected"
+            else:
+                purchase_status = "unknown"
+        elif (
+            reward
+            and qualifying_purchase_id
+            and reward.get("creditEvent") == "first_approved_purchase"
+        ):
+            purchase_status = "approved"
+
+        profile = activity["profile"]
+        display_name = str(profile.get("displayName") or "").strip()
+        if not display_name:
+            display_name = " ".join(
+                part
+                for part in (
+                    str(profile.get("firstName") or "").strip(),
+                    str(profile.get("lastName") or "").strip(),
+                )
+                if part
+            )
+        if "@" in display_name:
+            display_name = ""
         history.append({
-            "createdAt": (document.to_dict() or {}).get("createdAt"),
+            "displayName": display_name or None,
+            "createdAt": firestore_json(
+                activity["attribution"].get("createdAt")
+            ),
+            "accountCreatedAt": firestore_json(activity.get("createdAt")),
+            "purchaseStatus": purchase_status,
             "status": reward_status if reward else "awaiting_first_approved_purchase",
-            "amountCents": reward.get("amountCents", 0) if reward else 0,
+            "amountCents": reward_amount_cents,
         })
     history.sort(key=lambda entry: str(firestore_json(entry.get("createdAt")) or ""), reverse=True)
+    earned_statuses = {"available", "credited", "reserved", "paid"}
+    qualified_count = len(rewards_by_referred_uid)
+    total_earnings_cents = sum(
+        reward["amountCents"]
+        for reward in rewards_by_referred_uid.values()
+        if reward.get("status") in earned_statuses
+        and isinstance(reward.get("amountCents"), int)
+        and not isinstance(reward.get("amountCents"), bool)
+        and reward["amountCents"] >= 0
+    )
     available_amount_cents = sum(
         reward.get("amountCents", 0)
         for reward in rewards_by_referred_uid.values()
         if isinstance(reward.get("amountCents"), int)
+        and not isinstance(reward.get("amountCents"), bool)
+        and reward.get("amountCents") >= 0
         and reward.get("status") in {"available", "credited"}
     )
     paid_count = sum(
         reward.get("status") == "paid"
         for reward in rewards_by_referred_uid.values()
     )
+    paid_amount_cents = sum(
+        reward["amountCents"]
+        for reward in rewards_by_referred_uid.values()
+        if reward.get("status") == "paid"
+        and isinstance(reward.get("amountCents"), int)
+        and not isinstance(reward.get("amountCents"), bool)
+        and reward["amountCents"] >= 0
+    )
     return jsonify(
         referralCode=code,
-        invitedCount=len(attribution_documents),
+        invitedCount=len(referred_users),
+        qualifiedCount=qualified_count,
+        pendingReferralCount=len(referred_users) - qualified_count,
+        totalEarningsAmountCents=total_earnings_cents,
+        pendingRewardsTracked=False,
+        pendingRewardCount=None,
+        pendingRewardAmountCents=None,
         availableCount=sum(
             reward.get("status") in {"available", "credited"}
             for reward in rewards_by_referred_uid.values()
         ),
         paidCount=paid_count,
         availableAmountCents=available_amount_cents,
-        history=history[:100],
+        paidAmountCents=paid_amount_cents,
+        history=history,
     )
 
 
