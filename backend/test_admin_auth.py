@@ -1199,6 +1199,49 @@ class AdminPurchaseTransitionTests(unittest.TestCase):
         mocked_urlopen.assert_called_once()
         self.assertEqual(len(opened_requests), 1)
 
+    def test_new_approval_checks_referral_reward_in_same_transaction(self):
+        _purchase_data, _account_data, purchase_doc, user_ref, fake_firestore, transaction, events = self.review_fakes()
+
+        with patch("app.award_referral_reward", return_value=True) as award_reward:
+            response, _mocked_urlopen, _opened_requests = self.call_admin(
+                purchase_doc, user_ref, fake_firestore, events
+            )
+
+        self.assertEqual(response.status_code, 200)
+        award_reward.assert_called_once_with(
+            transaction,
+            fake_firestore,
+            "user-a",
+            "purchase-a",
+        )
+
+    def test_reapproval_does_not_retroactively_award_referral(self):
+        _purchase_data, _account_data, purchase_doc, user_ref, fake_firestore, _transaction, events = self.review_fakes(
+            purchase_status="approved",
+        )
+
+        with patch("app.award_referral_reward") as award_reward:
+            response, _mocked_urlopen, _opened_requests = self.call_admin(
+                purchase_doc, user_ref, fake_firestore, events
+            )
+
+        self.assertEqual(response.status_code, 200)
+        award_reward.assert_not_called()
+
+    def test_rejected_purchase_cannot_award_referral(self):
+        _purchase_data, _account_data, purchase_doc, user_ref, fake_firestore, _transaction, events = self.review_fakes(
+            purchase_status="rejected",
+        )
+
+        with patch("app.award_referral_reward") as award_reward:
+            response, _mocked_urlopen, _opened_requests = self.call_admin(
+                purchase_doc, user_ref, fake_firestore, events
+            )
+
+        self.assertEqual(response.status_code, 409)
+        award_reward.assert_not_called()
+        self.assertNotIn("worker-called", events)
+
     def test_account_is_enabled_only_after_worker_success_and_id_persistence(self):
         _purchase_data, _account_data, purchase_doc, user_ref, fake_firestore, _transaction, events = self.review_fakes()
 

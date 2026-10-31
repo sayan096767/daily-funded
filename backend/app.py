@@ -2,6 +2,10 @@ import os
 import re
 import uuid
 import hashlib
+import base64
+import binascii
+import hmac
+import secrets
 import json
 import math
 import socket
@@ -316,6 +320,191 @@ def is_registration_profile_complete(profile):
     )
 
 
+REFERRAL_CODE_PATTERN = re.compile(r"[A-F0-9]{32}")
+REFERRAL_REWARD_CENTS = 1000
+
+
+def referral_token_signing_key():
+    secret = os.environ.get("DAILYFUNDED_SECRET_KEY", "")
+    if len(secret) < 32:
+        raise RuntimeError("DAILYFUNDED_SECRET_KEY must contain at least 32 characters to sign referral tokens.")
+    return hashlib.sha256(b"daily-funded-referral-token-v1\0" + secret.encode("utf-8")).digest()
+
+
+def encode_referral_token(code):
+    payload = json.dumps(
+        {"code": code, "issuedAtMs": int(datetime.now(timezone.utc).timestamp() * 1000)},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    encoded_payload = base64.urlsafe_b64encode(payload).rstrip(b"=").decode("ascii")
+    signature = hmac.new(
+        referral_token_signing_key(),
+        encoded_payload.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    encoded_signature = base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii")
+    return f"{encoded_payload}.{encoded_signature}"
+
+
+def decode_referral_token_segment(segment):
+    decoded = base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4))
+    canonical_segment = base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("ascii")
+    if canonical_segment != segment:
+        raise ValueError("Non-canonical referral token encoding.")
+    return decoded
+
+
+def decode_referral_token(token):
+    if not isinstance(token, str) or len(token) > 2048:
+        return None
+    try:
+        encoded_payload, encoded_signature = token.split(".")
+        if (
+            not re.fullmatch(r"[A-Za-z0-9_-]+", encoded_payload)
+            or not re.fullmatch(r"[A-Za-z0-9_-]+", encoded_signature)
+        ):
+            return None
+        expected_signature = hmac.new(
+            referral_token_signing_key(),
+            encoded_payload.encode("ascii"),
+            hashlib.sha256,
+        ).digest()
+        supplied_signature = decode_referral_token_segment(encoded_signature)
+        if not hmac.compare_digest(expected_signature, supplied_signature):
+            return None
+        payload = json.loads(decode_referral_token_segment(encoded_payload))
+    except (ValueError, UnicodeDecodeError, UnicodeEncodeError, binascii.Error, json.JSONDecodeError):
+        return None
+    code = payload.get("code") if isinstance(payload, dict) else None
+    issued_at_ms = payload.get("issuedAtMs") if isinstance(payload, dict) else None
+    if (
+        not isinstance(code, str)
+        or not REFERRAL_CODE_PATTERN.fullmatch(code)
+        or not isinstance(issued_at_ms, int)
+        or issued_at_ms <= 0
+    ):
+        return None
+    return code, issued_at_ms
+
+
+def ensure_referral_code(uid, database):
+    profile_ref = database.collection("users").document(uid)
+    code_collection = database.collection("referralCodes")
+
+    for _attempt in range(5):
+        candidate = secrets.token_hex(16).upper()
+        candidate_ref = code_collection.document(candidate)
+
+        @firestore.transactional
+        def create_or_reuse_code(transaction):
+            profile_snapshot = profile_ref.get(transaction=transaction)
+            profile = profile_snapshot.to_dict() or {}
+            existing_code = profile.get("referralCode")
+            if existing_code:
+                if not isinstance(existing_code, str) or not REFERRAL_CODE_PATTERN.fullmatch(existing_code):
+                    raise RuntimeError("The stored referral code is invalid.")
+                mapping_ref = code_collection.document(existing_code)
+                mapping_snapshot = mapping_ref.get(transaction=transaction)
+                mapping = mapping_snapshot.to_dict() or {}
+                if mapping_snapshot.exists and mapping.get("ownerUid") != uid:
+                    raise RuntimeError("The stored referral code belongs to another user.")
+                if not mapping_snapshot.exists:
+                    transaction.create(mapping_ref, {
+                        "ownerUid": uid,
+                        "createdAt": firestore.SERVER_TIMESTAMP,
+                    })
+                return existing_code
+
+            candidate_snapshot = candidate_ref.get(transaction=transaction)
+            if candidate_snapshot.exists:
+                return None
+            transaction.create(candidate_ref, {
+                "ownerUid": uid,
+                "createdAt": firestore.SERVER_TIMESTAMP,
+            })
+            transaction.set(profile_ref, {"referralCode": candidate}, merge=True)
+            return candidate
+
+        code = create_or_reuse_code(database.transaction())
+        if code:
+            return code
+    raise RuntimeError("Could not allocate a unique referral code.")
+
+
+def record_referral_attribution(uid, token, database):
+    if not isinstance(uid, str) or not uid.strip():
+        return {"applied": False, "reason": "The account identity could not be verified. No referral was recorded."}
+    decoded_token = decode_referral_token(token)
+    if decoded_token is None:
+        return {"applied": False, "reason": "The referral link is invalid. No referral was recorded."}
+    code, issued_at_ms = decoded_token
+
+    firebase_user = firebase_auth.get_user(uid, app=get_firebase_app())
+    metadata = getattr(firebase_user, "user_metadata", None)
+    created_at_ms = getattr(metadata, "creation_timestamp", None)
+    if not isinstance(created_at_ms, int) or isinstance(created_at_ms, bool):
+        return {"applied": False, "reason": "The account creation date could not be verified. No referral was recorded."}
+    if created_at_ms <= issued_at_ms:
+        return {"applied": False, "reason": "Referral links must be opened before account creation. No referral was recorded."}
+
+    code_ref = database.collection("referralCodes").document(code)
+    attribution_ref = database.collection("referralAttributions").document(uid)
+
+    @firestore.transactional
+    def create_attribution(transaction):
+        code_snapshot = code_ref.get(transaction=transaction)
+        code_data = code_snapshot.to_dict() or {}
+        attribution_snapshot = attribution_ref.get(transaction=transaction)
+        existing_attribution = attribution_snapshot.to_dict() or {}
+        referrer_uid = code_data.get("ownerUid")
+        if (
+            not code_snapshot.exists
+            or not isinstance(referrer_uid, str)
+            or not referrer_uid.strip()
+        ):
+            return {"applied": False, "reason": "The referral code is no longer valid. No referral was recorded."}
+        if referrer_uid == uid:
+            return {"applied": False, "reason": "You cannot use your own referral link."}
+        if attribution_snapshot.exists:
+            if existing_attribution.get("referrerUid") == referrer_uid:
+                return {"applied": True, "existing": True}
+            return {"applied": False, "reason": "A referral is already attached to this account."}
+        transaction.create(attribution_ref, {
+            "referredUid": uid,
+            "referrerUid": referrer_uid,
+            "referralCode": code,
+            "createdAt": firestore.SERVER_TIMESTAMP,
+        })
+        return {"applied": True, "existing": False}
+
+    return create_attribution(database.transaction())
+
+
+def award_referral_reward(transaction, database, referred_uid, purchase_id):
+    attribution_ref = database.collection("referralAttributions").document(referred_uid)
+    reward_ref = database.collection("referralRewards").document(referred_uid)
+    attribution_snapshot = attribution_ref.get(transaction=transaction)
+    reward_snapshot = reward_ref.get(transaction=transaction)
+    if not attribution_snapshot.exists or reward_snapshot.exists:
+        return False
+
+    attribution = attribution_snapshot.to_dict() or {}
+    referrer_uid = attribution.get("referrerUid")
+    if not isinstance(referrer_uid, str) or not referrer_uid or referrer_uid == referred_uid:
+        return False
+    transaction.create(reward_ref, {
+        "referrerUid": referrer_uid,
+        "referredUid": referred_uid,
+        "qualifyingPurchaseId": purchase_id,
+        "amountCents": REFERRAL_REWARD_CENTS,
+        "currency": "USD",
+        "status": "available",
+        "creditEvent": "first_approved_purchase",
+        "createdAt": firestore.SERVER_TIMESTAMP,
+    })
+    return True
+
+
 def read_json_object():
     payload = request.get_json(silent=True)
     return payload if isinstance(payload, dict) else {}
@@ -364,6 +553,11 @@ def purchase_response(purchase_id, purchase, status_code=201, replay=False):
 def firebase_service_error(service_name, error):
     error_type = type(error).__name__
     return jsonify(error=f"{service_name} unavailable ({error_type}). Configure Firebase Admin credentials and verify project access."), 503
+
+
+def referral_service_error(error):
+    error_type = type(error).__name__
+    return jsonify(error=f"Referral service unavailable ({error_type}). Verify DAILYFUNDED_SECRET_KEY and Firestore access."), 503
 
 
 class CloudflareProvisioningError(Exception):
@@ -981,6 +1175,23 @@ def health_check():
     return jsonify(status="ok")
 
 
+@app.post("/api/referrals/resolve")
+def resolve_referral():
+    payload = read_json_object()
+    code = str(payload.get("code", "")).strip().upper()
+    if not REFERRAL_CODE_PATTERN.fullmatch(code):
+        return jsonify(error="That referral link is not valid."), 404
+    try:
+        code_snapshot = get_firestore().collection("referralCodes").document(code).get()
+        code_data = code_snapshot.to_dict() or {}
+        if not code_snapshot.exists or not isinstance(code_data.get("ownerUid"), str):
+            return jsonify(error="That referral link is not valid."), 404
+        return jsonify(referralToken=encode_referral_token(code))
+    except Exception as error:
+        app.logger.exception("Could not resolve referral code")
+        return referral_service_error(error)
+
+
 @app.post("/api/auth/register")
 @firebase_auth_required
 def register():
@@ -1015,7 +1226,19 @@ def register():
     if not existing_profile.exists:
         profile["createdAt"] = firestore.SERVER_TIMESTAMP
     profile_ref.set(profile, merge=True)
-    return jsonify(authenticated=True, uid=g.firebase_uid, email=email), 201
+    result = {"authenticated": True, "uid": g.firebase_uid, "email": email}
+    referral_token = payload.get("referralToken")
+    if referral_token:
+        try:
+            result["referral"] = record_referral_attribution(
+                g.firebase_uid,
+                referral_token,
+                get_firestore(),
+            )
+        except Exception as error:
+            app.logger.exception("Could not record referral attribution for user %s", g.firebase_uid)
+            return referral_service_error(error)
+    return jsonify(result), 201
 
 
 @app.post("/api/auth/login")
@@ -1097,6 +1320,66 @@ def auth_status():
     except Exception as error:
         app.logger.exception("Could not load authenticated user profile")
         return firebase_service_error("Firestore", error)
+
+
+@app.get("/api/referrals")
+@firebase_auth_required
+def referral_dashboard():
+    uid = g.firebase_uid
+    try:
+        database = get_firestore()
+        code = ensure_referral_code(uid, database)
+        attribution_documents = list(
+            database.collection("referralAttributions")
+            .where("referrerUid", "==", uid)
+            .stream()
+        )
+        reward_documents = list(
+            database.collection("referralRewards")
+            .where("referrerUid", "==", uid)
+            .stream()
+        )
+    except Exception as error:
+        app.logger.exception("Could not load referral dashboard for user %s", uid)
+        return referral_service_error(error)
+
+    rewards_by_referred_uid = {
+        document.id: document.to_dict() or {}
+        for document in reward_documents
+    }
+    history = []
+    for document in attribution_documents:
+        reward = rewards_by_referred_uid.get(document.id)
+        reward_status = reward.get("status") if reward else None
+        if reward_status == "credited":
+            reward_status = "available"
+        history.append({
+            "createdAt": (document.to_dict() or {}).get("createdAt"),
+            "status": reward_status if reward else "awaiting_first_approved_purchase",
+            "amountCents": reward.get("amountCents", 0) if reward else 0,
+        })
+    history.sort(key=lambda entry: str(firestore_json(entry.get("createdAt")) or ""), reverse=True)
+    available_amount_cents = sum(
+        reward.get("amountCents", 0)
+        for reward in rewards_by_referred_uid.values()
+        if isinstance(reward.get("amountCents"), int)
+        and reward.get("status") in {"available", "credited"}
+    )
+    paid_count = sum(
+        reward.get("status") == "paid"
+        for reward in rewards_by_referred_uid.values()
+    )
+    return jsonify(
+        referralCode=code,
+        invitedCount=len(attribution_documents),
+        availableCount=sum(
+            reward.get("status") in {"available", "credited"}
+            for reward in rewards_by_referred_uid.values()
+        ),
+        paidCount=paid_count,
+        availableAmountCents=available_amount_cents,
+        history=history[:100],
+    )
 
 
 @app.get("/api/accounts")
@@ -1648,6 +1931,12 @@ def admin_approve_purchase(purchase_id):
         }
 
         if status != "approved":
+            award_referral_reward(
+                transaction,
+                database,
+                values["ownerUid"],
+                values["purchaseId"],
+            )
             transaction.update(purchase.reference, {
                 "status": "approved",
                 "reviewedBy": reviewed_by,
