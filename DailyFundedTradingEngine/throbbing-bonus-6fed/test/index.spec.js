@@ -149,6 +149,13 @@ function mockDb({
 				},
 				async first() {
 					const lower = this.sql.toLowerCase();
+					if (lower.includes("select count(*) as open_position_count")) {
+						return {
+							open_position_count: state.positions.filter((row) =>
+								row.account_id === this.values[0] && row.status === "open"
+							).length,
+						};
+					}
 					if (lower.includes("from trading_symbols")) {
 						return state.symbols.find(
 							(row) => row.symbol === this.values[0] && Number(row.trading_enabled) === 1
@@ -1822,7 +1829,7 @@ describe("Market data foundation", () => {
 describe("Trusted trading API authentication", () => {
 	it("rejects a missing trading token", async () => {
 		const { db } = positionHarness({ symbols: [], allowedSymbols: [] });
-		const response = await callTrading(db, "/accounts?account_id=ACC_TRADE", { token: null });
+		const response = await callTrading(db, "/payout-eligibility?account_id=ACC_TRADE", { token: null });
 		expect(response.status).toBe(401);
 	});
 
@@ -1834,13 +1841,13 @@ describe("Trusted trading API authentication", () => {
 
 	it("rejects an invalid trading token", async () => {
 		const { db } = positionHarness({ symbols: [], allowedSymbols: [] });
-		const response = await callTrading(db, "/accounts?account_id=ACC_TRADE", { token: "invalid-token" });
+		const response = await callTrading(db, "/payout-eligibility?account_id=ACC_TRADE", { token: "invalid-token" });
 		expect(response.status).toBe(401);
 	});
 
 	it("rejects a missing trusted UID header", async () => {
 		const { db } = positionHarness({ symbols: [], allowedSymbols: [] });
-		const response = await callTrading(db, "/accounts?account_id=ACC_TRADE", { userId: null });
+		const response = await callTrading(db, "/payout-eligibility?account_id=ACC_TRADE", { userId: null });
 		expect(response.status).toBe(401);
 	});
 
@@ -1880,6 +1887,119 @@ describe("Trusted trading API authentication", () => {
 });
 
 describe("Trading account ownership", () => {
+	it("returns a versioned unavailable result without calculating payout amounts", async () => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		state.trades.push({
+			id: "TRD_NEGATIVE",
+			account_id: "ACC_TRADE",
+			realized_pnl: -125,
+		});
+		const before = tradingStateSnapshot(state);
+
+		const response = await callTrading(db, "/payout-eligibility?account_id=ACC_TRADE");
+		const payload = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(payload.schema_version).toBe("payout-eligibility.v1");
+		expect(payload.eligibility.status).toBe("unavailable");
+		expect(payload.eligibility.amount_cents).toBeNull();
+		expect(payload.eligibility.trader_share_cents).toBeNull();
+		expect(payload.eligibility.reason_codes).toContain("profit_ledger_unverified");
+		expect(payload.eligibility.reason_codes).toContain("payout_period_boundaries_unconfigured");
+		expect(payload.eligibility.reason_codes).toContain("trading_costs_and_adjustments_unavailable");
+		expect(payload.eligibility.reason_codes).toContain("withdrawal_ledger_unavailable");
+		expect(payload.eligibility.reason_codes).toContain("payout_eligibility_inputs_unverified");
+		expect(payload.account_rules).toMatchObject({ profit_split_percent: 80 });
+		expect(tradingStateSnapshot(state)).toBe(before);
+	});
+
+	it("reports open positions as a blocker without calculating profit from realized trades", async () => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		state.trades.push({
+			id: "TRD_POSITIVE",
+			account_id: "ACC_TRADE",
+			realized_pnl: 500,
+		});
+		state.positions.push({
+			id: "POS_OPEN",
+			account_id: "ACC_TRADE",
+			status: "open",
+		});
+
+		const response = await callTrading(db, "/payout-eligibility?account_id=ACC_TRADE");
+		const payload = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(payload.eligibility.status).toBe("unavailable");
+		expect(payload.eligibility.amount_cents).toBeNull();
+		expect(payload.eligibility.trader_share_cents).toBeNull();
+		expect(payload.eligibility.reason_codes).toContain("open_positions_present");
+		expect(payload.eligibility.reason_codes).toContain("trading_costs_and_adjustments_unavailable");
+	});
+
+	it("returns unavailable when an account rule snapshot is missing", async () => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		state.snapshots.length = 0;
+
+		const response = await callTrading(db, "/payout-eligibility?account_id=ACC_TRADE");
+		const payload = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(payload.eligibility.status).toBe("unavailable");
+		expect(payload.account_rules).toBeNull();
+		expect(payload.eligibility.reason_codes).toContain("account_rule_snapshot_unavailable");
+	});
+
+	it("reports inactive D1 accounts as unavailable", async () => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		state.accounts[0].status = "disabled";
+
+		const response = await callTrading(db, "/payout-eligibility?account_id=ACC_TRADE");
+		const payload = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(payload.eligibility.status).toBe("unavailable");
+		expect(payload.eligibility.reason_codes).toContain("account_not_active");
+	});
+
+	it.each([null, 60])("does not treat missing or unsupported split %s as verified", async (split) => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		state.snapshots[0].profit_split_percent = split;
+
+		const response = await callTrading(db, "/payout-eligibility?account_id=ACC_TRADE");
+		const payload = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(payload.eligibility.status).toBe("unavailable");
+		expect(payload.eligibility.amount_cents).toBeNull();
+		expect(payload.eligibility.reason_codes).toContain("account_profit_split_unverified");
+	});
+
+	it("does not make zero or negative realized PnL payable on repeated eligibility reads", async () => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		state.trades.push(
+			{ id: "TRD_ZERO", account_id: "ACC_TRADE", realized_pnl: 0 },
+			{ id: "TRD_NEGATIVE", account_id: "ACC_TRADE", realized_pnl: -25 }
+		);
+		const before = tradingStateSnapshot(state);
+		for (const realizedPnl of [0, -25]) {
+			const response = await callTrading(db, "/payout-eligibility?account_id=ACC_TRADE");
+			const payload = await response.json();
+			expect(response.status).toBe(200);
+			expect(payload.eligibility.status).toBe("unavailable");
+			expect(payload.eligibility.trader_share_cents).toBeNull();
+		}
+		expect(state.accounts[0].balance).toBe(10000);
+		expect(state.snapshots).toHaveLength(1);
+		expect(tradingStateSnapshot(state)).toBe(before);
+	});
+
+	it("returns unavailable for an unknown account", async () => {
+		const { db } = positionHarness({ symbols: [], allowedSymbols: [] });
+		const response = await callTrading(db, "/payout-eligibility?account_id=ACC_MISSING");
+		expect(response.status).toBe(404);
+	});
+
 	it("returns the authenticated user's trade history", async () => {
 		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
 		state.trades.push({
@@ -1920,6 +2040,16 @@ describe("Trading account ownership", () => {
 		const { db } = otherOwnerHarness();
 		const response = await callTrading(db, "/accounts?account_id=ACC_TRADE", { userId: "requester-user" });
 		expect(response.status, JSON.stringify(await response.clone().json())).toBe(404);
+	});
+
+	it("does not expose payout eligibility for another user's account", async () => {
+		const { db } = otherOwnerHarness();
+		const response = await callTrading(
+			db,
+			"/payout-eligibility?account_id=ACC_TRADE",
+			{ userId: "requester-user" }
+		);
+		expect(response.status).toBe(404);
 	});
 
 	it("does not open a position on another user's account", async () => {

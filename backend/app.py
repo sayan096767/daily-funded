@@ -9,9 +9,10 @@ import secrets
 import json
 import math
 import socket
+import traceback
 from io import BytesIO
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 
@@ -19,6 +20,7 @@ import firebase_admin
 import boto3
 import cloudinary
 import cloudinary.utils
+from firebase_admin import exceptions as firebase_exceptions
 from firebase_admin import auth as firebase_auth, credentials, firestore, storage
 from flask import Flask, g, jsonify, request, send_file
 from google.api_core.exceptions import AlreadyExists
@@ -102,6 +104,7 @@ NETWORKS = {
     "btc": {"btc_native", "btc_bep20"},
     "eth": {"eth_erc20", "eth_bep20"},
 }
+TRADING_PLATFORMS = {"mt5", "ctrader", "match_trader", "cf"}
 IMAGE_SIGNATURES = (
     (b"\x89PNG\r\n\x1a\n", "png"),
     (b"\xff\xd8\xff", "jpeg"),
@@ -265,18 +268,57 @@ def firebase_auth_required(view):
     def wrapped(*args, **kwargs):
         authorization = request.headers.get("Authorization", "")
         scheme, _, token = authorization.partition(" ")
+        token = token.strip()
         if scheme.lower() != "bearer" or not token:
             return jsonify(error="Sign in is required."), 401
         try:
             firebase_app = get_firebase_app()
-        except Exception:
-            app.logger.exception("Firebase Admin authentication is not configured correctly")
+        except Exception as error:
+            app.logger.error(
+                "Firebase Admin authentication initialization failed (%s)",
+                type(error).__name__,
+            )
             return jsonify(error="Firebase Admin authentication is unavailable. Check the service-account credentials and project configuration."), 503
         try:
-            claims = firebase_auth.verify_id_token(token, app=firebase_app)
-        except Exception:
-            app.logger.info("Rejected invalid Firebase ID token", exc_info=True)
+            claims = firebase_auth.verify_id_token(
+                token,
+                app=firebase_app,
+                check_revoked=True,
+            )
+        except (
+            ValueError,
+            firebase_auth.InvalidIdTokenError,
+            firebase_auth.UserDisabledError,
+            firebase_auth.UserNotFoundError,
+            firebase_exceptions.InvalidArgumentError,
+        ) as error:
+            app.logger.info(
+                "Rejected Firebase ID token (%s)",
+                type(error).__name__,
+            )
             return jsonify(error="Invalid or expired Firebase ID token."), 401
+        except (
+            firebase_auth.CertificateFetchError,
+            firebase_exceptions.UnavailableError,
+            firebase_exceptions.DeadlineExceededError,
+        ) as error:
+            app.logger.warning(
+                "Firebase ID token verification is unavailable (%s)",
+                type(error).__name__,
+            )
+            return jsonify(error="Firebase authentication is temporarily unavailable."), 503
+        except firebase_exceptions.FirebaseError as error:
+            app.logger.error(
+                "Firebase ID token verification failed (%s)",
+                type(error).__name__,
+            )
+            return jsonify(error="Firebase authentication could not be completed."), 500
+        except Exception as error:
+            app.logger.error(
+                "Unexpected Firebase ID token verification failure (%s)",
+                type(error).__name__,
+            )
+            return jsonify(error="Firebase authentication could not be completed."), 500
         g.firebase_uid = claims["uid"]
         g.firebase_claims = claims
         return view(*args, **kwargs)
@@ -522,6 +564,60 @@ def read_json_object():
     return payload if isinstance(payload, dict) else {}
 
 
+def normalize_billing_details(value):
+    if not isinstance(value, str):
+        raise ValueError("Billing details are required.")
+    try:
+        submitted = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise ValueError("Billing details must be valid JSON.") from error
+    if not isinstance(submitted, dict):
+        raise ValueError("Billing details must be an object.")
+
+    field_limits = {
+        "full_name": 160,
+        "email": 254,
+        "phone": 32,
+        "country": 2,
+        "state": 100,
+        "city": 100,
+        "postal_code": 32,
+        "address_line_1": 200,
+        "address_line_2": 200,
+        "company_name": 160,
+        "tax_id": 64,
+    }
+    billing = {}
+    for field, max_length in field_limits.items():
+        field_value = submitted.get(field, "")
+        if not isinstance(field_value, str):
+            raise ValueError("Enter valid billing details.")
+        billing[field] = field_value.strip()
+        if len(billing[field]) > max_length:
+            raise ValueError(f"{field.replace('_', ' ').capitalize()} is too long.")
+
+    required_fields = (
+        "full_name", "email", "phone", "country", "state", "city",
+        "postal_code", "address_line_1",
+    )
+    if any(not billing[field] for field in required_fields):
+        raise ValueError("Complete all required billing details.")
+    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", billing["email"]):
+        raise ValueError("Enter a valid billing email address.")
+    phone = billing["phone"]
+    phone_digits = re.sub(r"\D", "", phone)
+    if (
+        not re.fullmatch(r"\+?[\d\s().-]+", phone)
+        or not 7 <= len(phone_digits) <= 15
+    ):
+        raise ValueError("Enter a valid billing phone number.")
+    billing["country"] = billing["country"].upper()
+    if not re.fullmatch(r"[A-Z]{2}", billing["country"]):
+        raise ValueError("Select a valid billing country.")
+    billing["email"] = billing["email"].lower()
+    return billing
+
+
 def find_purchase_document(purchase_id):
     purchase_id = str(purchase_id or "").strip()
     if not purchase_id:
@@ -567,9 +663,27 @@ def firebase_service_error(service_name, error):
     return jsonify(error=f"{service_name} unavailable ({error_type}). Configure Firebase Admin credentials and verify project access."), 503
 
 
-def referral_service_error(error):
-    error_type = type(error).__name__
-    return jsonify(error=f"Referral service unavailable ({error_type}). Verify DAILYFUNDED_SECRET_KEY and Firestore access."), 503
+def log_referral_failure(operation, stage, error):
+    stack = "".join(traceback.format_tb(error.__traceback__)).rstrip()
+    signing_secret = os.environ.get("DAILYFUNDED_SECRET_KEY", "")
+    if not signing_secret:
+        secret_status = "missing"
+    elif len(signing_secret) < 32:
+        secret_status = "too_short"
+    else:
+        secret_status = "configured"
+    app.logger.error(
+        "Referral operation failed (operation=%s stage=%s exception_type=%s signing_secret_status=%s)\n%s",
+        operation,
+        stage,
+        type(error).__name__,
+        secret_status,
+        stack or "No traceback available.",
+    )
+
+
+def referral_service_error():
+    return jsonify(error="Referral service is temporarily unavailable. Please try again later."), 503
 
 
 class CloudflareProvisioningError(Exception):
@@ -1193,15 +1307,20 @@ def resolve_referral():
     code = str(payload.get("code", "")).strip().upper()
     if not REFERRAL_CODE_PATTERN.fullmatch(code):
         return jsonify(error="That referral link is not valid."), 404
+    stage = "firestore_initialization"
     try:
-        code_snapshot = get_firestore().collection("referralCodes").document(code).get()
+        database = get_firestore()
+        stage = "referral_code_lookup"
+        code_snapshot = database.collection("referralCodes").document(code).get()
         code_data = code_snapshot.to_dict() or {}
         if not code_snapshot.exists or not isinstance(code_data.get("ownerUid"), str):
             return jsonify(error="That referral link is not valid."), 404
-        return jsonify(referralToken=encode_referral_token(code))
+        stage = "token_signing"
+        referral_token = encode_referral_token(code)
+        return jsonify(referralToken=referral_token)
     except Exception as error:
-        app.logger.exception("Could not resolve referral code")
-        return referral_service_error(error)
+        log_referral_failure("resolve", stage, error)
+        return referral_service_error()
 
 
 @app.post("/api/auth/register")
@@ -1241,15 +1360,18 @@ def register():
     result = {"authenticated": True, "uid": g.firebase_uid, "email": email}
     referral_token = payload.get("referralToken")
     if referral_token:
+        stage = "firestore_initialization"
         try:
+            database = get_firestore()
+            stage = "attribution_processing"
             result["referral"] = record_referral_attribution(
                 g.firebase_uid,
                 referral_token,
-                get_firestore(),
+                database,
             )
         except Exception as error:
-            app.logger.exception("Could not record referral attribution for user %s", g.firebase_uid)
-            return referral_service_error(error)
+            log_referral_failure("registration", stage, error)
+            return referral_service_error()
     return jsonify(result), 201
 
 
@@ -1338,19 +1460,24 @@ def auth_status():
 @firebase_auth_required
 def referral_dashboard():
     uid = g.firebase_uid
+    stage = "firestore_initialization"
     try:
         database = get_firestore()
+        stage = "referral_code_persistence"
         code = ensure_referral_code(uid, database)
+        stage = "attribution_query"
         attribution_documents = list(
             database.collection("referralAttributions")
             .where("referrerUid", "==", uid)
             .stream()
         )
+        stage = "reward_query"
         reward_documents = list(
             database.collection("referralRewards")
             .where("referrerUid", "==", uid)
             .stream()
         )
+        stage = "referral_activity_profile_lookup"
         referred_users = {}
         for document in attribution_documents:
             attribution = document.to_dict() or {}
@@ -1386,8 +1513,8 @@ def referral_dashboard():
                 for purchase_document in user_ref.collection("purchases").stream()
             ]
     except Exception as error:
-        app.logger.exception("Could not load referral dashboard for user %s", uid)
-        return referral_service_error(error)
+        log_referral_failure("dashboard", stage, error)
+        return referral_service_error()
 
     rewards_by_referred_uid = {}
     for document in reward_documents:
@@ -1442,7 +1569,10 @@ def referral_dashboard():
             stored_purchase_status = purchase.get("status")
             if stored_purchase_status == "approved":
                 purchase_status = "approved"
-            elif purchase_status_is_pending(stored_purchase_status):
+            elif (
+                isinstance(stored_purchase_status, str)
+                and purchase_status_is_pending(stored_purchase_status)
+            ):
                 purchase_status = "pending"
             elif stored_purchase_status in {"rejected", "payment_rejected"}:
                 purchase_status = "rejected"
@@ -1691,6 +1821,10 @@ def create_purchase():
     ):
         return jsonify(error="That challenge product is not available."), 400
 
+    trading_platform = request.form.get("tradingPlatform", "").strip().lower()
+    if trading_platform not in TRADING_PLATFORMS:
+        return jsonify(error="Select a supported trading platform."), 400
+
     currency = request.form.get("currency", "").lower()
     network = request.form.get("network", "").lower()
     if currency not in NETWORKS or network not in NETWORKS[currency]:
@@ -1701,6 +1835,11 @@ def create_purchase():
         list_price, discount, total, coupon_code = calculate_purchase_amount(
             plan_key, size, submitted_coupon
         )
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+
+    try:
+        billing_details = normalize_billing_details(request.form.get("billing_details"))
     except ValueError as error:
         return jsonify(error=str(error)), 400
 
@@ -1754,6 +1893,8 @@ def create_purchase():
             or existing_purchase.get("couponCode") != coupon_code
             or existing_purchase.get("paymentCurrency") != currency
             or existing_purchase.get("paymentNetwork") != network
+            or existing_purchase.get("tradingPlatform") != trading_platform
+            or existing_purchase.get("billingDetails") != billing_details
             or not isinstance(existing_proof, dict)
             or existing_proof.get("sha256") != proof_digest
         ):
@@ -1814,6 +1955,8 @@ def create_purchase():
         "couponCode": coupon_code,
         "paymentCurrency": currency,
         "paymentNetwork": network,
+        "tradingPlatform": trading_platform,
+        "billingDetails": billing_details,
         "paymentProof": {
             "provider": "r2",
             "publicId": proof_path,
@@ -1864,6 +2007,7 @@ def create_purchase():
                 and saved_purchase.get("couponCode") == coupon_code
                 and saved_purchase.get("paymentCurrency") == currency
                 and saved_purchase.get("paymentNetwork") == network
+                and saved_purchase.get("billingDetails") == billing_details
                 and isinstance(saved_proof, dict)
                 and saved_proof.get("sha256") == proof_digest
             ):
@@ -1908,6 +2052,7 @@ def admin_pending_purchases():
             "status": data.get("status"),
             "paymentCurrency": data.get("paymentCurrency"),
             "paymentNetwork": data.get("paymentNetwork"),
+            "tradingPlatform": data.get("tradingPlatform"),
             "createdAt": data.get("createdAt"),
             "paymentProof": {
                 "provider": proof.get("provider"),
@@ -2326,6 +2471,48 @@ def payout_feed():
     return jsonify(payouts=firestore_json(payouts))
 
 
+@app.get("/api/payouts/requests")
+@firebase_auth_required
+def payout_request_history():
+    try:
+        documents = user_document(g.firebase_uid).collection("payoutRequests").order_by(
+            "createdAt", direction=firestore.Query.DESCENDING
+        ).limit(100).stream()
+        fields = (
+            "accountId", "method", "amountCents", "feeCents", "netAmountCents",
+            "currency", "network", "status", "createdAt", "updatedAt",
+            "estimatedEligibleAt",
+        )
+        requests = []
+        for document in documents:
+            data = document.to_dict() or {}
+            row = {"id": document.id}
+            row.update({key: data[key] for key in fields if key in data})
+            if "updatedAt" not in row:
+                row["updatedAt"] = row.get("createdAt")
+            requests.append(row)
+        return jsonify(requests=firestore_json(requests))
+    except Exception as error:
+        app.logger.exception("Could not load payout request history for user %s", g.firebase_uid)
+        return firebase_service_error("Firestore", error)
+
+
+@app.get("/api/payouts/eligibility")
+@firebase_auth_required
+def payout_eligibility():
+    account_id = request.args.get("accountId", "").strip()
+    if not account_id:
+        return jsonify(error="accountId is required."), 400
+
+    response, status_code = cloudflare_trading_proxy_response(
+        "/payout-eligibility",
+        method="GET",
+        query={"account_id": account_id},
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    return response, status_code
+
+
 @app.post("/api/payouts/requests")
 @firebase_auth_required
 def payout_request():
@@ -2340,53 +2527,13 @@ def payout_request():
     account = account_snapshot.to_dict() or {}
     if account.get("status") != "active":
         return jsonify(error="This account is not eligible for a payout request."), 400
-    available = account.get("withdrawableProfit")
-    if not isinstance(available, (int, float)):
-        return jsonify(error="Payout requests are unavailable until funded-account balances are connected."), 503
-
-    method = str(payload.get("method", "")).lower()
-    method_rules = {
-        "crypto": {"minimum": Decimal("50"), "fee": Decimal("0"), "fields": {"walletAddress"}},
-        "rise": {"minimum": Decimal("100"), "fee": Decimal("0"), "fields": {"riseAccount"}},
-        "bank": {"minimum": Decimal("100"), "fee": Decimal("12"), "fields": {"accountName", "bankName", "accountNumber", "routingCode"}},
-    }
-    rules = method_rules.get(method)
-    destination = payload.get("destination")
-    if not rules or not isinstance(destination, dict) or any(
-        not isinstance(destination.get(field), str) or not destination[field].strip()
-        for field in rules["fields"]
-    ):
-        return jsonify(error="Enter valid payout method and destination details."), 400
-    try:
-        amount = Decimal(str(payload.get("amountUsd", "")))
-    except (InvalidOperation, ValueError):
-        return jsonify(error="Enter a valid payout amount."), 400
-    if not amount.is_finite() or amount.quantize(Decimal("0.01")) != amount or amount < rules["minimum"]:
-        return jsonify(error=f"Minimum payout for {method} is ${rules['minimum']:.2f}."), 400
-    if amount > Decimal(str(available)):
-        return jsonify(error="Payout amount exceeds the available account balance."), 400
-
-    network = payload.get("network") if method == "crypto" else None
-    if method == "crypto" and (not isinstance(network, str) or not network.strip()):
-        return jsonify(error="Select a crypto payout network."), 400
-    amount_cents = int(amount * 100)
-    fee_cents = int(rules["fee"] * 100)
-    request_id = str(uuid.uuid4())
-    payout_request_data = {
-        "ownerUid": g.firebase_uid,
-        "accountId": account_id,
-        "method": method,
-        "amountCents": amount_cents,
-        "feeCents": fee_cents,
-        "netAmountCents": amount_cents - fee_cents,
-        "currency": "USD",
-        "network": network,
-        "destination": {key: value.strip() for key, value in destination.items() if key in rules["fields"]},
-        "status": "pending_review",
-        "createdAt": firestore.SERVER_TIMESTAMP,
-    }
-    user_document(g.firebase_uid).collection("payoutRequests").document(request_id).set(payout_request_data)
-    return jsonify(requestId=request_id, status="pending_review"), 201
+    return jsonify(
+        code="payout_eligibility_unavailable",
+        error=(
+            "Payout requests are temporarily unavailable until eligible profit "
+            "and account payout rules can be verified."
+        ),
+    ), 503
 
 
 if __name__ == "__main__":

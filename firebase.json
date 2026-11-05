@@ -1,6 +1,12 @@
 {
   "hosting": {
     "public": "hosting-public",
+    "rewrites": [
+      {
+        "source": "/ref/**",
+        "destination": "/FundingForge.html"
+      }
+    ],
     "ignore": [
       "firebase.json",
       "**/.*",

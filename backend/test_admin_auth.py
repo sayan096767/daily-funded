@@ -19,6 +19,19 @@ class PurchaseApiTests(unittest.TestCase):
     submission_id = "00000000-0000-4000-8000-000000000123"
     purchase_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"daily-funded:verified-user-a:{submission_id}"))
     proof_bytes = b"\x89PNG\r\n\x1a\nlocal test proof"
+    default_billing_details = {
+        "full_name": "Billing User",
+        "email": "billing@example.com",
+        "phone": "+14155552671",
+        "country": "US",
+        "state": "California",
+        "city": "San Francisco",
+        "postal_code": "94105",
+        "address_line_1": "1 Market Street",
+        "address_line_2": "",
+        "company_name": "",
+        "tax_id": "",
+    }
 
     def setUp(self):
         self.client = app.test_client()
@@ -54,7 +67,8 @@ class PurchaseApiTests(unittest.TestCase):
     def submit(
         self, coupon="", include_proof=True, claims=None, existing_purchase=None,
         r2_error=None, firestore_error=None, product_model=None, product_id=None,
-        client_price=None, plan_key="1step", size=5000,
+        client_price=None, plan_key="1step", size=5000, trading_platform="mt5",
+        billing_details=None, include_billing=True,
     ):
         claims = claims or {"uid": "verified-user-a", "email": "a@example.com", "name": "User A"}
         fake_firestore, fake_r2_client, user_ref, purchase_ref, account_ref = self.purchase_fakes(
@@ -65,6 +79,12 @@ class PurchaseApiTests(unittest.TestCase):
             "submissionId": self.submission_id, "currency": "usdt", "network": "trc20",
             "ownerUid": "user-b-supplied-by-browser",
         }
+        if include_billing:
+            if billing_details is None:
+                billing_details = self.default_billing_details
+            payload["billing_details"] = json.dumps(billing_details)
+        if trading_platform is not None:
+            payload["tradingPlatform"] = trading_platform
         if product_model is not None:
             payload["productModel"] = product_model
         if product_id is not None:
@@ -101,12 +121,16 @@ class PurchaseApiTests(unittest.TestCase):
         self.assertEqual(result["purchaseId"], self.purchase_id)
         self.assertEqual(purchase_ref.id, self.purchase_id)
         self.assertEqual(purchase_data["ownerUid"], "verified-user-a")
+        self.assertEqual(purchase_data["tradingPlatform"], "mt5")
         self.assertEqual(purchase_data["purchaseId"], self.purchase_id)
         self.assertEqual(purchase_data["submissionId"], self.submission_id)
         self.assertEqual(purchase_data["couponCode"], None)
         self.assertEqual(purchase_data["listPriceCents"], 3200)
         self.assertEqual(purchase_data["totalCents"], 3200)
         self.assertEqual(purchase_data["status"], "pending")
+        self.assertEqual(purchase_data["billingDetails"]["full_name"], "Billing User")
+        self.assertEqual(purchase_data["billingDetails"]["email"], "billing@example.com")
+        self.assertNotIn("card_number", purchase_data["billingDetails"])
         self.assertEqual(purchase_data["paymentProof"]["sha256"], hashlib.sha256(self.proof_bytes).hexdigest())
         self.assertEqual(purchase_data["paymentProof"]["provider"], "r2")
         self.assertEqual(purchase_data["paymentProof"]["publicId"], purchase_data["paymentProof"]["storagePath"])
@@ -126,6 +150,51 @@ class PurchaseApiTests(unittest.TestCase):
         self.assertEqual(put_kwargs["IfNoneMatch"], "*")
         self.assertNotIn("ACL", put_kwargs)
 
+    def test_missing_or_invalid_billing_details_are_rejected_before_writes(self):
+        valid_details = {
+            "full_name": "Billing User",
+            "email": "billing@example.com",
+            "phone": "+14155552671",
+            "country": "US",
+            "state": "California",
+            "city": "San Francisco",
+            "postal_code": "94105",
+            "address_line_1": "1 Market Street",
+            "address_line_2": "",
+            "company_name": "",
+            "tax_id": "",
+        }
+        invalid_details = [
+            ({}, True, "required billing"),
+            ({"full_name": "Buyer", "email": "buyer@example.com"}, True, "required billing"),
+            ({**valid_details, "email": "not-an-email"}, True, "valid billing email"),
+            ({**valid_details, "phone": "letters-only"}, True, "valid billing phone"),
+            ({**valid_details, "country": " "}, True, "required billing"),
+            ({**valid_details, "address_line_1": " \t "}, True, "required billing"),
+            (None, False, "Billing details are required"),
+        ]
+        for details, include_billing, expected_error in invalid_details:
+            with self.subTest(details=details, include_billing=include_billing):
+                response, firestore_client, r2_client, *_ = self.submit(
+                    billing_details=details,
+                    include_billing=include_billing,
+                    include_proof=False,
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(expected_error, response.get_json()["error"])
+                firestore_client.collection.assert_not_called()
+                r2_client.put_object.assert_not_called()
+
+    def test_purchase_persists_only_whitelisted_billing_fields(self):
+        billing_details = dict(self.default_billing_details)
+        billing_details["card_number"] = "untrusted-extra-field"
+        response, fake_firestore, *_ = self.submit(billing_details=billing_details)
+
+        self.assertEqual(response.status_code, 201)
+        saved_billing = fake_firestore.batch.return_value.create.call_args_list[0].args[1]["billingDetails"]
+        self.assertEqual(saved_billing, self.default_billing_details)
+        self.assertNotIn("card_number", saved_billing)
+
     def test_valid_coupon_is_server_calculated(self):
         response, fake_firestore, *_ = self.submit(coupon="crazyfunded30")
 
@@ -137,6 +206,34 @@ class PurchaseApiTests(unittest.TestCase):
         self.assertEqual((result["priceCents"], result["discountCents"], result["totalCents"]), (3200, 960, 2240))
         purchase_data = fake_firestore.batch.return_value.create.call_args_list[0].args[1]
         self.assertEqual(purchase_data["couponCode"], "CRAZYFUNDED30")
+
+    def test_platform_is_required_and_must_be_supported(self):
+        for platform in (None, "unsupported-platform"):
+            with self.subTest(platform=platform):
+                response, firestore_client, r2_client, *_ = self.submit(
+                    include_proof=False,
+                    trading_platform=platform,
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("supported trading platform", response.get_json()["error"])
+                firestore_client.collection.assert_not_called()
+                r2_client.put_object.assert_not_called()
+
+    def test_selected_platform_is_saved_with_authenticated_owner(self):
+        response, fake_firestore, *_ = self.submit(trading_platform="ctrader")
+
+        self.assertEqual(response.status_code, 201)
+        purchase_data = fake_firestore.batch.return_value.create.call_args_list[0].args[1]
+        self.assertEqual(purchase_data["tradingPlatform"], "ctrader")
+        self.assertEqual(purchase_data["ownerUid"], "verified-user-a")
+
+    def test_all_supported_platform_values_are_accepted(self):
+        for platform in sorted(app_module.TRADING_PLATFORMS):
+            with self.subTest(platform=platform):
+                response, fake_firestore, *_ = self.submit(trading_platform=platform)
+                self.assertEqual(response.status_code, 201)
+                purchase_data = fake_firestore.batch.return_value.create.call_args_list[0].args[1]
+                self.assertEqual(purchase_data["tradingPlatform"], platform)
 
     def test_classic_coupon_is_rejected_for_spark_before_writes(self):
         response, firestore_client, r2_client, *_ = self.submit(
@@ -160,7 +257,7 @@ class PurchaseApiTests(unittest.TestCase):
                     with patch("app.get_r2_client") as r2_client:
                         response = self.client.post(
                             "/api/purchases",
-                            data={"plan": "1step", "size": "5000", "coupon": "NOTVALID", "currency": "usdt", "network": "trc20"},
+                            data={"plan": "1step", "size": "5000", "coupon": "NOTVALID", "currency": "usdt", "network": "trc20", "tradingPlatform": "mt5"},
                             headers={"Authorization": "Bearer valid-test-token"},
                         )
 
@@ -238,7 +335,7 @@ class PurchaseApiTests(unittest.TestCase):
                     with patch("app.get_r2_client") as r2_client:
                         response = self.client.post(
                             "/api/purchases",
-                            data={"plan": "1step", "size": "5000", "coupon": "", "submissionId": self.submission_id, "currency": "usdt", "network": "trc20"},
+                            data={"plan": "1step", "size": "5000", "coupon": "", "submissionId": self.submission_id, "currency": "usdt", "network": "trc20", "tradingPlatform": "mt5", "billing_details": json.dumps(self.default_billing_details)},
                             headers={"Authorization": "Bearer valid-test-token"},
                         )
 
@@ -260,6 +357,8 @@ class PurchaseApiTests(unittest.TestCase):
         payload = {
             "plan": "1step", "size": "5000", "coupon": "",
             "submissionId": self.submission_id, "currency": "usdt", "network": "trc20",
+            "tradingPlatform": "mt5",
+            "billing_details": json.dumps(self.default_billing_details),
             "proof": (io.BytesIO(b"not an image"), "fake.png"),
         }
         with patch("app.firebase_auth.verify_id_token", return_value={"uid": "verified-user-a"}):
@@ -277,6 +376,8 @@ class PurchaseApiTests(unittest.TestCase):
         existing_purchase = {
             "ownerUid": "verified-user-a", "planKey": "1step", "accountSize": 5000,
             "couponCode": None, "paymentCurrency": "usdt", "paymentNetwork": "trc20",
+            "tradingPlatform": "mt5",
+            "billingDetails": self.default_billing_details,
             "status": "pending", "accountId": self.submission_id,
             "listPriceCents": 3200, "discountCents": 0, "totalCents": 3200,
             "paymentProof": {"sha256": hashlib.sha256(self.proof_bytes).hexdigest(), "storagePath": "private-proof"},
@@ -293,6 +394,8 @@ class PurchaseApiTests(unittest.TestCase):
         payload = {
             "plan": "1step", "size": "5000", "coupon": "", "submissionId": self.submission_id,
             "currency": "usdt", "network": "trc20",
+            "tradingPlatform": "mt5",
+            "billing_details": json.dumps(self.default_billing_details),
             "proof": (io.BytesIO(self.proof_bytes), "payment.png"),
         }
         with patch("app.firebase_auth.verify_id_token", return_value={"uid": "verified-user-a"}):
@@ -323,6 +426,8 @@ class PurchaseApiTests(unittest.TestCase):
         payload = {
             "plan": "1step", "size": "5000", "coupon": "",
             "submissionId": self.submission_id, "currency": "usdt", "network": "trc20",
+            "tradingPlatform": "mt5",
+            "billing_details": json.dumps(self.default_billing_details),
             "proof": (io.BytesIO(self.proof_bytes), "payment.png"),
         }
         with patch("app.firebase_auth.verify_id_token", return_value={"uid": "verified-user-a"}):
@@ -352,6 +457,8 @@ class PurchaseApiTests(unittest.TestCase):
         payload = {
             "plan": "1step", "size": "5000", "coupon": "",
             "submissionId": self.submission_id, "currency": "usdt", "network": "trc20",
+            "tradingPlatform": "mt5",
+            "billing_details": json.dumps(self.default_billing_details),
             "proof": (io.BytesIO(self.proof_bytes), "payment.png"),
         }
         with patch("app.firebase_auth.verify_id_token", return_value={"uid": "verified-user-a"}):
@@ -649,6 +756,101 @@ class FirebaseAdminConfigurationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertIn("Invalid or expired Firebase ID token", response.get_json()["error"])
 
+    def test_missing_or_malformed_bearer_token_is_rejected_before_route(self):
+        for authorization in (None, "Bearer", "Bearer   ", "Basic token"):
+            with self.subTest(authorization=authorization):
+                with patch("app.firebase_auth.verify_id_token") as verify_token:
+                    with patch("app.get_firestore") as get_firestore:
+                        headers = {}
+                        if authorization is not None:
+                            headers["Authorization"] = authorization
+                        response = app.test_client().get("/api/accounts", headers=headers)
+
+                self.assertEqual(response.status_code, 401)
+                verify_token.assert_not_called()
+                get_firestore.assert_not_called()
+
+    def test_firebase_auth_checks_revocation(self):
+        firebase_app = object()
+        with patch("app.get_firebase_app", return_value=firebase_app):
+            with patch(
+                "app.firebase_auth.verify_id_token",
+                return_value={"uid": "verified-user"},
+            ) as verify_token:
+                response = app.test_client().get(
+                    "/api/payouts/eligibility",
+                    headers={"Authorization": "Bearer token"},
+                )
+
+        self.assertEqual(response.status_code, 400)
+        verify_token.assert_called_once_with(
+            "token",
+            app=firebase_app,
+            check_revoked=True,
+        )
+
+    def test_revoked_firebase_token_is_rejected_before_route_execution(self):
+        with patch("app.get_firebase_app", return_value=object()):
+            with patch(
+                "app.firebase_auth.verify_id_token",
+                side_effect=ValueError("revoked token"),
+            ) as verify_token:
+                response = app.test_client().get(
+                    "/api/accounts",
+                    headers={"Authorization": "Bearer revoked"},
+                )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("Invalid or expired Firebase ID token", response.get_json()["error"])
+        verify_token.assert_called_once()
+        self.assertTrue(verify_token.call_args.kwargs["check_revoked"])
+
+    def test_firebase_verification_errors_are_classified_and_fail_closed(self):
+        cases = (
+            ("invalid token", app_module.firebase_auth.InvalidIdTokenError("invalid token"), 401),
+            ("expired token", app_module.firebase_auth.ExpiredIdTokenError("expired token", None), 401),
+            ("revoked token", app_module.firebase_auth.RevokedIdTokenError("revoked token"), 401),
+            ("disabled user", app_module.firebase_auth.UserDisabledError("disabled user"), 401),
+            ("deleted user", app_module.firebase_auth.UserNotFoundError("deleted user"), 401),
+            (
+                "invalid token arguments",
+                app_module.firebase_exceptions.InvalidArgumentError("invalid token arguments"),
+                401,
+            ),
+            (
+                "certificate fetch",
+                app_module.firebase_auth.CertificateFetchError(
+                    "certificate fetch failed",
+                    RuntimeError("upstream detail"),
+                ),
+                503,
+            ),
+            ("service unavailable", app_module.firebase_exceptions.UnavailableError("unavailable"), 503),
+            ("deadline exceeded", app_module.firebase_exceptions.DeadlineExceededError("timeout"), 503),
+            ("permanent firebase error", app_module.firebase_exceptions.PermissionDeniedError("denied"), 500),
+            ("unexpected error", RuntimeError("sensitive verifier detail"), 500),
+        )
+
+        for label, verification_error, expected_status in cases:
+            with self.subTest(error=label):
+                with patch("app.get_firebase_app", return_value=object()):
+                    with patch(
+                        "app.firebase_auth.verify_id_token",
+                        side_effect=verification_error,
+                    ) as verify_token:
+                        with patch("app.get_firestore") as get_firestore:
+                            response = app.test_client().get(
+                                "/api/accounts",
+                                headers={"Authorization": "Bearer token"},
+                            )
+
+                self.assertEqual(response.status_code, expected_status)
+                self.assertNotIn("sensitive verifier detail", response.get_data(as_text=True))
+                self.assertNotIn("upstream detail", response.get_data(as_text=True))
+                get_firestore.assert_not_called()
+                verify_token.assert_called_once()
+                self.assertTrue(verify_token.call_args.kwargs["check_revoked"])
+
 
 class RequireAdminTests(unittest.TestCase):
     def check_admin(self, claims):
@@ -685,6 +887,20 @@ class AdminPurchaseReviewApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertIn("Administrator authorization is required.", response.get_json()["error"])
 
+    def test_client_admin_fields_do_not_grant_admin_access(self):
+        with patch("app.firebase_auth.verify_id_token", return_value={"uid": "customer-1"}):
+            with patch("app.get_firestore") as get_firestore:
+                response = self.client.get(
+                    "/api/admin/purchases/pending?admin=true",
+                    headers={
+                        "Authorization": "Bearer token",
+                        "X-Admin": "true",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 403)
+        get_firestore.assert_not_called()
+
     def test_pending_purchase_summary_returns_pending_records(self):
         purchase_doc = MagicMock()
         purchase_doc.id = "purchase-123"
@@ -700,6 +916,7 @@ class AdminPurchaseReviewApiTests(unittest.TestCase):
             "totalCents": 22400,
             "paymentCurrency": "usdt",
             "paymentNetwork": "trc20",
+            "tradingPlatform": "match_trader",
             "status": "pending_payment_verification",
             "createdAt": datetime.now(timezone.utc),
             "paymentProof": {
@@ -738,6 +955,7 @@ class AdminPurchaseReviewApiTests(unittest.TestCase):
         self.assertEqual(payload["purchases"][0]["discountCents"], 9600)
         self.assertEqual(payload["purchases"][0]["amountCents"], 22400)
         self.assertEqual(payload["purchases"][0]["paymentNetwork"], "trc20")
+        self.assertEqual(payload["purchases"][0]["tradingPlatform"], "match_trader")
         self.assertIn("paymentProof", payload["purchases"][0])
         self.assertEqual(payload["active"], [])
         self.assertEqual(payload["rejected"], [])
@@ -818,6 +1036,7 @@ class AdminPurchaseReviewApiTests(unittest.TestCase):
             [(row["purchaseId"], row["status"]) for row in payload["purchases"]],
             [("pending-a", "pending"), ("pending-b", "pending_payment_verification")],
         )
+        self.assertIsNone(payload["purchases"][0]["tradingPlatform"])
         self.assertEqual([row["purchaseId"] for row in payload["active"]], ["active-a"])
         self.assertEqual(payload["active"][0]["accountStatus"], "active")
         self.assertEqual(payload["active"][0]["accountId"], "active-a")
@@ -1659,6 +1878,10 @@ class CloudflareTradingProxyRouteTests(unittest.TestCase):
                 None, "GET", "https://worker.example/accounts?account_id=" + self.worker_account_id, None,
             ),
             (
+                "GET", "/api/payouts/eligibility?accountId=ACC_TEST&profitSplit=99",
+                None, "GET", "https://worker.example/payout-eligibility?account_id=" + self.worker_account_id, None,
+            ),
+            (
                 "POST", "/api/trading/positions",
                 {"account_id": "ACC_TEST", "symbol": "EURUSD", "side": "BUY", "volume": 0.1,
                  "order_type": "MARKET", "take_profit": 1.3, "stop_loss": 1.2, "open_price": 1.25,
@@ -2020,6 +2243,22 @@ class CloudflareTradingProxyRouteTests(unittest.TestCase):
         self.assertNotIn("ACC_22222222", response.get_data(as_text=True))
         worker_urlopen.assert_not_called()
 
+    def test_payout_eligibility_for_another_owner_is_not_forwarded(self):
+        response, worker_urlopen, _verify_token = self.call_proxy(
+            "/api/payouts/eligibility?accountId=foreign-account",
+            account_data={
+                "ownerUid": "another-user",
+                "status": "active",
+                "tradingEnabled": True,
+                "tradingEngineAccountId": "ACC_22222222-2222-4222-8222-222222222222",
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()["code"], "trading_account_not_found")
+        self.assertNotIn("another-user", response.get_data(as_text=True))
+        worker_urlopen.assert_not_called()
+
     def test_missing_or_invalid_engine_account_id_fails_without_provisioning(self):
         account_records = (
             {"ownerUid": "verified-user-123", "status": "active", "tradingEnabled": True},
@@ -2128,6 +2367,16 @@ class LocalCorsTests(unittest.TestCase):
         for origin in ("http://localhost:5501", "https://unapproved.example"):
             response = client.options("/api/purchases", headers={"Origin": origin})
             self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))
+
+    def test_configured_localhost_8080_origin_has_cors_without_bypassing_auth(self):
+        origin = "http://localhost:8080"
+        configured_origins = app_module.FRONTEND_ORIGINS | {origin}
+        with patch.object(app_module, "FRONTEND_ORIGINS", configured_origins):
+            response = app.test_client().get("/api/auth/me", headers={"Origin": origin})
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), origin)
+        self.assertIn("Authorization", response.headers.get("Access-Control-Allow-Headers", ""))
 
 
 if __name__ == "__main__":

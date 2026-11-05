@@ -233,6 +233,27 @@ class ReferralPersistenceTests(unittest.TestCase):
             first_code,
         )
 
+    def test_different_users_receive_distinct_referral_codes(self):
+        with patch("app.firestore.transactional", side_effect=lambda function: function):
+            with patch(
+                "app.secrets.token_hex",
+                side_effect=["ab" * 16, "cd" * 16],
+            ):
+                first_code = app_module.ensure_referral_code("first-owner", self.database)
+                second_code = app_module.ensure_referral_code("second-owner", self.database)
+
+        self.assertRegex(first_code, r"^[A-F0-9]{32}$")
+        self.assertRegex(second_code, r"^[A-F0-9]{32}$")
+        self.assertNotEqual(first_code, second_code)
+        self.assertEqual(
+            self.database.documents[("referralCodes", first_code)]["ownerUid"],
+            "first-owner",
+        )
+        self.assertEqual(
+            self.database.documents[("referralCodes", second_code)]["ownerUid"],
+            "second-owner",
+        )
+
     def test_referral_attribution_requires_link_to_precede_account_creation(self):
         code = "C" * 32
         self.database.documents[("referralCodes", code)] = {"ownerUid": "referrer-uid"}
@@ -446,6 +467,79 @@ class ReferralApiTests(unittest.TestCase):
             self.assertEqual(app_module.decode_referral_token(result["referralToken"])[0], code)
         self.assertNotIn("private-owner-uid", response.get_data(as_text=True))
 
+    def test_resolve_rejects_invalid_codes_before_firestore_access(self):
+        with patch("app.get_firestore") as get_firestore:
+            response = self.client.post(
+                "/api/referrals/resolve",
+                json={"code": "CRAZYFUNDED"},
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()["error"], "That referral link is not valid.")
+        get_firestore.assert_not_called()
+
+    def test_resolve_returns_safe_error_and_logs_stage_for_missing_or_short_secret(self):
+        code = "7" * 32
+        database = FakeDatabase({("referralCodes", code): {"ownerUid": "owner-uid"}})
+
+        for secret in ("", "short-secret"):
+            with self.subTest(secret_configured=bool(secret)):
+                with patch.dict("os.environ", {"DAILYFUNDED_SECRET_KEY": secret}):
+                    with patch("app.get_firestore", return_value=database):
+                        with self.assertLogs("app", level="ERROR") as captured:
+                            response = self.client.post(
+                                "/api/referrals/resolve",
+                                json={"code": code},
+                            )
+
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(
+                    response.get_json()["error"],
+                    "Referral service is temporarily unavailable. Please try again later.",
+                )
+                log_output = "\n".join(captured.output)
+                self.assertIn("stage=token_signing", log_output)
+                self.assertIn("exception_type=RuntimeError", log_output)
+                expected_secret_status = "too_short" if secret else "missing"
+                self.assertIn(
+                    f"signing_secret_status={expected_secret_status}",
+                    log_output,
+                )
+                self.assertNotIn("DAILYFUNDED_SECRET_KEY", response.get_data(as_text=True))
+                if secret:
+                    self.assertNotIn(secret, log_output)
+
+    def test_resolve_logs_firestore_initialization_failure_without_exception_message(self):
+        with patch("app.get_firestore", side_effect=RuntimeError("private credential details")):
+            with self.assertLogs("app", level="ERROR") as captured:
+                response = self.client.post(
+                    "/api/referrals/resolve",
+                    json={"code": "8" * 32},
+                )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("stage=firestore_initialization", "\n".join(captured.output))
+        self.assertNotIn("private credential details", "\n".join(captured.output))
+        self.assertNotIn("private credential details", response.get_data(as_text=True))
+
+    def test_resolve_logs_firestore_lookup_failure_without_exception_message(self):
+        database = MagicMock()
+        database.collection.return_value.document.return_value.get.side_effect = RuntimeError(
+            "private firestore details"
+        )
+
+        with patch("app.get_firestore", return_value=database):
+            with self.assertLogs("app", level="ERROR") as captured:
+                response = self.client.post(
+                    "/api/referrals/resolve",
+                    json={"code": "9" * 32},
+                )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("stage=referral_code_lookup", "\n".join(captured.output))
+        self.assertNotIn("private firestore details", "\n".join(captured.output))
+        self.assertNotIn("private firestore details", response.get_data(as_text=True))
+
     def test_dashboard_returns_private_summary_without_referred_user_ids(self):
         code = "1" * 32
         referred_created_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
@@ -569,15 +663,247 @@ class ReferralApiTests(unittest.TestCase):
             history_by_name["Referred Friend"]["accountCreatedAt"],
             "2025-01-01T00:00:00Z",
         )
+        self.assertEqual(
+            history_by_name["Referred Friend"]["createdAt"],
+            "2025-01-01T00:00:00Z",
+        )
         self.assertEqual(history_by_name["Referred Friend"]["purchaseStatus"], "approved")
         self.assertEqual(history_by_name["Referred Friend"]["status"], "available")
         self.assertEqual(history_by_name["Paid Friend"]["purchaseStatus"], "approved")
         self.assertEqual(history_by_name["Paid Friend"]["status"], "paid")
-        self.assertEqual(history_by_name["Pending Friend"]["purchaseStatus"], "pending")
+        self.assertEqual(
+            history_by_name["Pending Friend"]["purchaseStatus"],
+            "pending",
+        )
         self.assertEqual(
             history_by_name["Pending Friend"]["status"],
             "awaiting_first_approved_purchase",
         )
         self.assertIsNone(history_by_name[None]["accountCreatedAt"])
+        self.assertEqual(history_by_name[None]["displayName"], None)
         self.assertNotIn("private@example.test", response.get_data(as_text=True))
         self.assertNotIn("referred-private-uid", response.get_data(as_text=True))
+
+class ReferralPayoutBoundaryTests(unittest.TestCase):
+    def setUp(self):
+        self.client = app.test_client()
+        self.owner_uid = "referrer-uid"
+        self.ledger = {
+            "status": "available",
+            "amountCents": 1000,
+            "payoutReference": None,
+        }
+
+    def submit_payout_request(self, withdrawable_profit, amount_usd="50.00"):
+        profile_ref = MagicMock()
+        account_ref = MagicMock()
+        account_ref.get.return_value = FakeSnapshot("account-1", {
+            "status": "active",
+            "withdrawableProfit": withdrawable_profit,
+        })
+        payout_request_ref = MagicMock()
+        collections = {
+            "accounts": MagicMock(document=MagicMock(return_value=account_ref)),
+            "payoutRequests": MagicMock(document=MagicMock(return_value=payout_request_ref)),
+        }
+        profile_ref.collection.side_effect = lambda name: collections[name]
+        payload = {
+            "accountId": "account-1",
+            "method": "crypto",
+            "amountUsd": amount_usd,
+            "network": "USDT-TRC20",
+            "destination": {"walletAddress": "test-wallet"},
+            "referralAmountCents": 1000,
+            "referralRewardIds": ["referred-user-uid"],
+        }
+
+        with patch("app.firebase_auth.verify_id_token", return_value={"uid": self.owner_uid}):
+            with patch("app.get_firebase_app"):
+                with patch("app.user_document", return_value=profile_ref):
+                    response = self.client.post(
+                        "/api/payouts/requests",
+                        json=payload,
+                        headers={"Authorization": "Bearer test-token"},
+                    )
+        return response, profile_ref, collections, payout_request_ref
+
+    def test_payout_request_fails_closed_without_verified_eligibility_source(self):
+        response, _profile_ref, collections, payout_request_ref = self.submit_payout_request(100)
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["code"], "payout_eligibility_unavailable")
+        self.assertIn("eligible profit", response.get_json()["error"])
+        payout_request_ref.set.assert_not_called()
+        collections["payoutRequests"].document.assert_not_called()
+        self.assertEqual(self.ledger["status"], "available")
+        self.assertIsNone(self.ledger["payoutReference"])
+
+    def test_payout_history_is_authenticated_owner_scoped_and_omits_destination(self):
+        profile_ref = MagicMock()
+        payout_request = MagicMock()
+        payout_request.id = "request-1"
+        payout_request.to_dict.return_value = {
+            "ownerUid": self.owner_uid,
+            "status": "pending_review",
+            "amountCents": 5000,
+            "feeCents": 0,
+            "netAmountCents": 5000,
+            "method": "crypto",
+            "destination": {"walletAddress": "private-wallet"},
+            "createdAt": datetime(2026, 10, 22, tzinfo=timezone.utc),
+        }
+        payout_query = profile_ref.collection.return_value
+        request_query = payout_query.order_by.return_value
+        request_query.limit.return_value.stream.return_value = [payout_request]
+
+        with patch("app.firebase_auth.verify_id_token", return_value={"uid": self.owner_uid}):
+            with patch("app.get_firebase_app"):
+                with patch("app.user_document", return_value=profile_ref):
+                    response = self.client.get("/api/payouts/requests", headers={"Authorization": "Bearer test-token"})
+
+        self.assertEqual(response.status_code, 200)
+        profile_ref.collection.assert_called_once_with("payoutRequests")
+        payout_query.order_by.assert_called_once()
+        request_query.limit.assert_called_once_with(100)
+        result = response.get_json()["requests"][0]
+        self.assertEqual(result["id"], "request-1")
+        self.assertEqual(result["status"], "pending_review")
+        self.assertEqual(result["updatedAt"], result["createdAt"])
+        self.assertNotIn("destination", result)
+        self.assertNotIn("private-wallet", response.get_data(as_text=True))
+
+    def test_client_supplied_referral_values_cannot_bypass_payout_block(self):
+        response, _profile_ref, collections, _payout_request_ref = self.submit_payout_request(49)
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["code"], "payout_eligibility_unavailable")
+        collections["payoutRequests"].document.assert_not_called()
+        self.assertEqual(self.ledger["status"], "available")
+        self.assertIsNone(self.ledger["payoutReference"])
+
+    def test_concurrent_payout_attempts_remain_blocked_without_creating_records(self):
+        profile_ref = MagicMock()
+        account_ref = MagicMock()
+        account_ref.get.return_value = FakeSnapshot("account-1", {
+            "status": "active",
+            "withdrawableProfit": 5000,
+        })
+        payout_collection = MagicMock()
+        profile_ref.collection.side_effect = lambda name: {
+            "accounts": MagicMock(document=MagicMock(return_value=account_ref)),
+            "payoutRequests": payout_collection,
+        }[name]
+
+        def post_request(_):
+            with app.test_client() as client:
+                return client.post(
+                    "/api/payouts/requests",
+                    json={
+                        "accountId": "account-1",
+                        "amountUsd": 50,
+                        "idempotencyKey": "same-client-key",
+                        "referralAmountCents": 1000,
+                        "referralRewardIds": ["referred-user-uid"],
+                    },
+                    headers={"Authorization": "Bearer concurrent-test-token"},
+                )
+
+        with patch("app.firebase_auth.verify_id_token", return_value={"uid": self.owner_uid}):
+            with patch("app.get_firebase_app"):
+                with patch("app.user_document", return_value=profile_ref):
+                    with ThreadPoolExecutor(max_workers=8) as executor:
+                        responses = list(executor.map(post_request, range(8)))
+
+        self.assertEqual(
+            [response.status_code for response in responses],
+            [503] * 8,
+            [response.get_json() for response in responses],
+        )
+        self.assertTrue(all(
+            response.get_json()["code"] == "payout_eligibility_unavailable"
+            for response in responses
+        ))
+        payout_collection.document.assert_not_called()
+        payout_collection.add.assert_not_called()
+        self.assertEqual(self.ledger["status"], "available")
+        self.assertIsNone(self.ledger["payoutReference"])
+
+    def test_non_active_account_cannot_submit_payout_request(self):
+        profile_ref = MagicMock()
+        account_ref = MagicMock()
+        account_ref.get.return_value = FakeSnapshot("account-1", {
+            "status": "rejected",
+            "withdrawableProfit": 1000,
+        })
+        payout_collection = MagicMock()
+        profile_ref.collection.side_effect = lambda name: {
+            "accounts": MagicMock(document=MagicMock(return_value=account_ref)),
+            "payoutRequests": payout_collection,
+        }[name]
+
+        with patch("app.firebase_auth.verify_id_token", return_value={"uid": self.owner_uid}):
+            with patch("app.get_firebase_app"):
+                with patch("app.user_document", return_value=profile_ref):
+                    response = self.client.post(
+                        "/api/payouts/requests",
+                        json={"accountId": "account-1", "amountUsd": 100},
+                        headers={"Authorization": "Bearer test-token"},
+                    )
+
+        self.assertEqual(response.status_code, 400)
+        payout_collection.document.assert_not_called()
+
+    def test_unauthenticated_payout_request_is_rejected(self):
+        response = self.client.post(
+            "/api/payouts/requests",
+            json={"accountId": "account-1", "amountUsd": 100},
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_unauthenticated_eligibility_request_is_rejected(self):
+        response = self.client.get(
+            "/api/payouts/eligibility?accountId=account-1",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_eligibility_requires_account_id(self):
+        with patch("app.firebase_auth.verify_id_token", return_value={"uid": self.owner_uid}):
+            with patch("app.get_firebase_app"):
+                response = self.client.get(
+                    "/api/payouts/eligibility",
+                    headers={"Authorization": "Bearer test-token"},
+                )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_eligibility_uses_owner_scoped_trading_proxy_without_client_values(self):
+        result = {
+            "success": True,
+            "schema_version": "payout-eligibility.v1",
+            "eligibility": {"status": "unavailable"},
+        }
+        with patch("app.firebase_auth.verify_id_token", return_value={"uid": self.owner_uid}):
+            with patch("app.get_firebase_app"):
+                with patch(
+                    "app.cloudflare_trading_proxy_response",
+                    side_effect=lambda *_args, **_kwargs: (app_module.jsonify(result), 200),
+                ) as trading_proxy:
+                    response = self.client.get(
+                        "/api/payouts/eligibility?accountId=account-1&profitSplit=99",
+                        headers={"Authorization": "Bearer test-token"},
+                    )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), result)
+        self.assertEqual(response.headers["Cache-Control"], "private, no-store")
+        trading_proxy.assert_called_once_with(
+            "/payout-eligibility",
+            method="GET",
+            query={"account_id": "account-1"},
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

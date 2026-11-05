@@ -10,6 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="/referral-links.js"></script>
 <script>
 const firebaseConfig = {
   apiKey: 'AIzaSyArsv-HojE9hn_3BAcJVFh5zp4XS9Dw480',
@@ -23,6 +24,7 @@ const firebaseConfig = {
 const firebaseConfigReady = Object.values(firebaseConfig).every(value=>value && !value.startsWith('REPLACE_'));
 if(firebaseConfigReady && !firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const firebaseAuth = firebaseConfigReady ? firebase.auth() : null;
+const ReferralLinks = window.CrazyFundedReferralLinks;
 const firebaseAuthPersistenceReady = firebaseAuth
   ? firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
   : Promise.resolve();
@@ -39,7 +41,7 @@ async function firebaseApiHeaders(headers={}){
   return {...headers,Authorization:'Bearer ' + await user.getIdToken()};
 }
 const PRODUCTION_API_BASE = 'https://daily-funded-api.onrender.com';
-const LOCAL_API_BASE = 'http://127.0.0.1:8080';
+const LOCAL_API_BASE = PRODUCTION_API_BASE;
 const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   ? LOCAL_API_BASE
   : PRODUCTION_API_BASE;
@@ -154,7 +156,9 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .payout-trophy-brand{display:flex; align-items:center; justify-content:center; gap:4px; color:#f4f4eb; font-size:8px; font-weight:800; white-space:nowrap;}
   .payout-trophy-brand .brand-symbol{width:20px; height:20px; flex:0 0 20px; filter:none;}
   .payout-trophy-brand .payout-brand-funded{color:var(--gold);}
-  .payout-trophy img{width:128px; height:218px; object-fit:contain; filter:drop-shadow(0 8px 6px rgba(0,0,0,.62));}
+  .payout-trophy-art{position:relative; flex:0 0 auto; width:128px; aspect-ratio:180/220;}
+  .payout-trophy-art-image{display:block; width:100%; height:100%; object-fit:contain; filter:drop-shadow(0 8px 6px rgba(0,0,0,.62));}
+  .payout-trophy-inner-logo{position:absolute; left:35%; top:34%; width:30%; height:20%; object-fit:contain; filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));}
   .payout-certificate-content{min-width:0; text-align:center;}
   .payout-certificate-brand{display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:10px; color:var(--text); font-size:12px; font-weight:800;}
   .payout-certificate-brand .brand-symbol{width:21px; height:21px; flex:0 0 21px; filter:none;}
@@ -187,13 +191,20 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .payout-empty-minimum strong{color:var(--green); font-size:18px; font-variant-numeric:tabular-nums;}
   .payout-empty-minimum span{color:#d0dbd2; font-size:9px; text-align:left;}
   @media(max-width:560px){.payout-track-empty{grid-template-columns:1fr; gap:8px; min-height:0; padding:22px 18px;}.payout-empty-art{min-height:110px; border-right:0; border-bottom:1px solid rgba(230,195,77,.2);}.payout-empty-art svg{width:75px; height:105px;}.payout-empty-copy h3{font-size:19px;}}
-  @media(max-width:640px){.payout-heading{align-items:flex-start; flex-direction:column; gap:10px;}.payout-card{flex-basis:min(420px,calc(100vw - 48px)); min-height:300px; padding:8px;}.payout-card-inner{inset:8px;}.payout-certificate{grid-template-columns:74px minmax(0,1fr); gap:6px; padding:9px;}.payout-certificate-back{padding:12px 14px;}.payout-back-grid{grid-template-columns:1fr 1fr; gap:5px 10px; margin-top:7px;}.payout-back-field{padding-top:5px;}.payout-back-field span{margin-bottom:2px; font-size:8px;}.payout-back-field b{font-size:10px;}.payout-back-note{display:none;}.payout-trophy{width:72px; height:250px; gap:2px;}.payout-trophy-brand{font-size:6px;}.payout-trophy-brand .brand-symbol{width:15px; height:15px; flex-basis:15px;}.payout-trophy img{width:68px; height:135px;}.payout-certificate-title{font-size:17px;}.payout-presented{font-size:9px;}.payout-recipient{font-size:14px;}.payout-share-label{font-size:9px;}.payout-amount{font-size:24px;}.payout-card-foot{font-size:9px;}}
+  @media(max-width:640px){.payout-heading{align-items:flex-start; flex-direction:column; gap:10px;}.payout-card{flex-basis:min(420px,calc(100vw - 48px)); min-height:300px; padding:8px;}.payout-card-inner{inset:8px;}.payout-certificate{grid-template-columns:74px minmax(0,1fr); gap:6px; padding:9px;}.payout-certificate-back{padding:12px 14px;}.payout-back-grid{grid-template-columns:1fr 1fr; gap:5px 10px; margin-top:7px;}.payout-back-field{padding-top:5px;}.payout-back-field span{margin-bottom:2px; font-size:8px;}.payout-back-field b{font-size:10px;}.payout-back-note{display:none;}.payout-trophy{width:72px; height:250px; gap:2px;}.payout-trophy-brand{font-size:6px;}.payout-trophy-brand .brand-symbol{width:15px; height:15px; flex-basis:15px;}.payout-trophy-art{width:68px;}.payout-certificate-title{font-size:17px;}.payout-presented{font-size:9px;}.payout-recipient{font-size:14px;}.payout-share-label{font-size:9px;}.payout-amount{font-size:24px;}.payout-card-foot{font-size:9px;}}
   @media(prefers-reduced-motion:reduce){.ticker-track{animation:none;}}
 
   /* Dashboard */
   #dashboard{display:none;}
   #dashboard.active{display:grid; grid-template-columns:248px minmax(0,1fr); min-height:100vh; background:var(--bg);}
   body.dashboard-open>header{display:none;}
+  body.dashboard-open #dfWorkspacePreview,
+  body.dashboard-open .payout-mission-banner,
+  body.dashboard-open #dfWhyChoose,
+  body.dashboard-open #dfRulesStrip,
+  body.dashboard-open .df-human-support,
+  body.dashboard-open #faq,
+  #dashboard .desk-objectives-banner{display:none!important;}
   .dashboard-sidebar{position:fixed; top:0; bottom:0; left:0; display:flex; flex-direction:column; width:248px; height:100vh; padding:22px 14px 16px; border-right:1px solid var(--panel-b); background:#0d1310; z-index:5;}
   .dashboard-brand{display:flex; align-items:center; gap:10px; padding:2px 9px 23px; color:var(--text); font-size:13px; font-weight:800; white-space:nowrap;}
   .dashboard-brand b{color:var(--green);}
@@ -244,7 +255,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .reward-certificate-stage .payout-card-inner{inset:10px;}
   .reward-certificate-stage .payout-certificate{grid-template-columns:104px minmax(0,1fr); gap:10px; padding:12px;}
   .reward-certificate-stage .payout-trophy{width:100%; height:100%; min-height:280px;}
-  .reward-certificate-stage .payout-trophy img{width:90px; height:150px;}
+  .reward-certificate-stage .payout-trophy-art{width:90px;}
   .reward-certificate-stage .payout-certificate-title{font-size:20px;}
   .reward-certificate-stage .payout-amount-plate{display:grid; place-items:center; min-height:48px;}
   .reward-certificate-stage .payout-amount{display:none;}
@@ -259,6 +270,31 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .rewards-history-table th{padding:12px 16px; border-bottom:1px solid var(--panel-b); color:var(--sub-dim); font-weight:500; white-space:nowrap;}
   .rewards-empty{text-align:center; padding:34px 16px; color:var(--sub); font-size:12px;}
   .rewards-empty strong{display:block; margin-bottom:5px; color:var(--text); font-size:13px;}
+  .referrals-view{min-width:0;}
+  .referrals-view .dash-top{align-items:flex-end; margin-bottom:22px;}
+  .referrals-view .dash-top h2{margin-top:5px; font-size:24px;}
+  .referral-link-panel{margin-bottom:14px;}
+  .referral-link-row{display:flex; gap:9px; margin-top:14px;}
+  .referral-link-input{min-width:0; flex:1; height:44px; padding:0 12px; border:1px solid var(--panel-b); border-radius:7px; background:rgba(0,0,0,.18); color:var(--text); font:12px 'JetBrains Mono',monospace;}
+  .referral-link-copy{flex:none; min-height:44px; padding:0 16px;}
+  .referral-link-status{min-height:18px; margin-top:8px; color:var(--sub); font-size:11px;}
+  .referral-link-status.error{color:#ffb1a7;}
+  .referral-stat-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-bottom:14px;}
+  @media(max-width:760px){.referral-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  .referral-stat{min-width:0; padding:18px; border:1px solid var(--panel-b); border-radius:8px; background:var(--panel);}
+  .referral-stat span{display:block; color:var(--sub); font-size:11px;}
+  .referral-stat strong{display:block; margin-top:8px; overflow-wrap:anywhere; color:var(--text); font-size:24px;}
+  .referral-stat small{display:block; margin-top:7px; color:var(--sub-dim); font-size:10px; line-height:1.5;}
+  .referral-policy-note{margin-top:13px; color:var(--sub-dim)!important; font-size:11px!important;}
+  .referrals-history{padding:0; overflow:hidden;}
+  .referrals-history-head{padding:17px 20px; border-bottom:1px solid var(--panel-b); color:var(--sub); font-size:10px; font-weight:700;}
+  .referral-activity-note{margin-left:8px; color:var(--sub-dim); font-size:10px; font-weight:400;}
+  .referrals-history-wrap{overflow-x:auto;}
+  .referrals-history-table{width:100%; min-width:900px; border-collapse:collapse; text-align:left; font-size:11px;}
+  .referrals-history-table th,.referrals-history-table td{padding:12px 16px; border-bottom:1px solid var(--panel-b); color:var(--sub); white-space:nowrap;}
+  .referrals-history-table th{color:var(--sub-dim); font-weight:500;}
+  .referrals-history-table td:last-child{color:var(--sub); text-align:left;}
+  .referral-activity-copy{min-height:32px; padding:0 10px; font-size:10px;}
   .dash-top{display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px; margin-bottom:26px;}
   .dash-select{display:flex; gap:8px; align-items:center; font-size:13px; color:var(--sub);}
   .dash-select select{color-scheme:dark; background:var(--panel); color:var(--text); border:1px solid var(--panel-b); border-radius:7px; padding:8px 10px; font-family:inherit; font-size:13px;}
@@ -304,7 +340,8 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .dash-foot{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;}
   .dash-close{font-size:13px; color:var(--sub); cursor:pointer; background:none; border:none; font-family:inherit;}
   .dash-close:hover{color:var(--text);}
-  @media(max-width:760px){#dashboard.active{grid-template-columns:minmax(0,1fr); align-content:start;}.dashboard-sidebar,.dashboard-main{min-width:0;}#dashboard .dashboard-main{grid-column:1;}.dashboard-sidebar{position:sticky; top:0; bottom:auto; left:auto; width:auto; height:auto; padding:11px 14px 9px; border-right:0; border-bottom:1px solid var(--panel-b);}.dashboard-brand{padding:0 4px 10px;}.dashboard-sidebar-label,.dashboard-sidebar-status{display:none;}.dashboard-sidebar-foot{display:flex; justify-content:flex-end; margin-top:8px; padding:5px 4px 0; border-top:0;}.dashboard-side-nav{display:flex; width:100%; min-width:0; gap:4px; overflow-x:auto; scrollbar-width:thin;}.dashboard-side-nav a{flex:0 0 auto; min-height:36px; padding:0 9px; font-size:11px;}.dashboard-nav-mark{width:23px; height:23px; flex-basis:23px;}.dashboard-nav-mark svg{width:13px; height:13px;}#dashboard .dashboard-main.wrap{padding:22px 16px;}.rewards-overview{grid-template-columns:1fr;}.rewards-panel{padding:17px;}.rewards-action{min-height:0;}.reward-certificate-stage .payout-certificate{grid-template-columns:78px minmax(0,1fr); gap:6px; padding:9px;}.reward-certificate-stage .payout-trophy{min-height:230px;}.reward-certificate-stage .payout-trophy img{width:65px; height:125px;}.reward-certificate-stage .payout-certificate-title{font-size:17px;}}
+  @media(max-width:760px){#dashboard.active{grid-template-columns:minmax(0,1fr); align-content:start;}.dashboard-sidebar,.dashboard-main{min-width:0;}#dashboard .dashboard-main{grid-column:1;}.dashboard-sidebar{position:sticky; top:0; bottom:auto; left:auto; width:auto; height:auto; padding:11px 14px 9px; border-right:0; border-bottom:1px solid var(--panel-b);}.dashboard-brand{padding:0 4px 10px;}.dashboard-sidebar-label,.dashboard-sidebar-status{display:none;}.dashboard-sidebar-foot{display:flex; justify-content:flex-end; margin-top:8px; padding:5px 4px 0; border-top:0;}.dashboard-side-nav{display:flex; width:100%; min-width:0; gap:4px; overflow-x:auto; scrollbar-width:thin;}.dashboard-side-nav a{flex:0 0 auto; min-height:36px; padding:0 9px; font-size:11px;}.dashboard-nav-mark{width:23px; height:23px; flex-basis:23px;}.dashboard-nav-mark svg{width:13px; height:13px;}#dashboard .dashboard-main.wrap{padding:22px 16px;}.rewards-overview{grid-template-columns:1fr;}.rewards-panel{padding:17px;}.rewards-action{min-height:0;}.referral-stat-grid{gap:8px;}.referral-stat{padding:14px;}.referral-stat strong{font-size:23px;}.reward-certificate-stage .payout-certificate{grid-template-columns:78px minmax(0,1fr); gap:6px; padding:9px;}.reward-certificate-stage .payout-trophy{min-height:230px;}.reward-certificate-stage .payout-trophy-art{width:65px;}.reward-certificate-stage .payout-certificate-title{font-size:17px;}}
+  @media(max-width:420px){.referral-stat-grid{grid-template-columns:1fr;}.referral-link-row{flex-direction:column;}.referral-link-copy{width:100%;}}
   .account-banner{display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap; padding:24px; margin-bottom:14px; border:1px solid #294134; border-left:3px solid var(--green); border-radius:var(--radius); background:linear-gradient(115deg,#15221b,#101512 62%,#1b2921);}
   .account-kicker,.panel-kicker{font-size:10px; letter-spacing:.08em; font-weight:700; color:var(--green);}
   .account-banner h3{font-size:26px; margin:7px 0 4px;}
@@ -328,7 +365,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .dashboard-workspace-grid,.dashboard-analytics-grid{display:grid; grid-template-columns:minmax(0,.82fr) minmax(0,1.6fr); gap:12px; margin-top:12px;}
   .dashboard-analytics-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
   .desk-dashboard-panel{min-width:0; padding:14px; border:1px solid var(--panel-b); border-radius:var(--radius); background:var(--panel);}
-  .desk-dashboard-panel.desk-objectives-panel{padding:0; border:0; background:transparent;}
+  .desk-dashboard-panel.desk-objectives-panel{align-self:start; padding:0; border:0; background:transparent;}
   .desk-dashboard-panel h4{margin:0; font-size:12px;}
   .desk-data-panel-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:11px;}
   .desk-panel-note{color:var(--sub-dim); font-size:9px; text-align:right;}
@@ -343,7 +380,6 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .desk-objective-status.is-alert{border-color:rgba(224,106,90,.45); background:rgba(224,106,90,.09); color:#e07870;}
   .desk-objective-status.is-unavailable,.desk-objective-status.is-not-required{border-color:var(--panel-b); background:rgba(0,0,0,.1); color:var(--sub-dim);}
   .desk-objectives-empty{padding:16px 8px; color:var(--sub-dim); text-align:center; font-size:10px; line-height:1.5;}
-  .desk-objectives-banner{display:block; width:min(100%,347px); height:auto; aspect-ratio:347 / 155; flex:0 0 auto; margin:0 auto; border:0; border-radius:14px;}
   .desk-chart{position:relative; display:grid; min-height:204px; place-items:center; overflow:hidden; border:1px solid var(--panel-b); border-radius:6px; background-color:#101512; background-image:linear-gradient(rgba(147,161,154,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(147,161,154,.08) 1px,transparent 1px); background-size:100% 25%,20% 100%;}
   .desk-chart-empty{max-width:280px; padding:18px; color:var(--sub); text-align:center; font-size:11px; line-height:1.6;}
   .desk-chart-empty strong{display:block; margin-bottom:5px; color:var(--text); font-size:12px;}
@@ -559,6 +595,14 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .dash-close{font-size:14px;}
   .rewards-panel h3,.competition-empty h3{font-size:19px;}
   .rewards-panel p,.competition-empty p{color:#c3cec6; font-size:14px; line-height:1.65;}
+  .referral-stat{border-color:rgba(137,171,147,.27); background:linear-gradient(145deg,#1a261e 0%,#121a15 65%,#101612 100%); box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 10px 26px rgba(0,0,0,.2);}
+  .referral-stat span{color:#bdc9c0; font-size:12px;}
+  .referral-stat strong{font-size:27px;}
+  .referral-policy-note{color:#bbc8be!important; font-size:12px!important;}
+  .referrals-history-head{border-bottom-color:rgba(137,171,147,.24); color:#c3cec6; font-size:12px;}
+  .referrals-history-table{font-size:12px;}
+  .referrals-history-table th,.referrals-history-table td{border-bottom-color:rgba(137,171,147,.16); color:#c3cec6;}
+  .referrals-history-table th{color:#bdc9c0; font-size:11px;}
   .reward-certificate-note{color:#bbc8be!important; font-size:12px!important;}
   .rewards-history-head{border-bottom-color:rgba(137,171,147,.24); color:#c3cec6; font-size:12px;}
   .rewards-history-table{font-size:12px;}
@@ -703,8 +747,21 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   @media(max-width:680px){#registration.active{grid-template-columns:minmax(0,1fr); gap:26px; max-width:500px; padding:28px 18px 40px;}.registration-story{padding:0;}.registration-kicker{margin-top:34px;}.registration-story h1{font-size:34px;}.registration-story-copy{margin-top:12px; font-size:13px;}.registration-chart{margin-top:22px;}.registration-chart svg{height:88px;}.registration-promises{gap:12px 18px; margin-top:15px;}.registration-panel{padding:23px 20px;}}
   @media(max-width:420px){.registration-field-row{grid-template-columns:1fr;}.registration-phone{grid-template-columns:104px minmax(0,1fr);}}
   .checkout-grid{display:grid; grid-template-columns:1.3fr 1fr; gap:22px; align-items:start;}
-  @media(max-width:760px){.checkout-grid{grid-template-columns:1fr;}}
+  @media(max-width:820px){.checkout-grid{grid-template-columns:1fr;}}
   .co-panel{border:1px solid var(--panel-b); border-radius:var(--radius); padding:24px; background:var(--panel);}
+  .platform-choice{min-width:0; margin:0 0 20px; padding:15px; border:1px solid var(--panel-b); border-radius:10px; background:linear-gradient(145deg,rgba(22,31,25,.82),rgba(14,19,16,.94));}
+  .platform-choice legend{padding:0 7px; color:var(--text); font-size:13px; font-weight:700;}
+  .platform-card-grid{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px;}
+  .platform-card{position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-width:0; min-height:70px; padding:7px 4px 5px; border:1px solid var(--panel-b); border-radius:8px; background:rgba(9,14,11,.68); cursor:pointer; transition:border-color .16s ease,background .16s ease,box-shadow .16s ease;}
+  .platform-card:hover{border-color:var(--green-dim); background:rgba(62,207,126,.055);}
+  .platform-card:has(input:checked){border-color:var(--green); background:rgba(62,207,126,.1); box-shadow:inset 0 0 0 1px rgba(62,207,126,.2),0 0 12px rgba(62,207,126,.08);}
+  .platform-card:has(input:focus-visible){outline:2px solid var(--green); outline-offset:2px;}
+  .platform-card input{position:absolute; top:5px; left:5px; width:12px; height:12px; margin:0; accent-color:var(--green); cursor:pointer;}
+  .platform-card img{display:block; width:100%; height:38px; object-fit:contain;}
+  .platform-card strong{display:block; color:var(--text); font-size:9px; font-weight:600; line-height:1.2; text-align:center; white-space:nowrap;}
+  #paymentInterface[hidden]{display:none!important;}
+  @media(max-width:520px){.platform-card-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  @media(max-width:480px){.platform-choice{padding:12px;margin-bottom:16px;}.platform-card-grid{gap:5px;}.platform-card{min-height:66px;padding:5px 3px 4px;}.platform-card img{height:34px;}.platform-card strong{font-size:8px;}}
   .co-panel h4{font-size:15px; margin-bottom:18px;}
   .upi-payment-row{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px;}
   .upi-method{display:flex; align-items:center; gap:10px; flex:0 0 auto; width:auto; padding:10px 12px; border:1px solid #445768; border-radius:8px; background:linear-gradient(115deg,#1b2934,#121b20 62%,#19251f); color:var(--text); text-align:left; cursor:pointer; box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 5px 14px rgba(0,0,0,.2); transition:border-color .18s ease,transform .18s ease,background .18s ease;}
@@ -733,6 +790,30 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .co-field input{width:100%; background:var(--bg2); border:1px solid var(--panel-b); border-radius:7px; padding:10px 12px; color:var(--text); font-family:inherit; font-size:13.5px;}
   .co-field input:focus{outline:none; border-color:var(--green-dim);}
   .co-row2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .billing-details{padding-top:18px; margin-top:18px; border-top:1px solid var(--panel-b);}
+  .billing-details h4{margin:0 0 6px;}
+  .billing-note{margin:0 0 16px; color:var(--sub-dim); font-size:11.5px; line-height:1.5;}
+  .billing-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 12px;}
+  .billing-field{min-width:0; margin-bottom:12px;}
+  .billing-field.wide{grid-column:1/-1;}
+  .billing-field label{display:block; margin-bottom:5px; color:var(--sub); font-size:12px;}
+  .billing-field input,.billing-field select{width:100%; min-width:0; padding:10px 11px; border:1px solid var(--panel-b); border-radius:7px; background:var(--bg2); color:var(--text); font-family:inherit; font-size:13px;}
+  .billing-field input:focus,.billing-field select:focus{outline:none; border-color:var(--green-dim);}
+  .billing-field input,.billing-field select{scroll-margin-top:100px;}
+  .billing-error{min-height:0; margin:4px 0 0; color:#ef8c7d; font-size:11px; line-height:1.4;}
+  .billing-error:empty{display:none;}
+  .billing-continue-status{min-height:0; margin:0 0 10px; color:#ef8c7d; font-size:11px; line-height:1.5;}
+  .billing-continue-status:empty{display:none;}
+  .checkout-submit{width:100%; justify-content:center; font:inherit; cursor:pointer;}
+  .checkout-submit:disabled{opacity:.55; cursor:not-allowed;}
+  @media(max-width:520px){.billing-grid{grid-template-columns:minmax(0,1fr);}.billing-field.wide{grid-column:auto;}}
+  .payment-step{padding-top:18px; margin-top:20px; border-top:1px solid var(--panel-b);}
+  .billing-details,.payment-step{scroll-margin-top:100px;}
+  .payment-step[hidden]{display:none!important;}
+  #billingBackBtn{margin-bottom:16px; border-color:var(--green-dim); background:var(--panel); color:var(--green);}
+  .payment-subheading{margin:18px 0 8px; color:var(--sub); font-size:12px;}
+  .addr-row span{min-width:0; overflow-wrap:anywhere;}
+  @media(max-width:480px){.addr-row{align-items:flex-start;}.copy-btn{min-height:36px;}}
   .co-note{font-size:11.5px; color:var(--sub-dim); margin-top:14px; line-height:1.5;}
   .withdraw-modal{width:min(100%,470px); max-height:calc(100dvh - 40px); overflow:auto; padding:26px; border:1px solid #375047; border-radius:10px; background:linear-gradient(145deg,#17231b,#0d1210 72%,#161b13); box-shadow:0 24px 70px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.1);}
   .withdraw-modal-head{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:18px;}
@@ -845,6 +926,28 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .attach-remove:hover{color:#e06a5a;}
   .popup-overlay{position:fixed; inset:0; background:rgba(0,0,0,.72); display:none; align-items:center; justify-content:center; z-index:100; padding:20px;}
   .popup-overlay.show{display:flex;}
+  .payout-success-overlay{z-index:120; background:rgba(3,9,16,.82); backdrop-filter:blur(12px);}
+  .payout-success-card{position:relative; width:min(100%,460px); padding:30px; overflow:hidden; border:1px solid rgba(74,198,255,.58); border-radius:18px; background:linear-gradient(145deg,rgba(18,39,57,.97),rgba(7,15,26,.98) 70%,rgba(12,28,42,.98)); box-shadow:0 0 0 1px rgba(83,201,255,.08),0 0 42px rgba(31,150,255,.22),0 28px 90px rgba(0,0,0,.62),inset 0 1px 0 rgba(255,255,255,.12); color:#eff9ff; animation:payoutSuccessIn .38s cubic-bezier(.2,.8,.2,1) both;}
+  .payout-success-card::before{position:absolute; inset:0; pointer-events:none; content:''; background:radial-gradient(ellipse at 50% -10%,rgba(35,177,255,.23),transparent 60%);}
+  .payout-success-card.is-closing{animation:payoutSuccessOut .22s ease-in both;}
+  .payout-success-close{position:absolute; top:15px; right:15px; z-index:1; width:36px; height:36px; border:1px solid rgba(194,225,245,.25); border-radius:50%; background:rgba(5,16,28,.62); color:#ecf8ff; font-size:22px; cursor:pointer;}
+  .payout-success-close:focus-visible{outline:2px solid #66d6ff; outline-offset:3px;}
+  .payout-success-content{position:relative; text-align:center;}
+  .payout-success-icon{display:grid; place-items:center; width:64px; height:64px; margin:2px auto 18px; border:1px solid rgba(91,220,255,.78); border-radius:50%; background:linear-gradient(145deg,rgba(19,123,174,.35),rgba(9,32,55,.86)); box-shadow:0 0 26px rgba(32,178,255,.35),inset 0 0 18px rgba(70,211,255,.1); color:#8be7ff; font-size:30px; animation:payoutSuccessIcon .55s .1s cubic-bezier(.18,.8,.25,1.4) both;}
+  .payout-success-kicker{display:block; margin-bottom:7px; color:#83ddff; font-size:10px; font-weight:800; letter-spacing:.15em;}
+  .payout-success-content h2{margin:0 0 9px; color:#f3fbff; font-size:clamp(19px,5vw,23px); letter-spacing:.03em;}
+  .payout-success-content>p{margin:0 auto 20px; max-width:355px; color:#cadce8; font-size:13px; line-height:1.6;}
+  .payout-success-details{display:grid; gap:0; margin:0 0 17px; padding:12px 15px; border:1px solid rgba(156,207,237,.17); border-radius:10px; background:rgba(2,11,21,.48); text-align:left;}
+  .payout-success-details div{display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:8px 0; border-bottom:1px solid rgba(156,207,237,.1); font-size:12px;}
+  .payout-success-details div:last-child{border:0;}
+  .payout-success-details dt{color:#b3c9d7;}
+  .payout-success-details dd{margin:0; color:#f1faff; font-weight:700; text-align:right; overflow-wrap:anywhere;}
+  .payout-success-disclaimer{display:block; color:#9db5c4; font-size:10px; line-height:1.5;}
+  @keyframes payoutSuccessIn{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+  @keyframes payoutSuccessOut{to{opacity:0;transform:translateY(8px) scale(.985)}}
+  @keyframes payoutSuccessIcon{from{opacity:0;transform:scale(.55) rotate(-14deg)}to{opacity:1;transform:scale(1) rotate(0)}}
+  @media(max-width:480px){.payout-success-card{padding:25px 18px 20px;border-radius:14px}.payout-success-details{padding:9px 11px}}
+  @media(prefers-reduced-motion:reduce){.payout-success-card,.payout-success-card.is-closing,.payout-success-icon{animation:none!important}}
   .popup-box{background:var(--panel); border:1px solid var(--panel-b); border-radius:12px; padding:26px; max-width:340px; text-align:center; box-shadow:0 20px 50px rgba(0,0,0,.5);}
   .popup-box .picon-warn{width:44px; height:44px; border-radius:50%; background:rgba(230,163,77,.14); color:#e6a34d; display:flex; align-items:center; justify-content:center; font-size:20px; margin:0 auto 14px;}
   .popup-box h4{font-size:16px; margin-bottom:8px;}
@@ -1368,11 +1471,11 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   #dfRulesStrip .df-rule-value{margin-top:6px;color:#fff;font-size:21px;font-weight:750;letter-spacing:-.2px;white-space:nowrap;}
   @media(max-width:600px){#dfRulesStrip{padding:24px 0 28px;}#dfRulesStrip .df-rule-card{width:250px;min-height:86px;padding:17px 20px;gap:16px;}#dfRulesStrip .df-rule-value{font-size:18px;}}
   @media(prefers-reduced-motion:reduce){#dfRulesStrip .df-rules-marquee{overflow-x:auto;mask-image:none;-webkit-mask-image:none;scrollbar-width:thin;}#dfRulesStrip .df-rules-track{animation:none;will-change:auto;}}
-  .payout-mission-banner{position:relative;padding:0;overflow:hidden;background:#02030a;}
-  .payout-mission-banner iframe{display:block;width:100%;height:660px;border:0;}
+  .payout-mission-banner{position:relative; padding:0; overflow:hidden; background:#02030a;}
+  .payout-mission-banner iframe{display:block; width:100%; height:660px; border:0;}
   @media(max-width:700px){.payout-mission-banner iframe{height:680px;}}
 </style>
-<link rel="stylesheet" href="hero-background.css">
+<link rel="stylesheet" href="/hero-background.css">
 </head>
 <body>
 
@@ -1737,6 +1840,100 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
     <h2 style="margin-bottom:24px;">Complete your purchase</h2>
     <div class="checkout-grid">
       <div class="co-panel">
+        <fieldset class="platform-choice">
+          <legend>Choose Your Trading Platform</legend>
+          <div class="platform-card-grid">
+            <label class="platform-card" aria-label="Select MetaTrader 5">
+              <input type="radio" name="tradingPlatform" value="mt5">
+              <img src="./platform-mt5-mark.png" alt="">
+              <strong>MetaTrader 5</strong>
+            </label>
+            <label class="platform-card" aria-label="Select cTrader">
+              <input type="radio" name="tradingPlatform" value="ctrader">
+              <img src="./platform-ctrader-mark.png" alt="">
+              <strong>cTrader</strong>
+            </label>
+            <label class="platform-card" aria-label="Select Match-Trader">
+              <input type="radio" name="tradingPlatform" value="match_trader">
+              <img src="./platform-match-trader-mark.png" alt="">
+              <strong>Match-Trader</strong>
+            </label>
+            <label class="platform-card" aria-label="Select CF Terminal">
+              <input type="radio" name="tradingPlatform" value="cf" checked>
+              <img src="./crazy-funded-logo.png" alt="">
+              <strong>CF Terminal</strong>
+            </label>
+          </div>
+        </fieldset>
+        <form id="checkoutSubmissionForm" novalidate>
+          <section id="billingStep" class="billing-details" aria-labelledby="billingDetailsTitle">
+            <h4 id="billingDetailsTitle">Billing Details</h4>
+            <p class="billing-note" id="billingAccountInfoStatus" role="status" aria-live="polite">Account details are filled in when available. Complete any required fields that remain blank.</p>
+            <div class="billing-grid">
+              <div class="billing-field">
+                <label for="billingFullName">Full Name *</label>
+                <input id="billingFullName" name="full_name" type="text" autocomplete="name" maxlength="160" required aria-describedby="billingFullNameError">
+                <p class="billing-error" id="billingFullNameError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingEmail">Email Address *</label>
+                <input id="billingEmail" name="email" type="email" autocomplete="email" maxlength="254" required aria-describedby="billingEmailError">
+                <p class="billing-error" id="billingEmailError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingPhone">Phone Number *</label>
+                <input id="billingPhone" name="phone" type="tel" autocomplete="tel" maxlength="32" required aria-describedby="billingPhoneError">
+                <p class="billing-error" id="billingPhoneError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingCountry">Country *</label>
+                <select id="billingCountry" name="country" autocomplete="country" required aria-describedby="billingCountryError">
+                  <option value="">Select country</option>
+                </select>
+                <p class="billing-error" id="billingCountryError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingState">State / Province *</label>
+                <input id="billingState" name="state" type="text" autocomplete="address-level1" maxlength="100" required aria-describedby="billingStateError">
+                <p class="billing-error" id="billingStateError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingCity">City *</label>
+                <input id="billingCity" name="city" type="text" autocomplete="address-level2" maxlength="100" required aria-describedby="billingCityError">
+                <p class="billing-error" id="billingCityError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingPostalCode">ZIP / Postal Code *</label>
+                <input id="billingPostalCode" name="postal_code" type="text" autocomplete="postal-code" maxlength="32" required aria-describedby="billingPostalCodeError">
+                <p class="billing-error" id="billingPostalCodeError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field wide">
+                <label for="billingAddressLine1">Address Line 1 *</label>
+                <input id="billingAddressLine1" name="address_line_1" type="text" autocomplete="address-line1" maxlength="200" required aria-describedby="billingAddressLine1Error">
+                <p class="billing-error" id="billingAddressLine1Error" aria-live="polite"></p>
+              </div>
+              <div class="billing-field wide">
+                <label for="billingAddressLine2">Address Line 2</label>
+                <input id="billingAddressLine2" name="address_line_2" type="text" autocomplete="address-line2" maxlength="200" aria-describedby="billingAddressLine2Error">
+                <p class="billing-error" id="billingAddressLine2Error" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingCompanyName">Company Name</label>
+                <input id="billingCompanyName" name="company_name" type="text" autocomplete="organization" maxlength="160" aria-describedby="billingCompanyNameError">
+                <p class="billing-error" id="billingCompanyNameError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingTaxId">GST / Tax ID</label>
+                <input id="billingTaxId" name="tax_id" type="text" autocomplete="off" maxlength="64" aria-describedby="billingTaxIdError">
+                <p class="billing-error" id="billingTaxIdError" aria-live="polite"></p>
+              </div>
+            </div>
+            <p class="billing-continue-status" id="billingContinueStatus" role="status" aria-live="polite"></p>
+            <button type="button" class="btn btn-primary checkout-submit" id="billingContinueBtn">Continue to payment</button>
+          </section>
+          <section id="paymentStep" class="payment-step" aria-labelledby="paymentStepTitle" hidden>
+            <button type="button" class="btn btn-outline" id="billingBackBtn">← Back to Billing</button>
+            <h4 id="paymentStepTitle">Payment</h4>
         <div class="upi-payment-row">
           <button type="button" class="upi-method" id="upiOpenBtn" aria-haspopup="dialog" aria-expanded="false">
             <span class="upi-method-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 10h18l-4-4M26 10l-4 4" stroke="#FFB45C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M26 22H8l4 4M6 22l4-4" stroke="#62D99A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 16h16" stroke="#E6F0F1" stroke-opacity=".68" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 3"/></svg></span>
@@ -1760,32 +1957,38 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
           <button type="button" class="net-tab" data-cur="eth">ETH</button>
         </div>
         <div class="net-tabs" id="netTabs" style="margin-top:-6px;"></div>
-        <div class="addr-row">
-          <span id="addrText"></span>
-          <button type="button" class="copy-btn" id="copyBtn">Copy</button>
-        </div>
-        <div class="qr-open-row">
-          <p>Want to scan the selected wallet address instead?</p>
-          <button type="button" class="btn btn-outline qr-open-btn" id="qrOpenBtn">Show QR code</button>
-        </div>
-        <p class="pay-amount-note">Send exactly <b id="coPayAmt2">$0</b> in <b id="curLabel">USDT</b> on the <b id="netLabel">TRC20</b> network to the address above.</p>
-        <div class="attach-row">
-          <input type="file" id="proofInput" accept="image/*" style="display:none;">
-          <button type="button" class="attach-btn" id="attachBtn">📎 Attach payment screenshot</button>
-          <div class="attach-preview" id="attachPreview" style="display:none;">
-            <img id="attachImg" alt="Payment screenshot">
-            <span class="aname" id="attachName"></span>
-            <button type="button" class="attach-remove" id="attachRemove">Remove</button>
+        <div id="paymentInterface">
+          <h5 class="payment-subheading">Crypto Address</h5>
+          <div class="addr-row">
+            <span id="addrText"></span>
+            <button type="button" class="copy-btn" id="copyBtn" disabled>Copy Address</button>
           </div>
+          <div class="qr-open-row">
+            <p>Want to scan the selected wallet address instead?</p>
+            <button type="button" class="btn btn-outline qr-open-btn" id="qrOpenBtn" disabled>Show QR code</button>
+          </div>
+          <p class="pay-amount-note">Send exactly <b id="coPayAmt2">$0</b> in <b id="curLabel">USDT</b> on the <b id="netLabel">TRC20</b> network to the address above.</p>
         </div>
-        <a href="#" class="btn btn-primary" id="coPayBtn" style="width:100%; justify-content:center;">I've sent the payment →</a>
-        <p class="co-note">Double-check the network and address before sending any real funds — crypto transfers can't be reversed.</p>
+          <div class="attach-row">
+            <input type="file" id="proofInput" accept="image/*" style="display:none;" aria-label="Attach payment screenshot">
+            <button type="button" class="attach-btn" id="attachBtn" disabled>📎 Attach payment screenshot</button>
+            <div class="attach-preview" id="attachPreview" style="display:none;">
+              <img id="attachImg" alt="Payment screenshot">
+              <span class="aname" id="attachName"></span>
+              <button type="button" class="attach-remove" id="attachRemove">Remove</button>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn" aria-disabled="true" disabled>I've sent the payment →</button>
+          <p class="co-note">Double-check the network and address before sending any real funds — crypto transfers can't be reversed.</p>
+          </section>
+        </form>
       </div>
       <div class="co-panel">
         <h4>Order summary</h4>
         <div class="co-summary-row"><span>Challenge</span><b id="coLabel">—</b></div>
         <div class="co-summary-row"><span>Account size</span><b id="coSize">—</b></div>
         <div class="co-summary-row"><span>Profit split</span><b id="coSplit">—</b></div>
+        <div class="co-summary-row"><span>Trading platform</span><b id="coPlatform">CF Terminal</b></div>
         <div class="coupon-box">
           <label for="couponCodeInput">Coupon code</label>
           <div class="coupon-entry">
@@ -1943,6 +2146,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
     <nav class="dashboard-side-nav" aria-label="Trader workspace">
       <a class="active" href="#dashTop" data-dashboard-view="desk" aria-current="page"><span class="dashboard-nav-mark dashboard-nav-desk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9M9 20v-6h6v6"/></svg></span>Trader Desk</a>
       <a href="#rewardsView" data-dashboard-view="rewards"><span class="dashboard-nav-mark dashboard-nav-rewards" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="m8.5 12-1 9 4.5-2.5 4.5 2.5-1-9"/></svg></span>Rewards</a>
+      <a href="#referralsView" data-dashboard-view="referrals"><span class="dashboard-nav-mark dashboard-nav-referrals" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M15 15.5a4.5 4.5 0 0 1 5.5 3.5"/></svg></span>Refer a Friend</a>
       <a href="#competitionsView" data-dashboard-view="competitions"><span class="dashboard-nav-mark dashboard-nav-competitions" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M7 6H4v2a4 4 0 0 0 4 4M17 6h3v2a4 4 0 0 1-4 4M12 13v5M8 21h8M9 18h6"/></svg></span>Competitions</a>
       <a href="#economicCalendarView" data-dashboard-view="calendar"><span class="dashboard-nav-mark dashboard-nav-calendar" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h2M14 14h2M8 17h2"/></svg></span>Economic Calendar</a>
       <a href="#leaderboardView" data-dashboard-view="leaderboard"><span class="dashboard-nav-mark dashboard-nav-leaderboard" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20h16M6 17V9h4v8M14 17V4h4v13M7 6h3M13 8h5"/></svg></span>Leaderboard</a>
@@ -1997,7 +2201,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
       <div class="account-stat-grid">
         <div class="account-stat"><span>Balance</span><b id="dBalance">$0</b></div>
         <div class="account-stat"><span>Live equity</span><b id="dEquity">$0</b></div>
-        <div class="account-stat"><span>Withdrawable profit</span><b class="up" id="dWithdraw">$0</b></div>
+        <div class="account-stat"><span>Eligible payout amount</span><b class="up" id="dWithdraw">Unavailable</b></div>
         <div class="account-stat"><span>Trading days</span><b id="dDays">0</b></div>
       </div>
 
@@ -2012,7 +2216,6 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
       <div class="dashboard-workspace-grid">
         <section class="desk-dashboard-panel desk-objectives-panel" aria-label="Account objectives">
           <div id="deskObjectives" role="status" aria-live="polite"></div>
-          <iframe class="desk-objectives-banner" src="./crazy-funded-banner-347x155-cinematic-fx.html" title="Crazy Funded animated banner" sandbox="allow-scripts" aria-hidden="true" tabindex="-1"></iframe>
         </section>
         <section class="desk-dashboard-panel desk-performance-panel" aria-labelledby="deskPerformanceHeading">
           <div class="desk-data-panel-head"><h4 id="deskPerformanceHeading">Balance history</h4><span class="desk-panel-note">Realized trade performance</span></div>
@@ -2095,17 +2298,55 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
       <section class="rewards-panel rewards-action" aria-labelledby="rewardRequestHeading">
         <div class="panel-kicker">PAYOUT REQUEST</div>
         <h3 id="rewardRequestHeading">Ready to request a payout?</h3>
-        <p>Request a payout when your account meets its eligibility requirements and reward cycle.</p>
-        <button type="button" class="btn btn-primary" id="payoutBtn">Request payout →</button>
+        <p>Payout requests are currently unavailable. The server must verify your account eligibility before a request can be submitted.</p>
+        <button type="button" class="btn btn-primary" id="payoutBtn" disabled>Request payout →</button>
+        <p class="withdraw-status" id="payoutEligibilityStatus" role="status" aria-live="polite">Payout eligibility has not been verified for the selected account.</p>
       </section>
     </div>
 
     <section class="rewards-panel rewards-history" aria-label="Reward history">
-      <div class="rewards-history-head">REWARD HISTORY</div>
+      <div class="rewards-history-head">PAYOUT REQUEST HISTORY</div>
       <div class="rewards-history-wrap">
         <table class="rewards-history-table">
-          <thead><tr><th>Reference ID</th><th>Reward type</th><th>Requested on</th><th>Method</th><th>Status</th><th>Amount</th><th>Certificate</th></tr></thead>
-          <tbody><tr><td class="rewards-empty" colspan="7"><strong>No reward history yet</strong>Completed and pending reward requests will appear here.</td></tr></tbody>
+          <thead><tr><th>Reference</th><th>Submitted</th><th>Amount</th><th>Method</th><th>Status</th><th>Last updated</th></tr></thead>
+          <tbody id="payoutHistoryRows"><tr><td class="rewards-empty" colspan="6"><strong>No payout requests yet</strong>Your submitted payout requests will appear here.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+  <div class="wrap dashboard-main referrals-view" id="referralsView" style="display:none;">
+    <div class="dash-top">
+      <div>
+        <div class="eyebrow">REFER A FRIEND</div>
+        <h2>Share Crazy Funded</h2>
+      </div>
+    </div>
+    <section class="rewards-panel referral-link-panel" aria-labelledby="referralLinkHeading">
+      <div class="panel-kicker">YOUR REFERRAL CODE</div>
+      <h3 id="referralLinkHeading">Invite a friend and earn $10</h3>
+      <p>Your friend must create a new account through your link and complete their first purchase, which must be approved.</p>
+      <div class="referral-link-row">
+        <input class="referral-link-input" id="referralLinkInput" type="text" readonly aria-label="Your referral code" placeholder="Loading your referral code…">
+        <button class="btn btn-primary referral-link-copy" id="referralCopyCodeButton" type="button" disabled>Copy Code</button>
+        <button class="btn btn-primary referral-link-copy" id="referralCopyLinkButton" type="button" disabled>Copy Referral Link</button>
+      </div>
+      <p class="referral-link-status" id="referralLinkStatus" role="status" aria-live="polite"></p>
+      <p class="referral-policy-note">Referral credits are internal records, not cash or proof of payment. They stay separate from trading balances and are not currently withdrawable. Legacy credits require reconciliation before any payout use.</p>
+    </section>
+    <div class="referral-stat-grid" aria-label="Referral summary">
+      <div class="referral-stat"><span>Total People Referred</span><strong id="referralTotalCount">—</strong><small>Unique users attributed to your referral code.</small></div>
+      <div class="referral-stat"><span>Qualified Referrals</span><strong id="referralQualifiedCount">—</strong><small>Referrals with a recorded qualifying reward.</small></div>
+      <div class="referral-stat"><span>Pending Referrals</span><strong id="referralPendingCount">—</strong><small>Referred users without a qualifying reward record.</small></div>
+      <div class="referral-stat"><span>Total Referral Earnings</span><strong id="referralEarningsTotal">—</strong><small>Total recorded referral reward value, not trading balance.</small></div>
+      <div class="referral-stat"><span>Pending Rewards</span><strong id="referralPendingRewards">—</strong><small id="referralPendingRewardsNote">Pending reward payments are not tracked separately.</small></div>
+      <div class="referral-stat"><span>Rewards Paid</span><strong id="referralPaidTotal">—</strong><small id="referralPaidCount">Recorded paid rewards.</small></div>
+    </div>
+    <section class="rewards-panel referrals-history" aria-label="Referral activity">
+      <div class="referrals-history-head">REFERRAL ACTIVITY<span class="referral-activity-note">Showing up to 100 most recent referred accounts.</span></div>
+      <div class="referrals-history-wrap">
+        <table class="referrals-history-table">
+          <thead><tr><th>Name</th><th>Account Created</th><th>Purchase Status</th><th>Reward Status</th><th>Reward Amount</th><th>Referral Link</th></tr></thead>
+          <tbody id="referralActivityRows"><tr><td colspan="6">Referral activity will appear here.</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -2178,9 +2419,9 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
           <article class="df-why-card">
             <span class="df-why-number" aria-hidden="true">03</span>
             <div class="df-why-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></div>
-            <h3>Know the Payout Cycle</h3>
-            <p>Reward cycles are 5 days for 1-Step, 7 days for 2-Step and daily for Instant Funding. Payouts remain subject to eligibility.</p>
-            <span class="df-why-chip">Cycles by plan</span>
+            <h3>Payout timing is not currently available</h3>
+            <p>Displayed product-cycle settings are not an active payout schedule. Requests remain disabled until eligibility and settlement can be verified.</p>
+            <span class="df-why-chip">Eligibility unavailable</span>
           </article>
           <article class="df-why-card">
             <span class="df-why-number" aria-hidden="true">04</span>
@@ -2268,7 +2509,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
             <h2>Questions, answered</h2>
             <div class="faq" id="faqList"></div>
           </div>
-          <iframe class="community-banner-frame" src="community-banner.html" title="Crazy Funded community banner" loading="lazy"></iframe>
+          <iframe class="community-banner-frame" src="/community-banner.html" title="Crazy Funded community banner" loading="lazy"></iframe>
         </div>
       </div>
     </section>
@@ -2342,7 +2583,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
         <p>Trade our capital. Pass the evaluation, get funded, and keep up to 80% of the profit.</p>
       </div>
       <div class="fcol"><h4>Product</h4><a href="#challenges">Challenges</a><a href="#pricing">Pricing</a><a href="#dashboard" class="open-dash">Dashboard</a></div>
-      <div class="fcol"><h4>Company</h4><a href="#how">How it works</a><a href="#faq">FAQ</a></div>
+      <div class="fcol"><h4>Company</h4><a href="#how">How it works</a><a href="#faq">FAQ</a><a href="/terms-and-conditions.html">Terms &amp; Conditions</a><a href="/privacy-policy.html">Privacy Policy</a></div>
       <div class="fcol"><h4>Account</h4><a href="#dashboard" class="open-dash">Sign in</a><a href="#dashboard" class="open-dash">Register</a></div>
     </div>
     <div class="disclaimer">Trading derivatives carries a high level of risk. This is a simulated evaluation service and does not constitute financial advice.<br>© 2026 Crazy Funded. All rights reserved.</div>
@@ -2439,14 +2680,14 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
       </div>
       <button type="button" class="qr-modal-close" id="withdrawClose" aria-label="Close withdrawal request">×</button>
     </div>
-    <div class="withdraw-available"><span>Available to withdraw</span><strong id="withdrawAvailable">$0.00</strong></div>
+    <div class="withdraw-available"><span>Verified eligible trading amount</span><strong id="withdrawAvailable">$0.00</strong></div>
     <form id="withdrawForm">
       <div class="withdraw-method-row" role="group" aria-label="Select withdrawal method">
         <button type="button" class="withdraw-method active" data-method="crypto" aria-pressed="true">Crypto</button>
         <button type="button" class="withdraw-method" data-method="rise" aria-pressed="false">Rise</button>
         <button type="button" class="withdraw-method" data-method="bank" aria-pressed="false">Bank transfer</button>
       </div>
-      <p class="withdraw-minimum" id="withdrawMethodNote">Minimum $50 · No withdrawal fee</p>
+      <p class="withdraw-minimum" id="withdrawMethodNote">Payout methods and minimums are unavailable until server policy is verified.</p>
       <div class="withdraw-field">
         <label for="withdrawAmount">Request amount (USD)</label>
         <input id="withdrawAmount" name="amount" type="number" min="50" step="0.01" required>
@@ -2496,6 +2737,28 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
       <button type="submit" class="btn btn-primary withdraw-submit" id="withdrawSubmit">Submit withdrawal request</button>
       <p class="withdraw-status" id="withdrawStatus" role="status" aria-live="polite">Requests are subject to account and payment verification.</p>
     </form>
+  </section>
+</div>
+
+<div class="popup-overlay payout-success-overlay" id="payoutSuccessPopup" hidden>
+  <section class="payout-success-card" role="dialog" aria-modal="true" aria-labelledby="payoutSuccessTitle" aria-describedby="payoutSuccessMessage">
+    <button type="button" class="payout-success-close" id="payoutSuccessClose" aria-label="Close payout request confirmation">×</button>
+    <div class="payout-success-content">
+      <div class="payout-success-icon" aria-hidden="true">✓</div>
+      <span class="payout-success-kicker">REQUEST RECEIVED</span>
+      <h2 id="payoutSuccessTitle">PAYOUT REQUEST SUBMITTED</h2>
+      <p id="payoutSuccessMessage">Your payout request has been submitted successfully. It is awaiting the eligibility period and review; this confirmation is not a payment approval.</p>
+      <dl class="payout-success-details">
+        <div><dt>Reference</dt><dd id="payoutSuccessReference">—</dd></div>
+        <div><dt>Submitted</dt><dd id="payoutSuccessSubmitted">—</dd></div>
+        <div><dt>Requested amount</dt><dd id="payoutSuccessAmount">—</dd></div>
+        <div><dt>Payment method</dt><dd id="payoutSuccessMethod">—</dd></div>
+        <div><dt>Referral bonus included</dt><dd>Not included</dd></div>
+        <div><dt>Estimated eligibility</dt><dd id="payoutSuccessEligibility">—</dd></div>
+        <div><dt>Current status</dt><dd id="payoutSuccessStatus">Pending review</dd></div>
+      </dl>
+      <small class="payout-success-disclaimer">The time shown is an estimate only. It does not approve or release a payment.</small>
+    </div>
   </section>
 </div>
 
@@ -2714,15 +2977,14 @@ window.addEventListener('message',event=>{
   document.querySelector(`#tabs [data-tab="${plan}"]`).click();
   document.getElementById('pricing').scrollIntoView({behavior:'smooth'});
 });
-
 const faqs = [
-  {q:'What happens after I pass the challenge?', a:'You receive a funded simulated account at the same size you purchased. From there, every profitable trade you log builds your withdrawable balance, with <strong>90%</strong> of the profit yours to cash out.'},
+  {q:'What happens after I pass the challenge?', a:'Challenge completion and funded-account activation must be confirmed for your specific account. Only eligible closed-trade profit on a funded account can be considered for a payout; open or unrealized profit does not count. Payout eligibility and requests are currently unavailable while the authoritative accounting and settlement process is completed.'},
   {q:'Is there a time limit to pass?', a:'No. There is no maximum time limit on any challenge — trade at your own pace as long as you respect the drawdown rules and, where applicable, the minimum trading days.'},
   {q:'How is drawdown calculated?', a:'Daily drawdown is measured from your balance at the start of each trading day. Overall drawdown on these plans is measured from your initial account balance and does not trail upward as equity grows.'},
   {q:'What is the difference between static and trailing drawdown?', a:'Drawdown is how far your account equity falls from its reference level. Static drawdown keeps the loss threshold fixed: the daily limit uses the start-of-day balance, and the overall limit uses the initial account balance. For example, on a $100,000 account, the 5% daily limit is $5,000 (a $95,000 daily floor when the day starts at $100,000), and the 10% overall limit is $10,000 (a $90,000 overall floor). In a generic 10% trailing example, if the account grows from $100,000 to $110,000, the loss floor rises from $90,000 to $99,000. Trailing rules vary by provider; the plans shown here use static limits.'},
-  {q:'How do payouts work?', a:'Once funded and eligible, you can request a payout after your account reward cycle completes: every 5 days for 1-Step, every 7 days for 2-Step, and daily for Instant Funding. Approved payouts are typically processed within a few business days to your chosen method.'},
-  {q:'What are the withdrawal minimums and fees?', a:'Crypto withdrawals have a <strong>$50</strong> minimum and are completely free. Rise withdrawals have a <strong>$100</strong> minimum and are completely free. Bank transfers have a <strong>$100</strong> minimum and a <strong>$12</strong> fee per transaction.'},
-  {q:'Do I get my challenge fee back?', a:'Yes. Your challenge fee is refunded automatically alongside your first successful payout from your funded account.'},
+  {q:'How do payouts work?', a:'Payout requests are currently unavailable. The dashboard will show unavailable unless the server can verify eligible funded-account profit and account rules. A displayed reward cycle or client-side estimate does not approve or guarantee a payout, and no request is approved or paid automatically.'},
+  {q:'What are the withdrawal minimums and fees?', a:'Payout-method minimums and fees have not been confirmed as an active server policy. The values shown in the request form are not proof that requests can be submitted; payout requests are currently unavailable.'},
+  {q:'Do I get my challenge fee back?', a:'The project has not verified an automatic challenge-fee refund policy. Do not assume a fee will be refunded with a payout.'},
   {q:'What is the difference between the challenge types?', a:'The <strong class="challenge-step-number">1</strong>-Step challenge has a <strong>10%</strong> profit target. The <strong class="challenge-step-number challenge-step-two">2</strong>-Step challenge has targets of <strong>6%</strong> in Phase <strong class="challenge-step-number">1</strong> and <strong>6%</strong> in Phase <strong class="challenge-step-number challenge-step-two">2</strong>. Instant Funding has no profit target. Daily and overall drawdown limits are shown with each plan.'},
   {q:'What account sizes are available?', a:'Evaluation accounts range from <strong>$5,000</strong> to <strong>$200,000</strong>. Instant Funding starts at <strong>$2,500</strong>. Prices are listed under each challenge type.'},
   {q:'Which payment methods can I use?', a:'Crypto checkout supports <span class="faq-token usdt">USDT</span>, <span class="faq-token btc">BTC</span>, and <span class="faq-token eth">ETH</span> on the networks listed at checkout. Attach a payment screenshot with your confirmation. <span class="faq-token upi">UPI</span> is temporarily unavailable; the checkout will show a notice when you select it.'},
@@ -2873,12 +3135,7 @@ function buildPayoutCard(payout,verified){
     <path d="m36 36 54-21 54 21M43 45l4 49c2 29 18 50 43 69 25-19 41-40 43-69l4-49" stroke="#FFFFFF" stroke-opacity=".78" stroke-width="2" stroke-linecap="round"/>
     <path d="M47 53 50 94c2 23 12 39 28 54" stroke="#FFF7D5" stroke-opacity=".82" stroke-width="3" stroke-linecap="round"/>
     <path d="M132 52 129 96c-2 23-12 39-28 54" stroke="#D6B96D" stroke-opacity=".7" stroke-width="2" stroke-linecap="round"/>
-    <path d="m90 61 31 12v27c0 20-12 34-31 44-19-10-31-24-31-44V73l31-12Z" fill="url(#trophyGold)" stroke="#FFE9A0" stroke-width="2.5"/>
-    <path d="m90 68 23 9v22c0 15-9 26-23 34-14-8-23-19-23-34V77l23-9Z" fill="#14221A" stroke="#FFF0B0" stroke-width="1.5"/>
-    <path d="M78 103V91a12 12 0 0 1 24 0v12" stroke="#64E497" stroke-width="3" stroke-linecap="round"/>
-    <path d="M78 101h6v-7h7v-7h10" stroke="#F7E8B7" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="102" cy="87" r="3.2" fill="#F5CF61" stroke="#FFF1B2" stroke-width="1.2"/>
-    <path d="M79 107h22" stroke="#64E497" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="m90 61 31 12v27c0 20-12 34-31 44-19-10-31-24-31-44V73l31-12Z" fill="#14221A" fill-opacity=".72" stroke="#FFE9A0" stroke-width="2.5"/>
     <path d="M77 170h26v12H77z" fill="url(#trophyGold)" stroke="#FFF0B0" stroke-width="1.5"/>
     <path d="M61 181h58v9H61z" fill="url(#plinth)" stroke="#FFFFFF" stroke-width="1.5"/>
     <path d="m48 190-12 8v9h108v-9l-12-8H48Z" fill="url(#plinth)" stroke="#FFFDF1" stroke-width="1.5"/>
@@ -2886,9 +3143,18 @@ function buildPayoutCard(payout,verified){
     <path d="M42 209h95M66 184h47" stroke="#FFFFFF" stroke-opacity=".92" stroke-width="2" stroke-linecap="round"/>
     <path d="m39 197 12-5M140 197l-12-5" stroke="#F8E4A5" stroke-width="1.5" stroke-linecap="round"/>
   </svg>`;
-  const trophyArt = document.createElement('img');
-  trophyArt.alt = '';
-  trophyArt.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(shieldTrophySvg || trophySvg);
+  const trophyArt = document.createElement('div');
+  trophyArt.className = 'payout-trophy-art';
+  trophyArt.setAttribute('aria-hidden','true');
+  const trophyArtImage = document.createElement('img');
+  trophyArtImage.className = 'payout-trophy-art-image';
+  trophyArtImage.alt = '';
+  trophyArtImage.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(shieldTrophySvg || trophySvg);
+  const trophyInnerLogo = document.createElement('img');
+  trophyInnerLogo.className = 'payout-trophy-inner-logo';
+  trophyInnerLogo.src = './crazy-funded-logo.png';
+  trophyInnerLogo.alt = '';
+  trophyArt.append(trophyArtImage,trophyInnerLogo);
   trophy.append(trophyBrand,trophyArt);
 
   const content = document.createElement('div');
@@ -3071,6 +3337,7 @@ payoutTrack.addEventListener('keydown',event=>{
 });
 
 async function loadPayoutFeed(){
+  if(payoutTrack.closest('.ticker-wrap')?.hidden) return;
   try{
     const response = await fetch(API_BASE + '/api/payouts?limit=8',{credentials:'same-origin',headers:{Accept:'application/json'}});
     if(!response.ok) throw new Error('Payout feed unavailable');
@@ -3100,12 +3367,47 @@ document.addEventListener('click', e=>{
 const dashboard = document.getElementById('dashboard');
 const checkout = document.getElementById('checkout');
 const registrationSection = document.getElementById('registration');
-const mainSections = ['.hero','.ticker-wrap','#how','#challenges','#pricing','#faq'];
+const mainSections = ['.hero','.ticker-wrap','#how','#dfWorkspacePreview','#challenges','.payout-mission-banner','#pricing','#faq','#dfWhyChoose','#dfRulesStrip','.df-human-support'];
 const traderDeskView = document.getElementById('traderDeskView');
 const rewardsView = document.getElementById('rewardsView');
+const referralsView = document.getElementById('referralsView');
 const competitionsView = document.getElementById('competitionsView');
 const economicCalendarView = document.getElementById('economicCalendarView');
 const leaderboardView = document.getElementById('leaderboardView');
+const REFERRAL_TOKEN_SESSION_KEY = 'crazyFundedReferralToken';
+let referralCaptureError = '';
+
+async function captureReferralLink(){
+  const url = new URL(window.location.href);
+  const referral = ReferralLinks.parseReferralUrl(url);
+  if(!referral) return;
+  sessionStorage.removeItem(REFERRAL_TOKEN_SESSION_KEY);
+  try{
+    const response = await fetch(API_BASE + '/api/referrals/resolve',{
+      method:'POST',
+      credentials:'same-origin',
+      headers:{'Content-Type':'application/json',Accept:'application/json'},
+      body:JSON.stringify({code:referral.code})
+    });
+    const result = await response.json();
+    if(!response.ok || typeof result.referralToken !== 'string'){
+      throw new Error(result.error || 'Referral link could not be verified.');
+    }
+    sessionStorage.setItem(REFERRAL_TOKEN_SESSION_KEY,result.referralToken);
+    url.searchParams.delete('ref');
+    if(referral.source === 'path') url.pathname = '/FundingForge.html';
+    history.replaceState(history.state,'',url.pathname + url.search + url.hash);
+  }catch(error){
+    referralCaptureError = error.message || 'Referral link could not be verified.';
+    console.error('Referral link could not be captured:',error);
+    const status = document.getElementById('registrationStatus');
+    if(status){
+      status.className = 'registration-status error';
+      status.textContent = referralCaptureError + ' You can still create an account without the referral.';
+    }
+  }
+}
+const referralCaptureReady = captureReferralLink();
 
 function loadEconomicCalendarWidget(){
   const container = document.getElementById('economicCalendarWidget');
@@ -3145,18 +3447,215 @@ function loadEconomicCalendarWidget(){
   container.replaceChildren(widget,attribution,script);
 }
 
+function formatReferralAmount(cents){
+  return Number.isSafeInteger(cents) && cents >= 0
+    ? '$' + (cents / 100).toFixed(2)
+    : '—';
+}
+
+function referralActivityDate(value){
+  const date = value ? new Date(value) : null;
+  return date && Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(date)
+    : 'Date unavailable';
+}
+
+async function loadReferralDashboard(){
+  const status = document.getElementById('referralLinkStatus');
+  const linkInput = document.getElementById('referralLinkInput');
+  const copyCodeButton = document.getElementById('referralCopyCodeButton');
+  const copyLinkButton = document.getElementById('referralCopyLinkButton');
+  const activityRows = document.getElementById('referralActivityRows');
+  status.className = 'referral-link-status';
+  status.textContent = 'Loading your referral summary…';
+  linkInput.value = '';
+  copyCodeButton.disabled = true;
+  copyLinkButton.disabled = true;
+  [
+    'referralTotalCount',
+    'referralQualifiedCount',
+    'referralPendingCount',
+    'referralEarningsTotal',
+    'referralPendingRewards',
+    'referralPaidTotal',
+    'referralPaidCount'
+  ].forEach(id=>{document.getElementById(id).textContent = '—';});
+  const loadingRow = document.createElement('tr');
+  const loadingCell = document.createElement('td');
+  loadingCell.colSpan = 6;
+  loadingCell.textContent = 'Loading referral activity…';
+  loadingRow.appendChild(loadingCell);
+  activityRows.replaceChildren(loadingRow);
+  try{
+    const response = await fetch(API_BASE + '/api/referrals',{
+      credentials:'same-origin',
+      headers:await firebaseApiHeaders({Accept:'application/json'})
+    });
+    const result = await response.json();
+    if(!response.ok) throw new Error(result.error || 'Referral service is unavailable.');
+    const referralCounts = [
+      result.invitedCount,
+      result.qualifiedCount,
+      result.pendingReferralCount,
+      result.paidCount
+    ];
+    const referralAmounts = [
+      result.totalEarningsAmountCents,
+      result.paidAmountCents
+    ];
+    if(
+      typeof result.referralCode !== 'string' ||
+      !Array.isArray(result.history) ||
+      referralCounts.some(value=>!Number.isSafeInteger(value) || value < 0) ||
+      referralAmounts.some(value=>!Number.isSafeInteger(value) || value < 0) ||
+      typeof result.pendingRewardsTracked !== 'boolean'
+    ){
+      throw new Error('Referral service returned an invalid response.');
+    }
+    const referralCode = ReferralLinks.normalizeReferralCode(result.referralCode);
+    if(!referralCode) throw new Error('Referral service returned an invalid referral code.');
+    linkInput.value = referralCode;
+    copyCodeButton.disabled = false;
+    copyLinkButton.disabled = false;
+    document.getElementById('referralTotalCount').textContent = String(result.invitedCount);
+    document.getElementById('referralQualifiedCount').textContent = String(result.qualifiedCount);
+    document.getElementById('referralPendingCount').textContent = String(result.pendingReferralCount);
+    document.getElementById('referralEarningsTotal').textContent = formatReferralAmount(result.totalEarningsAmountCents);
+    document.getElementById('referralPendingRewards').textContent = result.pendingRewardsTracked
+      ? formatReferralAmount(result.pendingRewardAmountCents)
+      : 'Not tracked';
+    document.getElementById('referralPendingRewardsNote').textContent = result.pendingRewardsTracked
+      ? String(result.pendingRewardCount) + ' pending reward records.'
+      : 'Pending reward payments are not tracked separately.';
+    document.getElementById('referralPaidTotal').textContent = formatReferralAmount(result.paidAmountCents);
+    document.getElementById('referralPaidCount').textContent = String(result.paidCount) + ' paid reward(s).';
+
+    activityRows.replaceChildren();
+    if(!result.history.length){
+      const row = document.createElement('tr');
+      const empty = document.createElement('td');
+      empty.colSpan = 6;
+      empty.textContent = 'No referrals yet. Share your link to get started.';
+      row.appendChild(empty);
+      activityRows.appendChild(row);
+    }else{
+      const purchaseLabels = {
+        no_purchase:'No purchase yet',
+        pending:'Purchase pending',
+        approved:'Purchase approved',
+        rejected:'Purchase rejected',
+        unknown:'Status unavailable'
+      };
+      const rewardLabels = {
+        available:'Available · not paid',
+        credited:'Available · not paid',
+        reserved:'Reserved',
+        paid:'Paid',
+        awaiting_first_approved_purchase:'Awaiting first approved purchase'
+      };
+      result.history.forEach(entry=>{
+        const row = document.createElement('tr');
+        const values = [
+          entry.displayName || 'Name unavailable',
+          referralActivityDate(entry.accountCreatedAt),
+          purchaseLabels[entry.purchaseStatus] || 'Status unavailable',
+          rewardLabels[entry.status] || 'Status unavailable',
+          formatReferralAmount(entry.amountCents)
+        ];
+        values.forEach(value=>{
+          const cell = document.createElement('td');
+          cell.textContent = value;
+          row.appendChild(cell);
+        });
+        const linkCell = document.createElement('td');
+        const copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.className = 'btn btn-primary referral-activity-copy';
+        copyButton.dataset.copyReferralLink = 'true';
+        copyButton.textContent = 'Copy Link';
+        linkCell.appendChild(copyButton);
+        row.appendChild(linkCell);
+        activityRows.appendChild(row);
+      });
+    }
+    status.textContent = referralCaptureError
+      ? 'Your referral link could not be verified on this visit. You can share your referral code below.'
+      : 'A $10 credit becomes available after a referred friend’s first purchase is approved. It is not yet a payout.';
+  }catch(error){
+    status.className = 'referral-link-status error';
+    status.textContent = error.message || 'Referral summary could not be loaded. Try again.';
+    const errorRow = document.createElement('tr');
+    const errorCell = document.createElement('td');
+    errorCell.colSpan = 6;
+    errorCell.textContent = 'Referral activity could not be loaded. ' + (error.message || 'Try again.');
+    errorRow.appendChild(errorCell);
+    activityRows.replaceChildren(errorRow);
+    console.error('Could not load referral dashboard:',error);
+  }
+}
+document.getElementById('referralCopyCodeButton').addEventListener('click',async()=>{
+  const input = document.getElementById('referralLinkInput');
+  const status = document.getElementById('referralLinkStatus');
+  try{
+    if(!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function'){
+      throw new Error('Clipboard access is unavailable. Select and copy the code manually.');
+    }
+    await navigator.clipboard.writeText(input.value);
+    status.className = 'referral-link-status';
+    status.textContent = 'Referral code copied.';
+  }catch(error){
+    status.className = 'referral-link-status error';
+    status.textContent = error.message || 'Could not copy the referral code. Select and copy it manually.';
+  }
+});
+document.getElementById('referralCopyLinkButton').addEventListener('click',async()=>{
+  const input = document.getElementById('referralLinkInput');
+  const status = document.getElementById('referralLinkStatus');
+  try{
+    if(!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function'){
+      throw new Error('Clipboard access is unavailable. Select and copy the link manually.');
+    }
+    await navigator.clipboard.writeText(ReferralLinks.buildBrandedUrl(input.value));
+    status.className = 'referral-link-status';
+    status.textContent = 'Referral link copied.';
+  }catch(error){
+    status.className = 'referral-link-status error';
+    status.textContent = error.message || 'Could not copy the referral link. Select and copy it manually.';
+  }
+});
+document.getElementById('referralActivityRows').addEventListener('click',async event=>{
+  const button = event.target.closest('button[data-copy-referral-link]');
+  if(!button) return;
+  const input = document.getElementById('referralLinkInput');
+  const status = document.getElementById('referralLinkStatus');
+  try{
+    if(!input.value || !navigator.clipboard || typeof navigator.clipboard.writeText !== 'function'){
+      throw new Error('Clipboard access is unavailable. Use Copy Referral Link above instead.');
+    }
+    await navigator.clipboard.writeText(ReferralLinks.buildBrandedUrl(input.value));
+    status.className = 'referral-link-status';
+    status.textContent = 'Referral link copied.';
+  }catch(error){
+    status.className = 'referral-link-status error';
+    status.textContent = error.message || 'Could not copy the referral link.';
+  }
+});
+
 function setDashboardView(view,activeLink){
   const showDesk = view === 'desk';
   const showRewards = view === 'rewards';
+  const showReferrals = view === 'referrals';
   const showCompetitions = view === 'competitions';
   const showCalendar = view === 'calendar';
   const showLeaderboard = view === 'leaderboard';
   traderDeskView.style.display = showDesk ? '' : 'none';
   rewardsView.style.display = showRewards ? '' : 'none';
+  referralsView.style.display = showReferrals ? '' : 'none';
   competitionsView.style.display = showCompetitions ? '' : 'none';
   economicCalendarView.style.display = showCalendar ? '' : 'none';
   leaderboardView.style.display = showLeaderboard ? '' : 'none';
   if(showCalendar) loadEconomicCalendarWidget();
+  if(showReferrals) loadReferralDashboard();
   document.querySelectorAll('.dashboard-side-nav a[data-dashboard-view]').forEach(link=>{
     const active = link === activeLink;
     link.classList.toggle('active',active);
@@ -3388,17 +3887,25 @@ const firebaseAuthStateReady = new Promise(resolve=>{ resolveFirebaseAuthState =
 let firebaseAuthStateInitialized = false;
 let googleProfileRouteUid = '';
 let googleProfileRoutePromise = null;
+let googleProfileVerifiedUid = '';
 if(firebaseAuth){
   firebaseAuthPersistenceReady.then(()=>{
     firebaseAuth.onAuthStateChanged(user=>{
       firebaseCurrentUser = user;
       updateFirebaseAccountControls(user);
       updateDashboardGreeting(user);
+      if(googleProfileVerifiedUid && (!user || googleProfileVerifiedUid !== user.uid)){
+        googleProfileVerifiedUid = '';
+      }
       if(!user){
         googleProfileRouteUid = '';
         googleProfileRoutePromise = null;
       }
       if(firebaseAuthStateInitialized){
+        if(user && hasPendingCheckout()){
+          routeAuthenticatedCheckout(user).catch(error=>showCheckoutAuthError(error));
+          return;
+        }
         if(!user && checkout.classList.contains('active')){
           if(pendingPurchase) savePendingCheckout(pendingPurchase);
           closeCheckout(true);
@@ -3551,6 +4058,11 @@ function showGoogleProfileCheckError(error){
 }
 async function continueWithGoogleUser(user){
   if(!user || !user.uid) throw new Error('Your Google sign-in session is unavailable. Please try again.');
+  if(googleProfileVerifiedUid === user.uid){
+    if(hasPendingCheckout()) await finishPendingCheckout(user);
+    else openDashboard();
+    return;
+  }
   if(googleProfileRouteUid === user.uid && googleProfileRoutePromise) return googleProfileRoutePromise;
   const routePromise = (async()=>{
     try{
@@ -3565,6 +4077,7 @@ async function continueWithGoogleUser(user){
       }
       const profile = result.profile;
       if(result.registrationComplete === true || isGoogleProfileComplete(profile)){
+        googleProfileVerifiedUid = user.uid;
         if(hasPendingCheckout()) await finishPendingCheckout(user);
         else openDashboard();
         return;
@@ -3581,6 +4094,10 @@ async function continueWithGoogleUser(user){
   googleProfileRoutePromise = routePromise;
   try{
     await routePromise;
+    if(googleProfileRoutePromise === routePromise){
+      googleProfileRouteUid = '';
+      googleProfileRoutePromise = null;
+    }
   }catch(error){
     if(googleProfileRoutePromise === routePromise){
       googleProfileRouteUid = '';
@@ -3682,7 +4199,7 @@ forgotForm.addEventListener('submit',async event=>{
   status.textContent = 'Sending reset link…';
   try{
     await firebaseAuthPersistenceReady;
-    const resetUrl = window.location.origin + window.location.pathname;
+    const resetUrl = window.location.origin + '/FundingForge.html';
     await requireFirebaseAuth().sendPasswordResetEmail(email,{url:resetUrl,handleCodeInApp:false});
     status.textContent = 'If an account exists for that email, Firebase will send a password reset link.';
   }catch(error){
@@ -3946,6 +4463,8 @@ ZW|+263|Zimbabwe`.split('\n').map(row=>{
 });
 registrationCountry.insertAdjacentHTML('beforeend',countryData.map(country=>`<option value="${country.code}">${country.name}</option>`).join(''));
 registrationPhoneCode.insertAdjacentHTML('beforeend',countryData.map(country=>`<option value="${country.dial}" data-country="${country.code}">${country.dial} ${country.code}</option>`).join(''));
+const billingCountrySelect = document.getElementById('billingCountry');
+if(billingCountrySelect) billingCountrySelect.insertAdjacentHTML('beforeend',countryData.map(country=>`<option value="${country.code}">${country.name}</option>`).join(''));
 registrationCountry.value = 'IN';
 registrationPhoneCode.value = '+91';
 const countryPhoneCodes = Object.fromEntries(countryData.map(country=>[country.code,country.dial]));
@@ -3994,6 +4513,7 @@ registrationForm.addEventListener('submit',async event=>{
   status.textContent = googleRegistrationMode ? 'Saving your profile…' : 'Creating your account…';
   let createdAccountUser = null;
   try{
+    await referralCaptureReady;
     await firebaseAuthPersistenceReady;
     if(googleRegistrationMode && !requireFirebaseAuth().currentUser){
       throw new Error('Your Google sign-in session expired. Please continue with Google again.');
@@ -4004,9 +4524,16 @@ registrationForm.addEventListener('submit',async event=>{
       const displayName = [firstName,lastName].filter(Boolean).join(' ');
       if(displayName) await credential.user.updateProfile({displayName});
     }
-    const profileResponse = await fetch(API_BASE + '/api/auth/register',{method:'POST',credentials:'same-origin',headers:await firebaseApiHeaders({'Content-Type':'application/json',Accept:'application/json'}),body:JSON.stringify({firstName,lastName,dateOfBirth,country,phone})});
+    const referralToken = sessionStorage.getItem(REFERRAL_TOKEN_SESSION_KEY);
+    const registrationPayload = {firstName,lastName,dateOfBirth,country,phone};
+    if(referralToken) registrationPayload.referralToken = referralToken;
+    const profileResponse = await fetch(API_BASE + '/api/auth/register',{method:'POST',credentials:'same-origin',headers:await firebaseApiHeaders({'Content-Type':'application/json',Accept:'application/json'}),body:JSON.stringify(registrationPayload)});
     const profileResult = await profileResponse.json();
     if(!profileResponse.ok) throw new Error(profileResult.error || 'Could not save your profile.');
+    sessionStorage.removeItem(REFERRAL_TOKEN_SESSION_KEY);
+    if(profileResult.referral && profileResult.referral.applied === false){
+      status.textContent = 'Profile saved. ' + (profileResult.referral.reason || 'The referral could not be applied.');
+    }
     status.className = 'registration-status';
     status.textContent = hasPendingCheckout() ? 'Registration complete. Opening checkout…' : 'Registration complete. Opening your dashboard…';
     setGoogleRegistrationMode(false);
@@ -4043,7 +4570,100 @@ async function loadDashboardAccounts(){
   if(!Array.isArray(accounts)) throw new Error('Invalid account response');
   dashboardAccounts = accounts;
 }
+let billingValidationAttempted = false;
+const billingFields = {
+  full_name:'billingFullName',
+  email:'billingEmail',
+  phone:'billingPhone',
+  country:'billingCountry',
+  state:'billingState',
+  city:'billingCity',
+  postal_code:'billingPostalCode',
+  address_line_1:'billingAddressLine1',
+  address_line_2:'billingAddressLine2',
+  company_name:'billingCompanyName',
+  tax_id:'billingTaxId'
+};
+function validateBillingDetails(focusFirstInvalid=false){
+  const details = {};
+  const errors = {};
+  Object.entries(billingFields).forEach(([key,id])=>{
+    const field = document.getElementById(id);
+    details[key] = field ? field.value.trim() : '';
+  });
+  if(!details.full_name) errors.full_name = 'Enter your full name.';
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.email) || details.email.length > 254){
+    errors.email = 'Enter a valid email address.';
+  }
+  const phoneDigits = details.phone.replace(/\D/g,'');
+  if(!/^\+?[\d\s().-]+$/.test(details.phone) || phoneDigits.length < 7 || phoneDigits.length > 15){
+    errors.phone = 'Enter a valid phone number with 7 to 15 digits.';
+  }
+  if(!countryData.some(country=>country.code === details.country)){
+    errors.country = 'Select a country.';
+  }
+  if(!details.state) errors.state = 'Enter your state or province.';
+  if(!details.city) errors.city = 'Enter your city.';
+  if(!details.postal_code) errors.postal_code = 'Enter your ZIP or postal code.';
+  if(!details.address_line_1) errors.address_line_1 = 'Enter your address line 1.';
+  const firstInvalid = Object.keys(billingFields).find(key=>errors[key]);
+  Object.entries(billingFields).forEach(([key,id])=>{
+    const field = document.getElementById(id);
+    const message = document.getElementById(id + 'Error');
+    if(message) message.textContent = errors[key] || '';
+    if(field){
+      if(errors[key]) field.setAttribute('aria-invalid','true');
+      else field.removeAttribute('aria-invalid');
+    }
+  });
+  if(focusFirstInvalid && firstInvalid){
+    const firstInvalidField = document.getElementById(billingFields[firstInvalid]);
+    firstInvalidField?.scrollIntoView({behavior:'smooth',block:'center'});
+    firstInvalidField?.focus({preventScroll:true});
+  }
+  return {valid:Object.keys(errors).length === 0,details,firstInvalid};
+}
+function continueToPayment(){
+  billingValidationAttempted = true;
+  const status = document.getElementById('billingContinueStatus');
+  const billing = validateBillingDetails(true);
+  if(!billing.valid){
+    billingPaymentUnlocked = false;
+    status.textContent = 'Complete the highlighted billing details before continuing to payment.';
+    setPaymentAccess();
+    return false;
+  }
+  if(!pendingPurchase || !normalizeCheckoutSelection(
+    pendingPurchase.productModel,pendingPurchase.size,pendingPurchase.planKey,pendingPurchase.productId,pendingPurchase.price
+  )){
+    status.textContent = 'Select a valid challenge before continuing to payment.';
+    return false;
+  }
+  if(!hasSelectedTradingPlatform()){
+    status.textContent = 'Choose a trading platform before continuing to payment.';
+    return false;
+  }
+  billingPaymentUnlocked = true;
+  status.textContent = '';
+  setPaymentAccess();
+  document.getElementById('paymentStep')?.scrollIntoView({behavior:'smooth',block:'start'});
+  return true;
+}
+function returnToBilling(){
+  billingPaymentUnlocked = false;
+  setPaymentAccess();
+  document.getElementById('billingStep')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
 async function createPurchase(purchase){
+  if(!billingPaymentUnlocked) throw new Error('Complete billing details before submitting payment.');
+  if(!normalizeCheckoutSelection(purchase.productModel,purchase.size,purchase.planKey,purchase.productId,purchase.price)){
+    throw new Error('Select a valid challenge before submitting payment.');
+  }
+  if(!isValidTradingPlatform(selectedTradingPlatform)){
+    throw new Error('Choose a trading platform before submitting payment.');
+  }
+  const billing = validateBillingDetails();
+  if(!billing.valid) throw new Error('Complete the highlighted billing details before submitting payment.');
   const proofInput = document.getElementById('proofInput');
   const proof = proofInput && proofInput.files[0];
   if(!proof) throw new Error('Attach a payment screenshot before submitting.');
@@ -4056,6 +4676,8 @@ async function createPurchase(purchase){
   form.set('submissionId',pendingSubmissionId);
   form.set('currency',currentCurrency);
   form.set('network',document.querySelector('#netTabs .net-tab.active')?.dataset.net || '');
+  form.set('tradingPlatform',selectedTradingPlatform);
+  form.set('billing_details',JSON.stringify(billing.details));
   form.set('proof',proof);
   let headers;
   try{ headers = await firebaseApiHeaders({Accept:'application/json'}); }
@@ -4123,11 +4745,64 @@ let currentCurrency = 'usdt';
 let pendingPurchase = null;
 let pendingSubmissionId = '';
 let qrInstance = null;
+let billingPaymentUnlocked = false;
 const activeCouponCode = 'CRAZYFUNDED30';
 let checkoutBasePrice = 0;
 let couponApplied = false;
 let pendingHomepageCoupon = '';
 const pendingCheckoutStorageKey = 'dailyFundedPendingCheckout';
+let pendingCheckoutResumeKey = '';
+const tradingPlatforms = new Set(['mt5','ctrader','match_trader','cf']);
+let selectedTradingPlatform = '';
+let checkoutOwnerUid = '';
+
+function isValidTradingPlatform(platform){
+  return tradingPlatforms.has(platform);
+}
+
+function hasSelectedTradingPlatform(){
+  return isValidTradingPlatform(selectedTradingPlatform);
+}
+
+function setPaymentAccess(){
+  const enabled = Boolean(billingPaymentUnlocked && hasSelectedTradingPlatform());
+  const billingStep = document.getElementById('billingStep');
+  const paymentStep = document.getElementById('paymentStep');
+  if(billingStep) billingStep.hidden = enabled;
+  if(paymentStep) paymentStep.hidden = !enabled;
+  ['upiOpenBtn','copyBtn','qrOpenBtn','attachBtn','proofInput'].forEach(id=>{
+    const control = document.getElementById(id);
+    if(control) control.disabled = !enabled;
+  });
+  const paymentButton = document.getElementById('coPayBtn');
+  if(paymentButton){
+    paymentButton.setAttribute('aria-disabled',String(!enabled));
+    paymentButton.disabled = !enabled;
+  }
+  if(!enabled){
+    if(typeof closeQrPopup === 'function') closeQrPopup(false);
+  }
+}
+
+function setTradingPlatform(platform){
+  const wasUnlocked = hasSelectedTradingPlatform();
+  selectedTradingPlatform = isValidTradingPlatform(platform) ? platform : '';
+  const platformLabels = {
+    mt5: 'MetaTrader 5',
+    ctrader: 'cTrader',
+    match_trader: 'Match-Trader',
+    cf: 'CF Terminal'
+  };
+  const platformSummary = document.getElementById('coPlatform');
+  if(platformSummary) platformSummary.textContent = platformLabels[selectedTradingPlatform] || '—';
+  document.querySelectorAll('input[name="tradingPlatform"]').forEach(input=>{
+    input.checked = input.value === selectedTradingPlatform;
+    const card = input.closest('.platform-card');
+    if(card) card.classList.toggle('selected',input.checked);
+  });
+  setPaymentAccess();
+  if(selectedTradingPlatform && !wasUnlocked) setCurrency('usdt');
+}
 
 function normalizeCheckoutSelection(model, size, planKey, productId, submittedPrice){
   if(typeof model !== 'string' || typeof planKey !== 'string' || typeof productId !== 'string') return null;
@@ -4138,7 +4813,7 @@ function normalizeCheckoutSelection(model, size, planKey, productId, submittedPr
     : expectedModel === 'classic' && (sizes.includes(size) || planKey === 'instant' && size === 2500));
   if(!plan || !expectedModel || model !== expectedModel || !validSize || productId !== (plan.productId || planKey)) return null;
   let price;
-  if(plan.prices){
+  if(Number.isFinite(plan.prices?.[size])){
     price = plan.prices[size];
   }else{
     const basePrice = size === 2500 ? Math.round(size * plan.perK / 1000) : Math.max(plan.min,Math.round(size * plan.perK / 1000));
@@ -4250,14 +4925,63 @@ async function finishPendingCheckout(user){
     return;
   }
   if(user && user.uid !== currentUser.uid) throw new Error('Your sign-in session changed. Please try again.');
+  if(checkoutOwnerUid && checkoutOwnerUid !== currentUser.uid) setTradingPlatform('');
+  checkoutOwnerUid = currentUser.uid;
   const selection = readPendingCheckout();
   if(!selection){
     showPendingCheckoutError('The selected account is no longer available. Please choose another account.');
     return;
   }
+  const resumeKey = JSON.stringify([currentUser.uid,selection.market,selection.productModel,selection.productId,selection.planKey,selection.size]);
+  if(pendingCheckoutResumeKey === resumeKey) return;
+  pendingCheckoutResumeKey = resumeKey;
   if(registrationSection.classList.contains('active')) closeRegistration();
   pendingPurchase = selection;
-  renderCheckout(selection);
+  try{
+    const accountDetails = await loadCheckoutAccountDetails(currentUser);
+    renderCheckout(selection,accountDetails);
+  }catch(error){
+    if(pendingCheckoutResumeKey === resumeKey) pendingCheckoutResumeKey = '';
+    throw error;
+  }
+}
+
+function mapAccountToBillingDetails(profile,user){
+  const firstName = typeof profile.firstName === 'string' ? profile.firstName.trim() : '';
+  const lastName = typeof profile.lastName === 'string' ? profile.lastName.trim() : '';
+  const profileName = [firstName,lastName].filter(Boolean).join(' ');
+  const displayName = typeof user.displayName === 'string' ? user.displayName.trim() : '';
+  return {
+    full_name: profileName || displayName,
+    email: typeof profile.email === 'string' ? profile.email.trim() : '',
+    phone: typeof profile.phone === 'string' ? profile.phone.trim() : '',
+    country: typeof profile.country === 'string' ? profile.country.trim().toUpperCase() : ''
+  };
+}
+
+async function loadCheckoutAccountDetails(user){
+  let profile = {};
+  let profileEmail = '';
+  let message = 'Account details are filled in when available. Complete any required fields that remain blank.';
+  try{
+    const response = await fetch(API_BASE + '/api/auth/me',{
+      credentials:'same-origin',
+      headers:await firebaseApiHeaders({Accept:'application/json'})
+    });
+    if(!response.ok) throw new Error('Profile service returned HTTP ' + response.status + '.');
+    const result = await response.json();
+    if(!result || result.uid !== user.uid || !result.profile || typeof result.profile !== 'object' || Array.isArray(result.profile)){
+      throw new Error('Profile service returned an invalid profile.');
+    }
+    profile = result.profile;
+    profileEmail = typeof result.email === 'string' ? result.email.trim() : '';
+  }catch(error){
+    console.error('Could not load account details for checkout:',error);
+    message = 'We could not load your saved account details. Please complete the required billing fields below.';
+  }
+  const billing = mapAccountToBillingDetails(profile,user);
+  if(!billing.email) billing.email = profileEmail || (typeof user.email === 'string' ? user.email.trim() : '');
+  return {billing,message};
 }
 
 function formatCheckoutAmount(amount){
@@ -4330,21 +5054,51 @@ async function openCheckout(size, label, price, split, planKey, productId=planKe
   pendingPurchase = selection;
   savePendingCheckout(selection);
   try{
-    await firebaseAuthStateReady;
-    if(!firebaseAuth || !firebaseAuth.currentUser){
+    let user = firebaseAuth && firebaseAuth.currentUser;
+    if(!user){
+      await firebaseAuthStateReady;
+      user = firebaseAuth && firebaseAuth.currentUser;
+    }
+    if(!user){
       openRegistration();
-      showLoginForm();
-      loginStatus.textContent = 'Sign in or create an account to continue to checkout.';
+      showRegistrationForm();
+      document.getElementById('registrationStatus').textContent = 'Create an account or sign in to continue to checkout.';
       return;
     }
-    await routeAuthenticatedCheckout(firebaseAuth.currentUser);
+    await routeAuthenticatedCheckout(user);
   }catch(error){
     showCheckoutAuthError(error);
   }
 }
 
-function renderCheckout(selection){
+function renderCheckout(selection,accountDetails={billing:{},message:''}){
   pendingPurchase = selection;
+  const submissionForm = document.getElementById('checkoutSubmissionForm');
+  if(submissionForm) submissionForm.reset();
+  const billing = accountDetails.billing || {};
+  for(const [key,id] of Object.entries({
+    full_name:'billingFullName',
+    email:'billingEmail',
+    phone:'billingPhone',
+    country:'billingCountry'
+  })){
+    const field = document.getElementById(id);
+    const value = typeof billing[key] === 'string' ? billing[key].trim() : '';
+    if(field && value) field.value = value;
+  }
+  document.getElementById('billingAccountInfoStatus').textContent = accountDetails.message
+    || 'Account details are filled in when available. Complete any required fields that remain blank.';
+  billingValidationAttempted = false;
+  billingPaymentUnlocked = false;
+  document.getElementById('billingContinueStatus').textContent = '';
+  Object.values(billingFields).forEach(id=>{
+    const field = document.getElementById(id);
+    const message = document.getElementById(id + 'Error');
+    if(field) field.removeAttribute('aria-invalid');
+    if(message) message.textContent = '';
+  });
+  setTradingPlatform('cf');
+  currentCurrency = 'usdt';
   pendingSubmissionId = getPendingSubmissionId(pendingPurchase);
   checkoutBasePrice = selection.price;
   const classicCouponEligible = selection.productModel === 'classic';
@@ -4389,9 +5143,11 @@ function renderCheckout(selection){
   if(attachPreview) attachPreview.style.display = 'none';
   if(attachBtn){ attachBtn.classList.remove('has-file'); attachBtn.textContent = '📎 Attach payment screenshot'; }
 
-  setCurrency('usdt');
 }
 function closeCheckout(preservePending=false){
+  pendingCheckoutResumeKey = '';
+  checkoutOwnerUid = '';
+  setTradingPlatform('');
   closeQrPopup(false);
   closeUpiPopup(false);
   if(!preservePending){
@@ -4404,6 +5160,7 @@ function closeCheckout(preservePending=false){
   document.body.classList.remove('checkout-open');
 }
 function setCurrency(cur){
+  if(!hasSelectedTradingPlatform()) return;
   currentCurrency = cur;
   document.querySelectorAll('#curTabs .net-tab').forEach(t=> t.classList.toggle('active', t.dataset.cur===cur));
   const netTabsEl = document.getElementById('netTabs');
@@ -4416,6 +5173,7 @@ function findNetwork(key){
   return null;
 }
 function setNetwork(netKey){
+  if(!hasSelectedTradingPlatform()) return;
   document.querySelectorAll('#netTabs .net-tab').forEach(t=> t.classList.toggle('active', t.dataset.net===netKey));
   const net = findNetwork(netKey);
   if(!net) return;
@@ -4427,7 +5185,7 @@ function setNetwork(netKey){
   document.getElementById('qrModalAddress').textContent = net.addr;
   const qrEl = document.getElementById('qrCode');
   const qrUnavailableEl = document.getElementById('qrUnavailable');
-  qrEl.innerHTML = '';
+  qrEl.replaceChildren();
   if(typeof QRCode !== 'undefined'){
     qrInstance = new QRCode(qrEl, { text: net.addr, width:160, height:160, colorDark:'#0a0d0c', colorLight:'#ffffff' });
     qrUnavailableEl.style.display = 'none';
@@ -4449,6 +5207,7 @@ if(qrOpenBtnEl && qrPopupEl){
   qrOpenBtnEl.setAttribute('aria-haspopup','dialog');
   qrOpenBtnEl.setAttribute('aria-expanded','false');
   qrOpenBtnEl.addEventListener('click',()=>{
+    if(!hasSelectedTradingPlatform()) return;
     qrPopupEl.classList.add('show');
     qrOpenBtnEl.setAttribute('aria-expanded','true');
     qrCloseBtnEl.focus();
@@ -4477,6 +5236,7 @@ if(upiOpenBtnEl && upiPopupEl){
   upiOpenBtnEl.setAttribute('aria-haspopup','dialog');
   upiOpenBtnEl.setAttribute('aria-expanded','false');
   upiOpenBtnEl.addEventListener('click',()=>{
+    if(!hasSelectedTradingPlatform()) return;
     upiPopupEl.classList.add('show');
     upiOpenBtnEl.setAttribute('aria-expanded','true');
     upiCloseBtnEl.focus();
@@ -4494,6 +5254,7 @@ if(upiPopupEl){
 const curTabsEl = document.getElementById('curTabs');
 if(curTabsEl){
   curTabsEl.addEventListener('click', e=>{
+    if(!hasSelectedTradingPlatform()) return;
     const btn = e.target.closest('.net-tab');
     if(btn) setCurrency(btn.dataset.cur);
   });
@@ -4501,27 +5262,69 @@ if(curTabsEl){
 const netTabsEl = document.getElementById('netTabs');
 if(netTabsEl){
   netTabsEl.addEventListener('click', e=>{
+    if(!hasSelectedTradingPlatform()) return;
     const btn = e.target.closest('.net-tab');
     if(btn) setNetwork(btn.dataset.net);
   });
 }
+document.querySelectorAll('input[name="tradingPlatform"]').forEach(input=>{
+  input.addEventListener('change',()=>{
+    if(input.checked) setTradingPlatform(input.value);
+  });
+});
 const copyBtnEl = document.getElementById('copyBtn');
 if(copyBtnEl){
-  copyBtnEl.addEventListener('click', ()=>{
-    const text = document.getElementById('addrText').textContent;
-    navigator.clipboard.writeText(text).then(()=>{
-      copyBtnEl.textContent = 'Copied';
-      copyBtnEl.classList.add('copied');
-      setTimeout(()=>{ copyBtnEl.textContent = 'Copy'; copyBtnEl.classList.remove('copied'); }, 1600);
-    }).catch(()=>{});
+  let copyButtonResetTimer = null;
+  const showCopyStatus = (copied,message)=>{
+    clearTimeout(copyButtonResetTimer);
+    copyBtnEl.textContent = message;
+    copyBtnEl.classList.toggle('copied',copied);
+    copyButtonResetTimer = setTimeout(()=>{
+      copyBtnEl.textContent = 'Copy Address';
+      copyBtnEl.classList.remove('copied');
+    },1600);
+  };
+  copyBtnEl.addEventListener('click',async ()=>{
+    if(!billingPaymentUnlocked || !hasSelectedTradingPlatform()) return;
+    const addressEl = document.getElementById('addrText');
+    const address = addressEl.textContent;
+    if(!address) return;
+    if(navigator.clipboard && window.isSecureContext){
+      try{
+        await navigator.clipboard.writeText(address);
+        showCopyStatus(true,'Copied ✓');
+        return;
+      }catch(error){}
+    }
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(addressEl);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    let copied = false;
+    try{ copied = document.execCommand('copy'); }
+    catch(error){}
+    if(copied){
+      selection.removeAllRanges();
+      showCopyStatus(true,'Copied ✓');
+    }else{
+      showCopyStatus(false,'Address selected — press Ctrl+C');
+    }
   });
 }
 const attachBtnEl = document.getElementById('attachBtn');
 const proofInputEl = document.getElementById('proofInput');
 const attachPreviewEl = document.getElementById('attachPreview');
 if(attachBtnEl && proofInputEl){
-  attachBtnEl.addEventListener('click', ()=> proofInputEl.click());
+  attachBtnEl.addEventListener('click', ()=>{
+    if(!hasSelectedTradingPlatform()) return;
+    proofInputEl.click();
+  });
   proofInputEl.addEventListener('change', ()=>{
+    if(!hasSelectedTradingPlatform()){
+      proofInputEl.value = '';
+      return;
+    }
     const file = proofInputEl.files[0];
     if(!file) return;
     const reader = new FileReader();
@@ -4547,10 +5350,53 @@ if(attachBtnEl && proofInputEl){
 const coBackEl = document.getElementById('coBack');
 if(coBackEl) coBackEl.addEventListener('click', ()=>{ closeCheckout(); document.querySelector('#pricing').scrollIntoView({behavior:'smooth'}); });
 const coPayBtnEl = document.getElementById('coPayBtn');
-if(coPayBtnEl){
-  coPayBtnEl.addEventListener('click', async e=>{
+const checkoutSubmissionFormEl = document.getElementById('checkoutSubmissionForm');
+const billingContinueBtnEl = document.getElementById('billingContinueBtn');
+if(billingContinueBtnEl) billingContinueBtnEl.addEventListener('click',continueToPayment);
+const billingBackBtnEl = document.getElementById('billingBackBtn');
+if(billingBackBtnEl) billingBackBtnEl.addEventListener('click',returnToBilling);
+if(checkoutSubmissionFormEl && coPayBtnEl){
+  const refreshBillingValidation = ()=>{
+    if(!billingValidationAttempted) return;
+    const billing = validateBillingDetails();
+    const status = document.getElementById('billingContinueStatus');
+    if(!billing.valid){
+      if(billingPaymentUnlocked){
+        billingPaymentUnlocked = false;
+        setPaymentAccess();
+      }
+      status.textContent = 'Complete the highlighted billing details before continuing to payment.';
+    }else{
+      status.textContent = '';
+    }
+  };
+  checkoutSubmissionFormEl.addEventListener('input',refreshBillingValidation);
+  checkoutSubmissionFormEl.addEventListener('change',refreshBillingValidation);
+  checkoutSubmissionFormEl.addEventListener('submit', async e=>{
     e.preventDefault();
+    if(!billingPaymentUnlocked){
+      continueToPayment();
+      return;
+    }
+    billingValidationAttempted = true;
+    if(!hasSelectedTradingPlatform()){
+      document.getElementById('billingContinueStatus').textContent = 'Choose a trading platform before submitting payment.';
+      return;
+    }
     if(!pendingPurchase || coPayBtnEl.dataset.submitting === 'true') return;
+    if(!normalizeCheckoutSelection(pendingPurchase.productModel,pendingPurchase.size,pendingPurchase.planKey,pendingPurchase.productId,pendingPurchase.price)){
+      document.getElementById('couponStatus').className = 'coupon-status error';
+      document.getElementById('couponStatus').textContent = 'Select a valid challenge before submitting payment.';
+      return;
+    }
+    const billing = validateBillingDetails(true);
+    if(!billing.valid){
+      billingPaymentUnlocked = false;
+      document.getElementById('billingContinueStatus').textContent = 'Complete the highlighted billing details before continuing to payment.';
+      setPaymentAccess();
+      validateBillingDetails(true);
+      return;
+    }
     const couponCode = document.getElementById('couponCodeInput').value.trim();
     if(couponCode && couponCode.toUpperCase() !== activeCouponCode){
       const couponStatus = document.getElementById('couponStatus');
@@ -4570,6 +5416,7 @@ if(coPayBtnEl){
       return;
     }
     coPayBtnEl.dataset.submitting = 'true';
+    coPayBtnEl.disabled = true;
     coPayBtnEl.setAttribute('aria-disabled','true');
     try{
       const purchase = await createPurchase(pendingPurchase);
@@ -4583,7 +5430,8 @@ if(coPayBtnEl){
       status.textContent = error.message;
     }finally{
       delete coPayBtnEl.dataset.submitting;
-      coPayBtnEl.removeAttribute('aria-disabled');
+      coPayBtnEl.disabled = !(billingPaymentUnlocked && hasSelectedTradingPlatform());
+      coPayBtnEl.setAttribute('aria-disabled',String(coPayBtnEl.disabled));
     }
   });
 }
@@ -4610,6 +5458,7 @@ async function refreshDashboard(preferredAccountId){
     document.querySelector('#dashEmpty h4').textContent = 'Account service unavailable';
     document.querySelector('#dashEmpty p').textContent = 'The account service could not be reached. Your account data has not been changed.';
   }
+  await loadPayoutRequestHistory();
   const accounts = getAccounts();
   const sel = document.getElementById('accSelect');
   const empty = document.getElementById('dashEmpty');
@@ -4622,6 +5471,7 @@ async function refreshDashboard(preferredAccountId){
     content.style.display = 'none';
     selectWrap.style.display = 'none';
     if(payoutBtn){ payoutBtn.style.display = ''; payoutBtn.disabled = true; }
+    loadPayoutEligibility('');
     renderRewardsCertificate();
     return;
   }
@@ -4629,7 +5479,7 @@ async function refreshDashboard(preferredAccountId){
   empty.style.display = 'none';
   content.style.display = '';
   selectWrap.style.display = '';
-  if(payoutBtn){ payoutBtn.style.display = ''; payoutBtn.disabled = !accounts.some(account=>account.status === 'active' && Number(account.withdrawableProfit) > 0); }
+  if(payoutBtn){ payoutBtn.style.display = ''; payoutBtn.disabled = true; }
 
   sel.innerHTML = accounts.map(a=>`<option value="${a.id}">$${a.size.toLocaleString()} · ${a.label}</option>`).join('');
   if(preferredAccountId && accounts.some(account=>account.id===preferredAccountId)) sel.value = preferredAccountId;
@@ -4637,7 +5487,132 @@ async function refreshDashboard(preferredAccountId){
 
   syncDashboardAccountPicker(accounts);
   renderAccount();
+  loadPayoutEligibility(sel.value);
   renderRewardsCertificate();
+}
+
+function formatPayoutDate(value){
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})
+    : '—';
+}
+function payoutStatusLabel(status){
+  const labels = {pending_review:'Pending Review'};
+  return labels[status] || (typeof status === 'string' ? status.replaceAll('_',' ') : 'Unknown');
+}
+async function loadPayoutRequestHistory(){
+  const rows = document.getElementById('payoutHistoryRows');
+  if(!rows) return [];
+  rows.replaceChildren();
+  const loadingRow = document.createElement('tr');
+  const loadingCell = document.createElement('td');
+  loadingCell.colSpan = 6;
+  loadingCell.textContent = 'Loading payout request history…';
+  loadingRow.appendChild(loadingCell);
+  rows.appendChild(loadingRow);
+  try{
+    const response = await fetch(API_BASE + '/api/payouts/requests',{
+      credentials:'same-origin',
+      headers:await firebaseApiHeaders({Accept:'application/json'})
+    });
+    const result = await response.json();
+    if(!response.ok) throw new Error(result.error || 'Payout history is unavailable.');
+    if(!Array.isArray(result.requests)) throw new Error('Payout history returned an invalid response.');
+    rows.replaceChildren();
+    if(!result.requests.length){
+      const row = document.createElement('tr');
+      const empty = document.createElement('td');
+      empty.className = 'rewards-empty';
+      empty.colSpan = 6;
+      empty.innerHTML = '<strong>No payout requests yet</strong>Your submitted payout requests will appear here.';
+      row.appendChild(empty);
+      rows.appendChild(row);
+      return result.requests;
+    }
+    result.requests.forEach(item=>{
+      const row = document.createElement('tr');
+      const method = item.method === 'crypto' && item.network
+        ? 'Crypto · ' + item.network
+        : item.method === 'rise' ? 'Rise' : item.method === 'bank' ? 'Bank transfer' : '—';
+      const amountCents = Number(item.amountCents);
+      const values = [
+        typeof item.id === 'string' ? item.id : '—',
+        formatPayoutDate(item.createdAt),
+        Number.isSafeInteger(amountCents) ? '$' + (amountCents / 100).toFixed(2) : '—',
+        method,
+        payoutStatusLabel(item.status),
+        formatPayoutDate(item.updatedAt || item.createdAt)
+      ];
+      values.forEach(value=>{
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.appendChild(cell);
+      });
+      rows.appendChild(row);
+    });
+    return result.requests;
+  }catch(error){
+    rows.replaceChildren();
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.textContent = 'Payout history is temporarily unavailable. Reopen the dashboard to try again.';
+    row.appendChild(cell);
+    rows.appendChild(row);
+    return [];
+  }
+}
+
+const payoutSuccessPopup = document.getElementById('payoutSuccessPopup');
+const payoutSuccessCard = payoutSuccessPopup && payoutSuccessPopup.querySelector('.payout-success-card');
+const payoutSuccessCloseButton = document.getElementById('payoutSuccessClose');
+let payoutSuccessTimer = null;
+let payoutSuccessCloseTimer = null;
+function closePayoutSuccess(restoreFocus=true){
+  if(!payoutSuccessPopup || payoutSuccessPopup.hidden) return;
+  clearTimeout(payoutSuccessTimer);
+  payoutSuccessCard.classList.add('is-closing');
+  clearTimeout(payoutSuccessCloseTimer);
+  payoutSuccessCloseTimer = setTimeout(()=>{
+    payoutSuccessPopup.classList.remove('show');
+    payoutSuccessPopup.hidden = true;
+    payoutSuccessCard.classList.remove('is-closing');
+    if(restoreFocus && payoutRequestButton) payoutRequestButton.focus();
+  },220);
+}
+function showPayoutSuccess(result,amount,method){
+  if(!payoutSuccessPopup || typeof result.requestId !== 'string') return;
+  document.getElementById('payoutSuccessReference').textContent = result.requestId;
+  document.getElementById('payoutSuccessSubmitted').textContent = formatPayoutDate(result.submittedAt);
+  document.getElementById('payoutSuccessAmount').textContent = '$' + amount.toFixed(2) + ' USD';
+  document.getElementById('payoutSuccessMethod').textContent = method === 'crypto'
+    ? 'Crypto · ' + document.getElementById('withdrawNetwork').value
+    : method === 'rise' ? 'Rise' : 'Bank transfer';
+  document.getElementById('payoutSuccessEligibility').textContent = formatPayoutDate(result.estimatedEligibleAt);
+  document.getElementById('payoutSuccessStatus').textContent = payoutStatusLabel(result.status);
+  payoutRequestPopup.classList.remove('show');
+  payoutSuccessPopup.hidden = false;
+  payoutSuccessCard.classList.remove('is-closing');
+  payoutSuccessPopup.classList.add('show');
+  payoutSuccessCloseButton.focus();
+  clearTimeout(payoutSuccessTimer);
+  payoutSuccessTimer = setTimeout(()=>closePayoutSuccess(),4000);
+}
+if(payoutSuccessCloseButton) payoutSuccessCloseButton.addEventListener('click',()=>closePayoutSuccess());
+if(payoutSuccessPopup){
+  payoutSuccessPopup.addEventListener('click',event=>{
+    if(event.target === payoutSuccessPopup) closePayoutSuccess();
+  });
+  payoutSuccessPopup.addEventListener('keydown',event=>{
+    if(event.key === 'Escape'){
+      event.preventDefault();
+      closePayoutSuccess();
+    }else if(event.key === 'Tab'){
+      event.preventDefault();
+      payoutSuccessCloseButton.focus();
+    }
+  });
 }
 
 function renderAccount(){
@@ -4661,7 +5636,7 @@ function renderAccount(){
   const tradingActive = data.status === 'active' && data.tradingEnabled === true;
   document.getElementById('dBalance').textContent = tradingActive ? '—' : money(data.balance);
   document.getElementById('dEquity').textContent = tradingActive ? '—' : money(data.equity);
-  document.getElementById('dWithdraw').textContent = money(data.withdrawableProfit);
+  document.getElementById('dWithdraw').textContent = 'Unavailable';
   document.getElementById('dDays').textContent = Number.isInteger(data.tradingDays) ? data.tradingDays : '—';
 
   const rulesPanel = document.getElementById('dashboardRulesPanel');
@@ -5866,6 +6841,7 @@ const accSelectEl = document.getElementById('accSelect');
 if(accSelectEl) accSelectEl.addEventListener('change',()=>{
   syncDashboardAccountPicker(getAccounts());
   renderAccount();
+  loadPayoutEligibility(accSelectEl.value);
   renderRewardsCertificate();
 });
 
@@ -5942,11 +6918,99 @@ const payoutMethodRules = {
   bank:{minimum:100,fee:12,note:'Minimum $100 · $12 fee per transfer',timing:'Bank transfers usually take 2–3 business days after approval.'}
 };
 let selectedPayoutMethod = 'crypto';
+let payoutEligibilitySequence = 0;
+let payoutEligibilityState = {accountId:null,status:'unavailable',amountCents:null};
+const payoutEligibilityStatus = document.getElementById('payoutEligibilityStatus');
+
+function payoutEligibilityReasonText(reasonCodes){
+  const messages = {
+    profit_ledger_unverified:'The trading-profit ledger has not been verified.',
+    trading_costs_and_adjustments_unavailable:'Trading costs and adjustments cannot be verified.',
+    withdrawal_ledger_unavailable:'Previous payouts and reservations cannot be verified.',
+    payout_period_boundaries_unconfigured:'Payout-period boundaries have not been configured.',
+    payout_eligibility_inputs_unverified:'All required payout eligibility rules and records are not yet verifiable.',
+    open_positions_present:'Close all open positions before payout eligibility can be assessed.',
+    account_rule_snapshot_unavailable:'The account rules are unavailable.',
+    account_profit_split_unverified:'The account profit split cannot be verified.',
+    account_not_active:'The trading account is not active.'
+  };
+  return [...new Set((Array.isArray(reasonCodes) ? reasonCodes : [])
+    .map(code=>messages[code])
+    .filter(Boolean))].join(' ');
+}
+
+async function loadPayoutEligibility(accountId){
+  const requestId = ++payoutEligibilitySequence;
+  payoutEligibilityState = {accountId:accountId || null,status:'unavailable',amountCents:null};
+  document.getElementById('dWithdraw').textContent = 'Unavailable';
+  if(payoutRequestButton) payoutRequestButton.disabled = true;
+  if(payoutEligibilityStatus){
+    payoutEligibilityStatus.textContent = accountId
+      ? 'Checking payout eligibility for the selected account…'
+      : 'Payout eligibility is unavailable because no account is selected.';
+  }
+  updateWithdrawalEstimate();
+  if(!accountId) return;
+
+  try{
+    const response = await fetch(API_BASE + '/api/payouts/eligibility?accountId=' + encodeURIComponent(accountId),{
+      credentials:'same-origin',
+      headers:await firebaseApiHeaders({Accept:'application/json'})
+    });
+    const result = await response.json();
+    if(!response.ok) throw new Error(result.error || 'Payout eligibility is unavailable.');
+    const eligibility = result && result.schema_version === 'payout-eligibility.v1'
+      && result.account_id === accountId ? result.eligibility : null;
+    if(!eligibility || !['eligible','ineligible','unavailable'].includes(eligibility.status)){
+      throw new Error('Payout eligibility returned an invalid response.');
+    }
+    if(requestId !== payoutEligibilitySequence) return;
+
+    let amountCents = null;
+    if(eligibility.status === 'eligible'){
+      if(!Number.isSafeInteger(eligibility.amount_cents) || eligibility.amount_cents < 0){
+        throw new Error('Payout eligibility returned an invalid amount.');
+      }
+      amountCents = eligibility.amount_cents;
+    }
+    payoutEligibilityState = {accountId,status:eligibility.status,amountCents};
+    if(amountCents !== null){
+      document.getElementById('dWithdraw').textContent = '$' + (amountCents / 100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    }
+    if(payoutEligibilityStatus){
+      if(eligibility.status === 'eligible' && amountCents > 0){
+        payoutEligibilityStatus.textContent = 'Verified eligible trading amount: $' + (amountCents / 100).toFixed(2) + '. Referral credits are not included.';
+      }else if(eligibility.status === 'ineligible'){
+        payoutEligibilityStatus.textContent = payoutEligibilityReasonText(eligibility.reason_codes)
+          || 'This account is not currently eligible for a payout.';
+      }else{
+        const details = payoutEligibilityReasonText(eligibility.reason_codes);
+        payoutEligibilityStatus.textContent = 'Payout eligibility is unavailable. No payout amount can be verified, so requests are disabled.'
+          + (details ? ' ' + details : '');
+      }
+    }
+    if(payoutRequestButton){
+      payoutRequestButton.disabled = eligibility.status !== 'eligible' || amountCents === null || amountCents <= 0;
+    }
+    updateWithdrawalEstimate();
+  }catch(error){
+    if(requestId !== payoutEligibilitySequence) return;
+    payoutEligibilityState = {accountId,status:'unavailable',amountCents:null};
+    document.getElementById('dWithdraw').textContent = 'Unavailable';
+    if(payoutRequestButton) payoutRequestButton.disabled = true;
+    if(payoutEligibilityStatus){
+      payoutEligibilityStatus.textContent = 'Payout eligibility could not be verified. Requests are disabled until the service is available.';
+    }
+    updateWithdrawalEstimate();
+  }
+}
 
 function currentWithdrawableAmount(){
-  const value = document.getElementById('dWithdraw').textContent.replace(/[^0-9.]/g,'');
-  const amount = Number(value);
-  return Number.isFinite(amount) ? amount : 0;
+  return payoutEligibilityState.status === 'eligible'
+    && payoutEligibilityState.accountId === document.getElementById('accSelect').value
+    && Number.isSafeInteger(payoutEligibilityState.amountCents)
+    ? payoutEligibilityState.amountCents / 100
+    : 0;
 }
 function closePayoutRequest(restoreFocus=true){
   if(!payoutRequestPopup) return;
@@ -5962,7 +7026,9 @@ function updateWithdrawalEstimate(){
   document.getElementById('withdrawFee').textContent = '$' + fee.toFixed(2);
   document.getElementById('withdrawNet').textContent = '$' + net.toFixed(2);
   const available = currentWithdrawableAmount();
-  payoutRequestSubmit.disabled = available < rules.minimum || amount < rules.minimum || amount > available;
+  payoutRequestSubmit.disabled = payoutEligibilityState.status !== 'eligible'
+    || payoutEligibilityState.accountId !== document.getElementById('accSelect').value
+    || available < rules.minimum || amount < rules.minimum || amount > available;
 }
 function setPayoutMethod(method){
   if(!payoutMethodRules[method]) return;
@@ -6003,7 +7069,12 @@ payoutRequestAmount.addEventListener('input',()=>{
 });
 if(payoutRequestButton && payoutRequestPopup){
   payoutRequestButton.setAttribute('aria-haspopup','dialog');
-  payoutRequestButton.addEventListener('click',()=>{
+  payoutRequestButton.addEventListener('click',async()=>{
+    const accountId = document.getElementById('accSelect').value;
+    await loadPayoutEligibility(accountId);
+    if(payoutEligibilityState.accountId !== accountId
+      || payoutEligibilityState.status !== 'eligible'
+      || currentWithdrawableAmount() <= 0) return;
     const available = currentWithdrawableAmount();
     document.getElementById('withdrawAvailable').textContent = '$' + available.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     payoutRequestAmount.max = available.toFixed(2);
@@ -6011,7 +7082,9 @@ if(payoutRequestButton && payoutRequestPopup){
     setPayoutMethod('crypto');
     selectWithdrawNetwork('USDT-TRC20',false);
     payoutRequestStatus.className = 'withdraw-status' + (available < payoutMethodRules.crypto.minimum ? ' error' : '');
-    payoutRequestStatus.textContent = available >= payoutMethodRules.crypto.minimum ? 'Requests are subject to account and payment verification.' : 'Available balance is below the $50 minimum withdrawal.';
+    payoutRequestStatus.textContent = available >= payoutMethodRules.crypto.minimum
+      ? 'Only the server-verified trading amount is available for request. Referral credits are not included.'
+      : 'Verified eligible amount is below the $50 minimum withdrawal.';
     payoutRequestPopup.classList.add('show');
     payoutRequestClose.focus();
   });
@@ -6042,6 +7115,13 @@ if(payoutRequestForm){
             routingCode:document.getElementById('withdrawBankRouting').value.trim()
           };
     const accountId = document.getElementById('accSelect').value;
+    const payoutMethod = selectedPayoutMethod;
+    if(payoutEligibilityState.accountId !== accountId || payoutEligibilityState.status !== 'eligible'){
+      payoutRequestSubmit.disabled = true;
+      payoutRequestStatus.className = 'withdraw-status error';
+      payoutRequestStatus.textContent = 'Payout eligibility is unavailable. No payout request was submitted.';
+      return;
+    }
     if(!Number.isFinite(amount) || amount < rules.minimum || amount > available){
       payoutRequestStatus.className = 'withdraw-status error';
       payoutRequestStatus.textContent = 'Enter at least $' + rules.minimum + ' and no more than your available balance.';
@@ -6057,19 +7137,48 @@ if(payoutRequestForm){
     payoutRequestSubmit.disabled = true;
     payoutRequestStatus.className = 'withdraw-status';
     payoutRequestStatus.textContent = 'Submitting your request…';
+    let response;
     try{
-      const response = await fetch(API_BASE + '/api/payouts/requests',{method:'POST',credentials:'same-origin',headers:await firebaseApiHeaders({'Content-Type':'application/json',Accept:'application/json'}),body:JSON.stringify({accountId,method:selectedPayoutMethod,amountUsd:amount,feeUsd:rules.fee,netAmountUsd:Math.max(0,amount-rules.fee),network:selectedPayoutMethod==='crypto'?document.getElementById('withdrawNetwork').value:null,destination,estimatedProcessing:selectedPayoutMethod==='bank'?'2-3 business days':'Per payout provider'})});
-      if(!response.ok) throw new Error('Payout service unavailable');
-      const result = await response.json();
-      payoutRequestStatus.className = 'withdraw-status success';
-      payoutRequestStatus.textContent = 'Request received and pending review' + (result.requestId ? ' · Reference ' + result.requestId : '') + '.';
-      payoutRequestForm.reset();
-      setPayoutMethod('crypto');
+      response = await fetch(API_BASE + '/api/payouts/requests',{method:'POST',credentials:'same-origin',headers:await firebaseApiHeaders({'Content-Type':'application/json',Accept:'application/json'}),body:JSON.stringify({accountId,method:selectedPayoutMethod,amountUsd:amount,feeUsd:rules.fee,netAmountUsd:Math.max(0,amount-rules.fee),network:selectedPayoutMethod==='crypto'?document.getElementById('withdrawNetwork').value:null,destination,estimatedProcessing:selectedPayoutMethod==='bank'?'2-3 business days':'Per payout provider'})});
     }catch(error){
       payoutRequestStatus.className = 'withdraw-status error';
-      payoutRequestStatus.textContent = 'Could not submit your request. The secure payout service is not connected; no request was created.';
-      payoutRequestSubmit.disabled = available <= 0;
+      payoutRequestStatus.textContent = 'We could not confirm whether the request was created. Check payout history before trying again.';
+      payoutRequestSubmit.disabled = true;
+      return;
     }
+    let result;
+    try{
+      result = await response.json();
+    }catch(error){
+      payoutRequestStatus.className = 'withdraw-status error';
+      payoutRequestStatus.textContent = 'We could not confirm whether the request was created. Check payout history before trying again.';
+      payoutRequestSubmit.disabled = true;
+      return;
+    }
+    if(!response.ok){
+      payoutRequestStatus.className = 'withdraw-status error';
+      if(result.code === 'payout_eligibility_unavailable'){
+        payoutRequestStatus.textContent = 'Payout eligibility could not be verified. No payout request was created.';
+        payoutRequestSubmit.disabled = true;
+      }else if(response.status >= 500){
+        payoutRequestStatus.textContent = 'We could not confirm whether the request was created. Check payout history before trying again.';
+        payoutRequestSubmit.disabled = true;
+      }else{
+        payoutRequestStatus.textContent = result.error || 'The payout request was rejected.';
+        payoutRequestSubmit.disabled = false;
+      }
+      return;
+    }
+    if(typeof result.requestId !== 'string' || result.status !== 'pending_review' || !result.submittedAt || !result.estimatedEligibleAt){
+      payoutRequestStatus.className = 'withdraw-status error';
+      payoutRequestStatus.textContent = 'The request outcome could not be confirmed. Check payout history before trying again.';
+      payoutRequestSubmit.disabled = true;
+      return;
+    }
+    payoutRequestForm.reset();
+    setPayoutMethod('crypto');
+    showPayoutSuccess(result,amount,payoutMethod);
+    loadPayoutRequestHistory();
   });
 }
 </script>

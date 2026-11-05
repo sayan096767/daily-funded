@@ -5395,6 +5395,95 @@ export default {
       }
 
       // =====================================================
+      // PAYOUT ELIGIBILITY (READ-ONLY, VERSIONED)
+      // =====================================================
+
+      if (
+        request.method === "GET" &&
+        url.pathname === "/payout-eligibility"
+      ) {
+        const tradingAuth = await authenticateTradingRequest(request, env);
+        if (tradingAuth.response) return tradingAuth.response;
+
+        const accountId = url.searchParams.get("account_id");
+        if (!accountId) {
+          return json(
+            { success: false, error: "account_id is required" },
+            400
+          );
+        }
+
+        const unavailableReasons = [
+          "profit_ledger_unverified",
+          "payout_period_boundaries_unconfigured",
+          "trading_costs_and_adjustments_unavailable",
+          "withdrawal_ledger_unavailable",
+          "payout_eligibility_inputs_unverified",
+        ];
+        const context = await getAccountRuleContext(
+          env,
+          accountId,
+          tradingAuth.userId
+        );
+
+        if (context.error === "Trading account not found") {
+          return json({ success: false, error: context.error }, 404);
+        }
+
+        let rules = null;
+        if (context.error) {
+          if (context.error === "Trading rules are not configured for this account") {
+            unavailableReasons.push("account_rule_snapshot_unavailable");
+          } else if (context.error.includes("profit_split_percent")) {
+            unavailableReasons.push("account_profit_split_unverified");
+          } else {
+            unavailableReasons.push("account_rule_snapshot_invalid");
+          }
+        } else {
+          const openPositionCount = await env.daily_funded_trading_db
+            .prepare(`
+              SELECT COUNT(*) AS open_position_count
+              FROM positions
+              WHERE account_id = ?
+                AND status = 'open'
+            `)
+            .bind(accountId)
+            .first();
+          if (!openPositionCount || !Number.isSafeInteger(openPositionCount.open_position_count)
+            || openPositionCount.open_position_count < 0) {
+            throw new Error("D1 returned an invalid open-position count");
+          }
+          if (openPositionCount.open_position_count > 0) {
+            unavailableReasons.push("open_positions_present");
+          }
+
+          rules = {
+            currency: context.snapshot.currency || null,
+            profit_split_percent: context.rules.profit_split_percent,
+          };
+          if (![70, 80, 90].includes(Number(context.rules.profit_split_percent))) {
+            unavailableReasons.push("account_profit_split_unverified");
+          }
+          if (context.account.status !== "active") {
+            unavailableReasons.push("account_not_active");
+          }
+        }
+
+        return json({
+          success: true,
+          schema_version: "payout-eligibility.v1",
+          account_id: accountId,
+          account_rules: rules,
+          eligibility: {
+            status: "unavailable",
+            amount_cents: null,
+            trader_share_cents: null,
+            reason_codes: unavailableReasons,
+          },
+        });
+      }
+
+      // =====================================================
       // FALLBACK
       // =====================================================
 

@@ -300,6 +300,7 @@
               <th>Purchase ID</th>
               <th>User</th>
               <th>Challenge / size</th>
+              <th>Trading platform</th>
               <th>Original price</th>
               <th>Coupon</th>
               <th>Discount</th>
@@ -314,7 +315,7 @@
           </thead>
           <tbody id="pendingTableBody">
             <tr>
-              <td colspan="13" class="empty">Waiting for sign-in…</td>
+              <td colspan="14" class="empty">Waiting for sign-in…</td>
             </tr>
           </tbody>
         </table>
@@ -330,6 +331,7 @@
               <th>Purchase ID</th>
               <th>User</th>
               <th>Challenge / size</th>
+              <th>Trading platform</th>
               <th>Original price</th>
               <th>Coupon</th>
               <th>Discount</th>
@@ -343,7 +345,7 @@
           </thead>
           <tbody id="activeTableBody">
             <tr>
-              <td colspan="12" class="empty">Waiting for sign-in…</td>
+              <td colspan="13" class="empty">Waiting for sign-in…</td>
             </tr>
           </tbody>
         </table>
@@ -359,6 +361,7 @@
               <th>Purchase ID</th>
               <th>User</th>
               <th>Challenge / size</th>
+              <th>Trading platform</th>
               <th>Original price</th>
               <th>Coupon</th>
               <th>Discount</th>
@@ -372,7 +375,7 @@
           </thead>
           <tbody id="rejectedTableBody">
             <tr>
-              <td colspan="12" class="empty">Waiting for sign-in…</td>
+              <td colspan="13" class="empty">Waiting for sign-in…</td>
             </tr>
           </tbody>
         </table>
@@ -482,15 +485,15 @@
     }
 
     function renderAllEmptyStates(message) {
-      renderEmptyState(pendingTableBody, message, 13);
-      renderEmptyState(activeTableBody, message, 12);
-      renderEmptyState(rejectedTableBody, message, 12);
+      renderEmptyState(pendingTableBody, message, 14);
+      renderEmptyState(activeTableBody, message, 13);
+      renderEmptyState(rejectedTableBody, message, 13);
     }
 
     function renderPurchaseRows(tableBody, rows, emptyMessage, includeActions = false, includeReconcile = false) {
       const uniqueRows = Array.from(new Map(rows.map(purchase => [purchase.purchaseId, purchase])).values());
       if (!uniqueRows.length) {
-        renderEmptyState(tableBody, emptyMessage, includeActions ? 13 : 12);
+        renderEmptyState(tableBody, emptyMessage, includeActions ? 14 : 13);
         return;
       }
       tableBody.innerHTML = uniqueRows.map((purchase) => {
@@ -500,6 +503,8 @@
         const email = escapeHtml(purchase.userEmail || purchase.uid || '—');
         const plan = escapeHtml(purchase.planLabel || purchase.plan || '—');
         const size = escapeHtml(purchase.size ?? '—');
+        const platformLabels = { mt5: 'MetaTrader 5', ctrader: 'cTrader', match_trader: 'Match-Trader', cf: 'CF' };
+        const platform = escapeHtml(platformLabels[purchase.tradingPlatform] || 'Not recorded');
         const original = formatCurrencyCents(purchase.originalPriceCents);
         const coupon = purchase.couponCode ? escapeHtml(purchase.couponCode) : 'No coupon';
         const discount = formatCurrencyCents(purchase.discountCents || 0);
@@ -516,6 +521,7 @@
             <td>${purchaseId.slice(0, 20)}${purchaseId.length > 20 ? '…' : ''}</td>
             <td>${username ? username + '<br>' : ''}${email}</td>
             <td>${plan} · $${Number(size).toLocaleString('en-US')}</td>
+            <td>${platform}</td>
             <td>${original}</td>
             <td>${coupon}</td>
             <td>${discount}</td>

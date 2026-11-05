@@ -20,7 +20,7 @@ services:
       - key: DAILYFUNDED_COOKIE_SECURE
         value: "1"
       - key: DAILYFUNDED_FRONTEND_ORIGINS
-        value: https://daily-funded.web.app
+        value: https://daily-funded.web.app,https://www.crazyfunded.com,http://localhost:8080
       - key: R2_ACCOUNT_ID
         sync: false
       - key: R2_ACCESS_KEY_ID
