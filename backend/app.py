@@ -55,7 +55,7 @@ CATALOG = {
     },
     "instant": {
         "label": "Instant",
-        "prices": {2500: 25, 5000: 49, 10000: 98, 25000: 245, 50000: 490, 100000: 980, 200000: 1960},
+        "prices": {2500: 20, 5000: 39, 10000: 78, 25000: 190, 50000: 349, 100000: 689, 200000: 1299},
         "rules": ["No profit target", "5% daily drawdown", "10% max drawdown", "0 min trading days", "Daily reward cycle"],
         "profit_split": "80% profit split",
     },
@@ -103,6 +103,23 @@ NETWORKS = {
     "usdt": {"trc20", "erc20", "bep20"},
     "btc": {"btc_native", "btc_bep20"},
     "eth": {"eth_erc20", "eth_bep20"},
+}
+NOWPAYMENTS_API_BASE = "https://api.nowpayments.io/v1"
+NOWPAYMENTS_TIMEOUT_SECONDS = 15
+NOWPAYMENTS_CURRENCY_OPTIONS = {
+    "btc": ("btc", "bitcoin"),
+    "eth": ("eth", "ethereum"),
+    "bnbbsc": ("bnbbsc", "bsc"),
+    "usdttrc20": ("usdttrc20", "tron"),
+    "usdterc20": ("usdterc20", "ethereum"),
+    "usdc": ("usdc", "ethereum"),
+    "usdtbsc": ("usdtbsc", "bsc"),
+    "usdtt": ("usdtt", "ton"),
+    "usdcbsc": ("usdcbsc", "bsc"),
+}
+NOWPAYMENTS_PAYMENT_STATUSES = {
+    "waiting", "confirming", "confirmed", "sending", "partially_paid",
+    "finished", "failed", "refunded", "expired", "reversed",
 }
 TRADING_PLATFORMS = {"mt5", "ctrader", "match_trader", "cf"}
 IMAGE_SIGNATURES = (
@@ -656,6 +673,91 @@ def purchase_response(purchase_id, purchase, status_code=201, replay=False):
         message="Payment submitted. Awaiting admin approval." if status == "pending" else f"Purchase status: {status}.",
         idempotentReplay=replay,
     ), status_code
+
+
+def purchase_payment_allows_approval(purchase):
+    if purchase.get("paymentProvider") != "nowpayments":
+        return True
+    return (
+        purchase.get("paymentStatus") == "finished"
+        and purchase.get("manualReviewRequired") is not True
+    )
+
+
+def nowpayments_configuration():
+    config = {
+        "api_key": os.environ.get("NOWPAYMENTS_API_KEY", "").strip(),
+        "ipn_secret": os.environ.get("NOWPAYMENTS_IPN_SECRET", "").strip(),
+        "callback_url": os.environ.get("NOWPAYMENTS_IPN_CALLBACK_URL", "").strip(),
+        "return_url": os.environ.get("NOWPAYMENTS_RETURN_URL", "").strip(),
+    }
+    if not all(config.values()):
+        raise RuntimeError("NOWPayments server environment is not fully configured.")
+    for key in ("callback_url", "return_url"):
+        parsed_url = urlsplit(config[key])
+        if parsed_url.scheme != "https" or not parsed_url.netloc:
+            raise RuntimeError(f"NOWPayments {key} must be a public HTTPS URL.")
+    return config
+
+
+def nowpayments_api_request(method, path, api_key, payload=None):
+    body = None
+    headers = {"x-api-key": api_key, "Accept": "application/json"}
+    if payload is not None:
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    api_request = Request(
+        f"{NOWPAYMENTS_API_BASE}{path}",
+        data=body,
+        headers=headers,
+        method=method,
+    )
+    try:
+        with urlopen(api_request, timeout=NOWPAYMENTS_TIMEOUT_SECONDS) as response:
+            response_body = response.read(1024 * 1024 + 1)
+        if len(response_body) > 1024 * 1024:
+            raise RuntimeError("NOWPayments returned an oversized response.")
+        result = json.loads(response_body.decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError("NOWPayments request failed.") from error
+    if not isinstance(result, dict):
+        raise RuntimeError("NOWPayments returned an invalid response.")
+    return result
+
+
+def nowpayments_currency_is_available(currency, api_key):
+    response = nowpayments_api_request("GET", "/currencies", api_key)
+    currencies = response.get("currencies")
+    if not isinstance(currencies, list):
+        raise RuntimeError("NOWPayments returned an invalid currencies response.")
+    return currency.lower() in {
+        str(item).strip().lower() for item in currencies if isinstance(item, str)
+    }
+
+
+def nowpayments_signature_is_valid(payload, received_signature, ipn_secret):
+    if not isinstance(payload, dict) or not received_signature:
+        return False
+    signed_body = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    expected_signature = hmac.new(
+        ipn_secret.encode("utf-8"),
+        signed_body.encode("utf-8"),
+        hashlib.sha512,
+    ).hexdigest()
+    return hmac.compare_digest(expected_signature, received_signature.strip().lower())
+
+
+def nowpayments_amount_matches(value, total_cents):
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+    return amount.is_finite() and amount == Decimal(total_cents) / Decimal(100)
 
 
 def firebase_service_error(service_name, error):
@@ -2025,6 +2127,339 @@ def create_purchase():
     return purchase_response(purchase_id, purchase_data)
 
 
+@app.post("/api/crypto/checkout")
+@firebase_auth_required
+def create_crypto_checkout():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify(error="Checkout details are required."), 400
+
+    plan_key = str(payload.get("plan", ""))
+    try:
+        size = int(payload.get("size", ""))
+    except (TypeError, ValueError):
+        return jsonify(error="Select a valid challenge size."), 400
+    plan = CATALOG.get(plan_key)
+    if not plan or size not in plan["prices"]:
+        return jsonify(error="That challenge is not available."), 400
+    product_model = str(payload.get("productModel", "classic")).strip().lower()
+    product_id = str(payload.get("productId", plan_key)).strip()
+    if (
+        product_model != plan.get("product_model", "classic")
+        or product_id != plan.get("product_id", plan_key)
+    ):
+        return jsonify(error="That challenge product is not available."), 400
+
+    trading_platform = str(payload.get("tradingPlatform", "")).strip().lower()
+    if trading_platform not in TRADING_PLATFORMS:
+        return jsonify(error="Select a supported trading platform."), 400
+
+    currency_option = str(payload.get("currency", "")).strip().lower()
+    currency_details = NOWPAYMENTS_CURRENCY_OPTIONS.get(currency_option)
+    if currency_details is None:
+        return jsonify(error="Select a supported crypto currency and network."), 400
+    payment_currency, payment_network = currency_details
+
+    try:
+        list_price, discount, total, coupon_code = calculate_purchase_amount(
+            plan_key, size, payload.get("coupon")
+        )
+        billing_details = normalize_billing_details(
+            json.dumps(payload.get("billing_details"))
+        )
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+
+    try:
+        submission_id = str(uuid.UUID(str(payload.get("submissionId", "")).strip()))
+    except (AttributeError, TypeError, ValueError):
+        return jsonify(error="A valid checkout submissionId is required. Refresh checkout and try again."), 400
+
+    uid = g.firebase_uid
+    purchase_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"daily-funded:{uid}:{submission_id}"))
+    try:
+        database = get_firestore()
+        user_ref = database.collection("users").document(uid)
+        purchase_ref = user_ref.collection("purchases").document(purchase_id)
+        existing_snapshot = purchase_ref.get()
+        if existing_snapshot.exists:
+            existing = existing_snapshot.to_dict() or {}
+            if (
+                existing.get("ownerUid") != uid
+                or existing.get("planKey") != plan_key
+                or existing.get("accountSize") != size
+                or existing.get("couponCode") != coupon_code
+                or existing.get("paymentCurrency") != payment_currency
+                or existing.get("paymentNetwork") != payment_network
+                or existing.get("tradingPlatform") != trading_platform
+                or existing.get("billingDetails") != billing_details
+                or existing.get("paymentProvider") != "nowpayments"
+            ):
+                return jsonify(error="This submissionId is already associated with a different purchase."), 409
+            invoice_url = existing.get("invoiceUrl")
+            if invoice_url:
+                return jsonify(
+                    purchaseId=purchase_id,
+                    invoiceUrl=invoice_url,
+                    status=existing.get("status", "pending"),
+                    paymentStatus=existing.get("paymentStatus", "waiting"),
+                    totalCents=existing.get("totalCents"),
+                    idempotentReplay=True,
+                ), 200
+            return jsonify(error="This checkout is already being prepared. Please wait or contact support."), 503
+    except Exception as error:
+        app.logger.exception("Could not check existing crypto checkout %s", purchase_id)
+        return firebase_service_error("Firestore", error)
+
+    try:
+        config = nowpayments_configuration()
+        if not nowpayments_currency_is_available(payment_currency, config["api_key"]):
+            return jsonify(error="That crypto currency/network is not currently available."), 400
+    except Exception as error:
+        app.logger.exception("Could not validate NOWPayments configuration or currencies")
+        return jsonify(error="Crypto checkout is temporarily unavailable."), 503
+
+    try:
+        profile = user_ref.get().to_dict() or {}
+        email = str(g.firebase_claims.get("email") or profile.get("email") or "").strip().lower()
+        username = " ".join(filter(None, (
+            str(profile.get("firstName", "")).strip(),
+            str(profile.get("lastName", "")).strip(),
+        ))) or str(g.firebase_claims.get("name") or "").strip() or None
+    except Exception as error:
+        app.logger.exception("Could not load user profile for crypto checkout %s", purchase_id)
+        return firebase_service_error("Firestore", error)
+
+    purchase_data = {
+        "purchaseId": purchase_id,
+        "submissionId": submission_id,
+        "ownerUid": uid,
+        "userEmail": email or None,
+        "username": username,
+        "accountId": purchase_id,
+        "planKey": plan_key,
+        "accountSize": size,
+        "listPriceCents": list_price,
+        "discountCents": discount,
+        "totalCents": total,
+        "couponCode": coupon_code,
+        "paymentCurrency": payment_currency,
+        "paymentNetwork": payment_network,
+        "paymentMethod": "crypto",
+        "paymentProvider": "nowpayments",
+        "tradingPlatform": trading_platform,
+        "billingDetails": billing_details,
+        "status": "pending",
+        "paymentStatus": "waiting",
+        "invoiceCreationStatus": "creating",
+        "createdAt": firestore.SERVER_TIMESTAMP,
+    }
+    try:
+        purchase_ref.create(purchase_data)
+    except AlreadyExists:
+        try:
+            existing = purchase_ref.get().to_dict() or {}
+        except Exception as error:
+            app.logger.exception("Could not confirm crypto checkout %s", purchase_id)
+            return firebase_service_error("Firestore", error)
+        if (
+            existing.get("ownerUid") == uid
+            and existing.get("planKey") == plan_key
+            and existing.get("accountSize") == size
+            and existing.get("couponCode") == coupon_code
+            and existing.get("paymentCurrency") == payment_currency
+            and existing.get("paymentNetwork") == payment_network
+            and existing.get("tradingPlatform") == trading_platform
+            and existing.get("billingDetails") == billing_details
+            and existing.get("paymentProvider") == "nowpayments"
+            and existing.get("invoiceUrl")
+        ):
+            return jsonify(
+                purchaseId=purchase_id,
+                invoiceUrl=existing["invoiceUrl"],
+                status=existing.get("status", "pending"),
+                paymentStatus=existing.get("paymentStatus", "waiting"),
+                totalCents=existing.get("totalCents"),
+                idempotentReplay=True,
+            ), 200
+        return jsonify(error="This checkout is already being prepared. Please wait or contact support."), 503
+    except Exception as error:
+        app.logger.exception("Could not reserve crypto checkout %s", purchase_id)
+        return firebase_service_error("Firestore", error)
+
+    invoice_payload = {
+        "price_amount": total / 100,
+        "price_currency": "usd",
+        "pay_currency": payment_currency,
+        "order_id": purchase_id,
+        "order_description": f"{plan['label']} ${size:,} account",
+        "ipn_callback_url": config["callback_url"],
+        "success_url": config["return_url"],
+        "cancel_url": config["return_url"],
+        "is_fixed_rate": True,
+    }
+    try:
+        invoice = nowpayments_api_request(
+            "POST", "/invoice", config["api_key"], invoice_payload
+        )
+        invoice_id = str(invoice.get("id") or invoice.get("invoice_id") or "").strip()
+        invoice_url = str(invoice.get("invoice_url") or "").strip()
+        parsed_invoice_url = urlsplit(invoice_url)
+        if (
+            not invoice_id
+            or parsed_invoice_url.scheme != "https"
+            or parsed_invoice_url.hostname != "nowpayments.io"
+        ):
+            raise RuntimeError("NOWPayments returned an invalid invoice.")
+        purchase_ref.update({
+            "invoiceId": invoice_id,
+            "invoiceUrl": invoice_url,
+            "invoiceCreationStatus": "created",
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        })
+    except Exception as error:
+        app.logger.exception("Could not create NOWPayments invoice for purchase %s", purchase_id)
+        try:
+            purchase_ref.update({
+                "invoiceCreationStatus": "failed",
+                "invoiceCreationErrorType": type(error).__name__,
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+            })
+        except Exception:
+            app.logger.exception("Could not record NOWPayments invoice failure for %s", purchase_id)
+        return jsonify(error="Crypto checkout could not be created. Please contact support before retrying."), 503
+
+    return jsonify(
+        purchaseId=purchase_id,
+        invoiceUrl=invoice_url,
+        status="pending",
+        paymentStatus="waiting",
+        totalCents=total,
+        idempotentReplay=False,
+    ), 201
+
+
+@app.post("/api/payments/nowpayments/ipn")
+def nowpayments_ipn():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify(error="Invalid IPN payload."), 400
+    try:
+        config = nowpayments_configuration()
+    except RuntimeError as error:
+        app.logger.error("NOWPayments IPN configuration error: %s", error)
+        return jsonify(error="NOWPayments IPN is not configured."), 503
+    signature = request.headers.get("x-nowpayments-sig", "")
+    if not nowpayments_signature_is_valid(payload, signature, config["ipn_secret"]):
+        return jsonify(error="Invalid NOWPayments signature."), 401
+
+    payment_id = str(payload.get("payment_id", "")).strip()
+    order_id = str(payload.get("order_id", "")).strip()
+    payment_status = str(payload.get("payment_status", "")).strip().lower()
+    if (
+        not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", payment_id)
+        or not re.fullmatch(r"[0-9a-fA-F-]{36}", order_id)
+        or payment_status not in NOWPAYMENTS_PAYMENT_STATUSES
+    ):
+        return jsonify(error="Invalid NOWPayments payment identifiers or status."), 400
+
+    purchase = find_purchase_document(order_id)
+    if purchase is None:
+        return jsonify(error="Purchase not found."), 404
+    purchase_data = purchase.to_dict() or {}
+    if (
+        purchase_data.get("paymentProvider") != "nowpayments"
+        or purchase_data.get("purchaseId") != order_id
+        or not isinstance(purchase_data.get("totalCents"), int)
+        or isinstance(purchase_data.get("totalCents"), bool)
+    ):
+        return jsonify(error="Purchase does not match this payment."), 409
+    if str(payload.get("order_id")) != order_id:
+        return jsonify(error="Invalid NOWPayments order identifier."), 400
+    invoice_id = payload.get("invoice_id")
+    if invoice_id is not None and str(invoice_id) != str(purchase_data.get("invoiceId", "")):
+        return jsonify(error="Invalid NOWPayments invoice identifier."), 400
+
+    expected_currency = str(purchase_data.get("paymentCurrency", "")).lower()
+    if (
+        str(payload.get("price_currency", "")).lower() != "usd"
+        or str(payload.get("pay_currency", "")).lower() != expected_currency
+        or not nowpayments_amount_matches(payload.get("price_amount"), purchase_data["totalCents"])
+    ):
+        return jsonify(error="NOWPayments amount or currency does not match the purchase."), 400
+
+    try:
+        provider_payment = nowpayments_api_request(
+            "GET", f"/payment/{payment_id}", config["api_key"]
+        )
+    except Exception as error:
+        app.logger.exception("Could not verify NOWPayments payment %s", payment_id)
+        return jsonify(error="NOWPayments payment verification is temporarily unavailable."), 503
+    if (
+        str(provider_payment.get("payment_id", "")) != payment_id
+        or str(provider_payment.get("order_id", "")) != order_id
+        or str(provider_payment.get("price_currency", "")).lower() != "usd"
+        or str(provider_payment.get("pay_currency", "")).lower() != expected_currency
+        or str(provider_payment.get("payment_status", "")).lower() != payment_status
+        or not nowpayments_amount_matches(
+            provider_payment.get("price_amount"), purchase_data["totalCents"]
+        )
+    ):
+        return jsonify(error="NOWPayments payment details do not match the signed callback."), 400
+
+    database = get_firestore()
+    purchase_ref = purchase.reference
+
+    @firestore.transactional
+    def apply_payment_update(transaction):
+        snapshot = purchase_ref.get(transaction=transaction)
+        current = snapshot.to_dict() or {}
+        if (
+            current.get("paymentProvider") != "nowpayments"
+            or current.get("purchaseId") != order_id
+            or current.get("totalCents") != purchase_data["totalCents"]
+            or str(current.get("paymentCurrency", "")).lower() != expected_currency
+        ):
+            return "purchase_changed"
+        stored_payment_id = current.get("providerPaymentId")
+        if stored_payment_id and str(stored_payment_id) != payment_id:
+            return "payment_id_conflict"
+
+        current_status = str(current.get("paymentStatus", "")).lower()
+        if current_status in {"refunded", "reversed"} and payment_status not in {"refunded", "reversed"}:
+            return "terminal_refund"
+        if current_status == "finished" and payment_status not in {"refunded", "reversed"}:
+            return "already_finished"
+        if current_status == payment_status and str(stored_payment_id or "") == payment_id:
+            return "duplicate"
+
+        updates = {
+            "providerPaymentId": payment_id,
+            "paymentStatus": payment_status,
+            "providerStatus": payment_status,
+            "paymentUpdatedAt": firestore.SERVER_TIMESTAMP,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        }
+        if payment_status in {"refunded", "reversed"}:
+            updates.update({
+                "manualReviewRequired": True,
+                "manualReviewReason": f"NOWPayments reported {payment_status}.",
+            })
+        transaction.update(purchase_ref, updates)
+        return "updated"
+
+    try:
+        update_result = apply_payment_update(database.transaction())
+    except Exception as error:
+        app.logger.exception("Could not save NOWPayments update for purchase %s", order_id)
+        return firebase_service_error("Firestore", error)
+    if update_result == "payment_id_conflict":
+        return jsonify(error="A different provider payment is already associated with this purchase."), 409
+    if update_result == "purchase_changed":
+        return jsonify(error="Purchase changed during payment verification."), 409
+    return jsonify(received=True, duplicate=update_result != "updated"), 200
+
+
 @app.get("/api/admin/purchases/pending")
 @firebase_auth_required
 def admin_pending_purchases():
@@ -2050,6 +2485,11 @@ def admin_pending_purchases():
             "discountCents": data.get("discountCents", 0),
             "amountCents": data.get("totalCents", data.get("listPriceCents")),
             "status": data.get("status"),
+            "paymentProvider": data.get("paymentProvider"),
+            "paymentStatus": data.get("paymentStatus"),
+            "providerPaymentId": data.get("providerPaymentId"),
+            "manualReviewRequired": data.get("manualReviewRequired", False),
+            "manualReviewReason": data.get("manualReviewReason"),
             "paymentCurrency": data.get("paymentCurrency"),
             "paymentNetwork": data.get("paymentNetwork"),
             "tradingPlatform": data.get("tradingPlatform"),
@@ -2188,7 +2628,10 @@ def admin_approve_purchase(purchase_id):
         snapshot = purchase.reference.get(transaction=transaction)
         data = snapshot.to_dict() or {}
         status = data.get("status")
-        if status != "approved" and not purchase_status_is_pending(status):
+        if (
+            (status != "approved" and not purchase_status_is_pending(status))
+            or not purchase_payment_allows_approval(data)
+        ):
             return None
 
         values = purchase_provisioning_values(purchase_id, data)
@@ -2295,7 +2738,10 @@ def admin_approve_purchase(purchase_id):
         @firestore.transactional
         def save_engine_account_id(transaction):
             current_purchase = purchase.reference.get(transaction=transaction).to_dict() or {}
-            if current_purchase.get("status") != "approved":
+            if (
+                current_purchase.get("status") != "approved"
+                or not purchase_payment_allows_approval(current_purchase)
+            ):
                 return "purchase_not_approved"
             current_values = purchase_provisioning_values(purchase_id, current_purchase)
             if current_values != purchase_values:
@@ -2336,7 +2782,10 @@ def admin_approve_purchase(purchase_id):
     @firestore.transactional
     def enable_trading(transaction):
         current_purchase = purchase.reference.get(transaction=transaction).to_dict() or {}
-        if current_purchase.get("status") != "approved":
+        if (
+            current_purchase.get("status") != "approved"
+            or not purchase_payment_allows_approval(current_purchase)
+        ):
             return False
         current_values = purchase_provisioning_values(purchase_id, current_purchase)
         if current_values != purchase_values:

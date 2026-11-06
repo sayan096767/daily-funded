@@ -1934,7 +1934,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
           <section id="paymentStep" class="payment-step" aria-labelledby="paymentStepTitle" hidden>
             <button type="button" class="btn btn-outline" id="billingBackBtn">← Back to Billing</button>
             <h4 id="paymentStepTitle">Payment</h4>
-        <div class="upi-payment-row">
+        <div class="upi-payment-row" hidden>
           <button type="button" class="upi-method" id="upiOpenBtn" aria-haspopup="dialog" aria-expanded="false">
             <span class="upi-method-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 10h18l-4-4M26 10l-4 4" stroke="#FFB45C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M26 22H8l4 4M6 22l4-4" stroke="#62D99A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 16h16" stroke="#E6F0F1" stroke-opacity=".68" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 3"/></svg></span>
             <span class="upi-method-copy"><b>Pay using UPI</b><small>Temporarily unavailable · View status</small></span>
@@ -1949,15 +1949,27 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
             <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/whatsapp/25D366">WhatsApp Pay</span>
           </div>
         </div>
-        <div class="payment-method-divider">OR PAY WITH CRYPTO</div>
+        <div class="payment-method-divider" hidden>OR PAY WITH CRYPTO</div>
         <h4>Pay with crypto</h4>
-        <div class="net-tabs" id="curTabs">
+        <label class="payment-subheading" for="cryptoCurrencySelect">Select cryptocurrency and network</label>
+        <select id="cryptoCurrencySelect" disabled>
+          <option value="usdttrc20">USDT · TRON (TRC20)</option>
+          <option value="usdterc20">USDT · Ethereum (ERC20)</option>
+          <option value="usdtbsc">USDT · BNB Smart Chain</option>
+          <option value="btc">BTC · Bitcoin</option>
+          <option value="eth">ETH · Ethereum</option>
+          <option value="bnbbsc">BNB · BNB Smart Chain</option>
+          <option value="usdc">USDC · Ethereum</option>
+          <option value="usdcbsc">USDC · BNB Smart Chain</option>
+          <option value="usdtt">USDT · TON</option>
+        </select>
+        <div class="net-tabs" id="curTabs" hidden>
           <button type="button" class="net-tab active" data-cur="usdt">USDT</button>
           <button type="button" class="net-tab" data-cur="btc">BTC</button>
           <button type="button" class="net-tab" data-cur="eth">ETH</button>
         </div>
-        <div class="net-tabs" id="netTabs" style="margin-top:-6px;"></div>
-        <div id="paymentInterface">
+        <div class="net-tabs" id="netTabs" style="margin-top:-6px;" hidden></div>
+        <div id="paymentInterface" hidden>
           <h5 class="payment-subheading">Crypto Address</h5>
           <div class="addr-row">
             <span id="addrText"></span>
@@ -1969,7 +1981,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
           </div>
           <p class="pay-amount-note">Send exactly <b id="coPayAmt2">$0</b> in <b id="curLabel">USDT</b> on the <b id="netLabel">TRC20</b> network to the address above.</p>
         </div>
-          <div class="attach-row">
+          <div class="attach-row" hidden>
             <input type="file" id="proofInput" accept="image/*" style="display:none;" aria-label="Attach payment screenshot">
             <button type="button" class="attach-btn" id="attachBtn" disabled>📎 Attach payment screenshot</button>
             <div class="attach-preview" id="attachPreview" style="display:none;">
@@ -1978,8 +1990,8 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
               <button type="button" class="attach-remove" id="attachRemove">Remove</button>
             </div>
           </div>
-          <button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn" aria-disabled="true" disabled>I've sent the payment →</button>
-          <p class="co-note">Double-check the network and address before sending any real funds — crypto transfers can't be reversed.</p>
+          <button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn" aria-disabled="true" disabled>Continue to secure crypto checkout →</button>
+          <p class="co-note">You’ll complete payment on NOWPayments. Your purchase remains pending until provider confirmation and admin approval.</p>
           </section>
         </form>
       </div>
@@ -4702,6 +4714,55 @@ async function createPurchase(purchase){
   return result;
 }
 
+async function createCryptoCheckout(purchase){
+  if(!billingPaymentUnlocked) throw new Error('Complete billing details before submitting payment.');
+  if(!normalizeCheckoutSelection(purchase.productModel,purchase.size,purchase.planKey,purchase.productId,purchase.price)){
+    throw new Error('Select a valid challenge before submitting payment.');
+  }
+  if(!isValidTradingPlatform(selectedTradingPlatform)){
+    throw new Error('Choose a trading platform before submitting payment.');
+  }
+  const billing = validateBillingDetails();
+  if(!billing.valid) throw new Error('Complete the highlighted billing details before submitting payment.');
+  const currency = document.getElementById('cryptoCurrencySelect')?.value || '';
+  const payload = {
+    productModel: purchase.productModel,
+    productId: purchase.productId,
+    plan: purchase.planKey,
+    size: purchase.size,
+    coupon: document.getElementById('couponCodeInput').value.trim(),
+    submissionId: pendingSubmissionId,
+    currency,
+    tradingPlatform: selectedTradingPlatform,
+    billing_details: billing.details
+  };
+  let headers;
+  try{ headers = await firebaseApiHeaders({'Content-Type':'application/json',Accept:'application/json'}); }
+  catch(error){ throw new Error('Payment sign-in required. ' + error.message); }
+  let response;
+  try{
+    response = await fetch(API_BASE + '/api/crypto/checkout',{
+      method:'POST',
+      credentials:'same-origin',
+      headers,
+      body:JSON.stringify(payload)
+    });
+  }catch(error){
+    throw new Error('Could not connect to payment API at ' + API_BASE + ' from ' + window.location.origin + '. Check the backend and CORS. ' + error.message);
+  }
+  const responseText = await response.text();
+  let result = {};
+  try{ result = responseText ? JSON.parse(responseText) : {}; }
+  catch(error){ result.error = 'Payment API returned HTTP ' + response.status + ' with a non-JSON response.'; }
+  if(!response.ok) throw new Error(result.error || 'Crypto checkout could not be created (HTTP ' + response.status + ').');
+  if(typeof result.invoiceUrl !== 'string' || !result.invoiceUrl) throw new Error('Payment API did not return a checkout URL.');
+  const invoiceUrl = new URL(result.invoiceUrl, window.location.origin);
+  if(invoiceUrl.protocol !== 'https:' || invoiceUrl.hostname !== 'nowpayments.io'){
+    throw new Error('Payment API returned an invalid checkout URL.');
+  }
+  return result;
+}
+
 function getPendingSubmissionId(purchase){
   const key = 'dailyFundedPendingPurchase';
   try{
@@ -4770,7 +4831,7 @@ function setPaymentAccess(){
   const paymentStep = document.getElementById('paymentStep');
   if(billingStep) billingStep.hidden = enabled;
   if(paymentStep) paymentStep.hidden = !enabled;
-  ['upiOpenBtn','copyBtn','qrOpenBtn','attachBtn','proofInput'].forEach(id=>{
+  ['upiOpenBtn','copyBtn','qrOpenBtn','attachBtn','proofInput','cryptoCurrencySelect'].forEach(id=>{
     const control = document.getElementById(id);
     if(control) control.disabled = !enabled;
   });
@@ -5409,21 +5470,13 @@ if(checkoutSubmissionFormEl && coPayBtnEl){
       couponApplied = false;
       updateCheckoutPrice();
     }
-    const proofInput = document.getElementById('proofInput');
-    if(!proofInput || proofInput.files.length === 0){
-      const popup = document.getElementById('attachPopup');
-      if(popup) popup.classList.add('show');
-      return;
-    }
     coPayBtnEl.dataset.submitting = 'true';
     coPayBtnEl.disabled = true;
     coPayBtnEl.setAttribute('aria-disabled','true');
     try{
-      const purchase = await createPurchase(pendingPurchase);
+      const purchase = await createCryptoCheckout(pendingPurchase);
       clearPendingSubmissionId();
-      closeCheckout();
-      purchaseAccount(purchase.accountId);
-      pendingPurchase = null;
+      window.location.assign(purchase.invoiceUrl);
     }catch(error){
       const status = document.getElementById('couponStatus');
       status.className = 'coupon-status error';
