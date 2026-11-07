@@ -810,6 +810,13 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .payment-step{padding-top:18px; margin-top:20px; border-top:1px solid var(--panel-b);}
   .billing-details,.payment-step{scroll-margin-top:100px;}
   .payment-step[hidden]{display:none!important;}
+  .hosted-crypto-panel{border-left:3px solid var(--green); padding:4px 0 4px 18px; margin-top:14px;}
+  .hosted-crypto-brand{color:var(--green); font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;}
+  .hosted-crypto-panel h4{margin:8px 0; font-size:20px;}
+  .hosted-crypto-panel p{max-width:560px; color:var(--sub); font-size:13px; line-height:1.6;}
+  .hosted-crypto-steps{display:flex; flex-wrap:wrap; gap:8px 20px; margin:14px 0; color:var(--text); font-size:12px; font-weight:600;}
+  .hosted-crypto-note{margin:12px 0!important; font-size:11px!important;}
+  @media(max-width:520px){.hosted-crypto-panel{padding-left:12px}.hosted-crypto-panel h4{font-size:18px}.hosted-crypto-steps{display:grid;gap:8px}}
   #billingBackBtn{margin-bottom:16px; border-color:var(--green-dim); background:var(--panel); color:var(--green);}
   .payment-subheading{margin:18px 0 8px; color:var(--sub); font-size:12px;}
   .addr-row span{min-width:0; overflow-wrap:anywhere;}
@@ -1933,65 +1940,18 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
           </section>
           <section id="paymentStep" class="payment-step" aria-labelledby="paymentStepTitle" hidden>
             <button type="button" class="btn btn-outline" id="billingBackBtn">← Back to Billing</button>
-            <h4 id="paymentStepTitle">Payment</h4>
-        <div class="upi-payment-row" hidden>
-          <button type="button" class="upi-method" id="upiOpenBtn" aria-haspopup="dialog" aria-expanded="false">
-            <span class="upi-method-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 10h18l-4-4M26 10l-4 4" stroke="#FFB45C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M26 22H8l4 4M6 22l4-4" stroke="#62D99A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 16h16" stroke="#E6F0F1" stroke-opacity=".68" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 3"/></svg></span>
-            <span class="upi-method-copy"><b>Pay using UPI</b><small>Temporarily unavailable · View status</small></span>
-            <span class="upi-method-arrow" aria-hidden="true">→</span>
-          </button>
-          <div class="upi-app-list upi-app-list-inline" aria-label="UPI payment apps">
-            <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/googlepay/5F6368">Google Pay</span>
-            <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/phonepe/5F259F">PhonePe</span>
-            <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/paytm/00BAF2">Paytm</span>
-            <span class="upi-app"><span class="upi-app-glyph bhim" aria-hidden="true">B</span>BHIM</span>
-            <span class="upi-app"><span class="upi-app-glyph amazon" aria-hidden="true">a</span>Amazon Pay</span>
-            <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/whatsapp/25D366">WhatsApp Pay</span>
-          </div>
-        </div>
-        <div class="payment-method-divider" hidden>OR PAY WITH CRYPTO</div>
-        <h4>Pay with crypto</h4>
-        <label class="payment-subheading" for="cryptoCurrencySelect">Select cryptocurrency and network</label>
-        <select id="cryptoCurrencySelect" disabled>
-          <option value="usdttrc20">USDT · TRON (TRC20)</option>
-          <option value="usdterc20">USDT · Ethereum (ERC20)</option>
-          <option value="usdtbsc">USDT · BNB Smart Chain</option>
-          <option value="btc">BTC · Bitcoin</option>
-          <option value="eth">ETH · Ethereum</option>
-          <option value="bnbbsc">BNB · BNB Smart Chain</option>
-          <option value="usdc">USDC · Ethereum</option>
-          <option value="usdcbsc">USDC · BNB Smart Chain</option>
-          <option value="usdtt">USDT · TON</option>
-        </select>
-        <div class="net-tabs" id="curTabs" hidden>
-          <button type="button" class="net-tab active" data-cur="usdt">USDT</button>
-          <button type="button" class="net-tab" data-cur="btc">BTC</button>
-          <button type="button" class="net-tab" data-cur="eth">ETH</button>
-        </div>
-        <div class="net-tabs" id="netTabs" style="margin-top:-6px;" hidden></div>
-        <div id="paymentInterface" hidden>
-          <h5 class="payment-subheading">Crypto Address</h5>
-          <div class="addr-row">
-            <span id="addrText"></span>
-            <button type="button" class="copy-btn" id="copyBtn" disabled>Copy Address</button>
-          </div>
-          <div class="qr-open-row">
-            <p>Want to scan the selected wallet address instead?</p>
-            <button type="button" class="btn btn-outline qr-open-btn" id="qrOpenBtn" disabled>Show QR code</button>
-          </div>
-          <p class="pay-amount-note">Send exactly <b id="coPayAmt2">$0</b> in <b id="curLabel">USDT</b> on the <b id="netLabel">TRC20</b> network to the address above.</p>
-        </div>
-          <div class="attach-row" hidden>
-            <input type="file" id="proofInput" accept="image/*" style="display:none;" aria-label="Attach payment screenshot">
-            <button type="button" class="attach-btn" id="attachBtn" disabled>📎 Attach payment screenshot</button>
-            <div class="attach-preview" id="attachPreview" style="display:none;">
-              <img id="attachImg" alt="Payment screenshot">
-              <span class="aname" id="attachName"></span>
-              <button type="button" class="attach-remove" id="attachRemove">Remove</button>
+            <div class="hosted-crypto-panel">
+              <span class="hosted-crypto-brand">Secure checkout · NOWPayments</span>
+              <h4 id="paymentStepTitle">Pay securely with crypto</h4>
+              <p>Continue to NOWPayments to choose an available cryptocurrency and network, then follow the provider’s payment instructions.</p>
+              <div class="hosted-crypto-steps" aria-label="Checkout steps">
+                <span>1. Review your order</span>
+                <span>2. Choose a coin and network</span>
+                <span>3. Complete provider verification</span>
+              </div>
+              <p class="hosted-crypto-note">Your account is provisioned automatically after payment is independently verified. Returning to this site alone does not grant account access.</p>
+              <button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn" aria-disabled="true" disabled>Continue to Secure Checkout →</button>
             </div>
-          </div>
-          <button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn" aria-disabled="true" disabled>Continue to secure crypto checkout →</button>
-          <p class="co-note">You’ll complete payment on NOWPayments. Your purchase remains pending until provider confirmation and admin approval.</p>
           </section>
         </form>
       </div>
@@ -2206,7 +2166,8 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
         <div class="account-badges">
           <span class="account-badge active">EVALUATION ACTIVE</span>
           <span class="account-badge" id="accountPlan">1-STEP</span>
-          <span class="account-badge">PHASE 01</span>
+          <span class="account-badge" id="accountPhase">PHASE 01</span>
+          <span class="account-badge" id="accountEngineId" hidden></span>
         </div>
       </div>
 
@@ -2636,49 +2597,6 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
       </form>
       <p class="df-support-privacy" id="dfSupportPrivacy">Questions are matched locally and are not sent or saved. For account-specific help, sign in to your dashboard. Never enter passwords or payment credentials here.</p>
     </div>
-  </section>
-</div>
-
-<div class="popup-overlay" id="attachPopup">
-  <div class="popup-box">
-    <div class="picon-warn">!</div>
-    <h4>Attach a payment screenshot</h4>
-    <p>Please attach a screenshot of your payment before confirming — we need it to verify your transfer.</p>
-    <button type="button" class="btn btn-primary" id="attachPopupOk" style="width:100%; justify-content:center;">Got it</button>
-  </div>
-</div>
-
-<div class="popup-overlay" id="qrPopup">
-  <section class="qr-modal" role="dialog" aria-modal="true" aria-labelledby="qrModalTitle">
-    <div class="qr-modal-head">
-      <div>
-        <h3 id="qrModalTitle">Scan to pay</h3>
-        <p>Use your wallet app to scan this address on the selected network.</p>
-      </div>
-      <button type="button" class="qr-modal-close" id="qrCloseBtn" aria-label="Close QR code">×</button>
-    </div>
-    <div class="qr-box"><div id="qrCode"></div><div class="qr-unavailable" id="qrUnavailable">QR code unavailable</div></div>
-    <p class="qr-modal-amount">Send exactly <strong id="qrModalAmount">$0</strong> <strong id="qrModalCurrency">USDT</strong> on <strong id="qrModalNetwork">TRC20</strong></p>
-    <div class="qr-modal-address" id="qrModalAddress"></div>
-  </section>
-</div>
-
-<div class="popup-overlay" id="upiPopup">
-  <section class="popup-box upi-status-box" role="dialog" aria-modal="true" aria-labelledby="upiStatusTitle">
-    <div class="upi-status-mark" aria-hidden="true">UPI</div>
-    <span class="upi-status-label">PAYMENT METHOD TEMPORARILY PAUSED</span>
-    <h3 id="upiStatusTitle">UPI payments are temporarily unavailable</h3>
-    <p>We’re resolving an issue with UPI payments, so this option is temporarily closed. We’ll announce on this page as soon as it’s available again.</p>
-    <div class="upi-apps-label">Popular UPI apps when payments resume</div>
-    <div class="upi-app-list" aria-label="Popular UPI payment apps">
-      <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/googlepay/5F6368">Google Pay</span>
-      <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/phonepe/5F259F">PhonePe</span>
-      <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/paytm/00BAF2">Paytm</span>
-      <span class="upi-app"><span class="upi-app-glyph bhim" aria-hidden="true">B</span>BHIM</span>
-      <span class="upi-app"><span class="upi-app-glyph amazon" aria-hidden="true">a</span>Amazon Pay</span>
-      <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/whatsapp/25D366">WhatsApp Pay</span>
-    </div>
-    <button type="button" class="btn btn-primary" id="upiPopupClose" style="width:100%; justify-content:center;">Got it</button>
   </section>
 </div>
 
@@ -3691,6 +3609,7 @@ function getAccounts(){
 }
 
 function accountPickerStatus(account){
+  if(account.provisioningStatus === 'pending') return 'PROVISIONING PENDING';
   return account.status.replaceAll('_',' ').toUpperCase();
 }
 function syncDashboardAccountPicker(accounts){
@@ -4576,11 +4495,36 @@ const dashCloseBtn = document.getElementById('dashClose');
 if(dashCloseBtn) dashCloseBtn.addEventListener('click', closeDashboard);
 
 async function loadDashboardAccounts(){
-  const response = await fetch(API_BASE + '/api/accounts',{credentials:'same-origin',headers:await firebaseApiHeaders({Accept:'application/json'})});
+  const headers = await firebaseApiHeaders({Accept:'application/json'});
+  const response = await fetch(API_BASE + '/api/accounts',{credentials:'same-origin',headers});
   if(!response.ok) throw new Error('Account service unavailable');
   const accounts = await response.json();
   if(!Array.isArray(accounts)) throw new Error('Invalid account response');
   dashboardAccounts = accounts;
+  let shouldReload = false;
+  for(const account of accounts){
+    if(account.provisioningStatus !== 'pending' || typeof account.purchaseId !== 'string') continue;
+    try{
+      const retryResponse = await fetch(
+        API_BASE + '/api/my/purchases/' + encodeURIComponent(account.purchaseId) + '/provision',
+        {method:'POST',credentials:'same-origin',headers}
+      );
+      const retryResult = await retryResponse.json();
+      if(!retryResponse.ok && retryResponse.status !== 202){
+        throw new Error(retryResult.error || 'Account provisioning retry failed.');
+      }
+      if(retryResult.provisioningStatus === 'provisioned') shouldReload = true;
+    }catch(error){
+      console.error('Could not retry verified account provisioning.',error);
+    }
+  }
+  if(shouldReload){
+    const refreshedResponse = await fetch(API_BASE + '/api/accounts',{credentials:'same-origin',headers});
+    if(!refreshedResponse.ok) throw new Error('Account service unavailable');
+    const refreshedAccounts = await refreshedResponse.json();
+    if(!Array.isArray(refreshedAccounts)) throw new Error('Invalid account response');
+    dashboardAccounts = refreshedAccounts;
+  }
 }
 let billingValidationAttempted = false;
 const billingFields = {
@@ -4666,54 +4610,6 @@ function returnToBilling(){
   setPaymentAccess();
   document.getElementById('billingStep')?.scrollIntoView({behavior:'smooth',block:'start'});
 }
-async function createPurchase(purchase){
-  if(!billingPaymentUnlocked) throw new Error('Complete billing details before submitting payment.');
-  if(!normalizeCheckoutSelection(purchase.productModel,purchase.size,purchase.planKey,purchase.productId,purchase.price)){
-    throw new Error('Select a valid challenge before submitting payment.');
-  }
-  if(!isValidTradingPlatform(selectedTradingPlatform)){
-    throw new Error('Choose a trading platform before submitting payment.');
-  }
-  const billing = validateBillingDetails();
-  if(!billing.valid) throw new Error('Complete the highlighted billing details before submitting payment.');
-  const proofInput = document.getElementById('proofInput');
-  const proof = proofInput && proofInput.files[0];
-  if(!proof) throw new Error('Attach a payment screenshot before submitting.');
-  const form = new FormData();
-  form.set('productModel',purchase.productModel);
-  form.set('productId',purchase.productId);
-  form.set('plan',purchase.planKey);
-  form.set('size',String(purchase.size));
-  form.set('coupon',document.getElementById('couponCodeInput').value.trim());
-  form.set('submissionId',pendingSubmissionId);
-  form.set('currency',currentCurrency);
-  form.set('network',document.querySelector('#netTabs .net-tab.active')?.dataset.net || '');
-  form.set('tradingPlatform',selectedTradingPlatform);
-  form.set('billing_details',JSON.stringify(billing.details));
-  form.set('proof',proof);
-  let headers;
-  try{ headers = await firebaseApiHeaders({Accept:'application/json'}); }
-  catch(error){ throw new Error('Payment sign-in required. ' + error.message); }
-  let response;
-  try{
-    response = await fetch(API_BASE + '/api/purchases',{method:'POST',credentials:'same-origin',headers,body:form});
-  }catch(error){
-    throw new Error('Could not connect to payment API at ' + API_BASE + ' from ' + window.location.origin + '. Check the backend and CORS. ' + error.message);
-  }
-  const responseText = await response.text();
-  let result = {};
-  try{ result = responseText ? JSON.parse(responseText) : {}; }
-  catch(error){ result.error = 'Payment API returned HTTP ' + response.status + ' with a non-JSON response.'; }
-  if(!response.ok){
-    if(response.status === 409){
-      clearPendingSubmissionId();
-      pendingSubmissionId = getPendingSubmissionId(pendingPurchase);
-    }
-    throw new Error(result.error || 'Purchase could not be submitted (HTTP ' + response.status + ').');
-  }
-  return result;
-}
-
 async function createCryptoCheckout(purchase){
   if(!billingPaymentUnlocked) throw new Error('Complete billing details before submitting payment.');
   if(!normalizeCheckoutSelection(purchase.productModel,purchase.size,purchase.planKey,purchase.productId,purchase.price)){
@@ -4724,7 +4620,6 @@ async function createCryptoCheckout(purchase){
   }
   const billing = validateBillingDetails();
   if(!billing.valid) throw new Error('Complete the highlighted billing details before submitting payment.');
-  const currency = document.getElementById('cryptoCurrencySelect')?.value || '';
   const payload = {
     productModel: purchase.productModel,
     productId: purchase.productId,
@@ -4732,7 +4627,6 @@ async function createCryptoCheckout(purchase){
     size: purchase.size,
     coupon: document.getElementById('couponCodeInput').value.trim(),
     submissionId: pendingSubmissionId,
-    currency,
     tradingPlatform: selectedTradingPlatform,
     billing_details: billing.details
   };
@@ -4786,26 +4680,8 @@ function purchaseAccount(accountId){
   openDashboard(accountId);
 }
 
-/* Checkout: shows the selected challenge + size, and a crypto payment UI grouped by currency. */
-const cryptoGroups = {
-  usdt: { label:'USDT', networks:[
-    { key:'trc20', label:'TRC20', addr:'TFAbUMgMjGdb7GwiTEGjwc5V5bMRvNPGf7' },
-    { key:'erc20', label:'ERC20', addr:'0xea0688a7355504f62b1e7fbfc2045b8e6ebe07c0' },
-    { key:'bep20', label:'BEP20', addr:'0xea0688a7355504f62b1e7fbfc2045b8e6ebe07c0' }
-  ]},
-  btc: { label:'BTC', networks:[
-    { key:'btc_native', label:'Bitcoin', addr:'15a6EQNsWf8g2rxdkA74Rfw22uAY6dpj7K' },
-    { key:'btc_bep20', label:'BEP20', addr:'0xea0688a7355504f62b1e7fbfc2045b8e6ebe07c0' }
-  ]},
-  eth: { label:'ETH', networks:[
-    { key:'eth_erc20', label:'ERC20', addr:'0xea0688a7355504f62b1e7fbfc2045b8e6ebe07c0' },
-    { key:'eth_bep20', label:'BEP20', addr:'0xea0688a7355504f62b1e7fbfc2045b8e6ebe07c0' }
-  ]}
-};
-let currentCurrency = 'usdt';
 let pendingPurchase = null;
 let pendingSubmissionId = '';
-let qrInstance = null;
 let billingPaymentUnlocked = false;
 const activeCouponCode = 'CRAZYFUNDED30';
 let checkoutBasePrice = 0;
@@ -4831,22 +4707,14 @@ function setPaymentAccess(){
   const paymentStep = document.getElementById('paymentStep');
   if(billingStep) billingStep.hidden = enabled;
   if(paymentStep) paymentStep.hidden = !enabled;
-  ['upiOpenBtn','copyBtn','qrOpenBtn','attachBtn','proofInput','cryptoCurrencySelect'].forEach(id=>{
-    const control = document.getElementById(id);
-    if(control) control.disabled = !enabled;
-  });
   const paymentButton = document.getElementById('coPayBtn');
   if(paymentButton){
     paymentButton.setAttribute('aria-disabled',String(!enabled));
     paymentButton.disabled = !enabled;
   }
-  if(!enabled){
-    if(typeof closeQrPopup === 'function') closeQrPopup(false);
-  }
 }
 
 function setTradingPlatform(platform){
-  const wasUnlocked = hasSelectedTradingPlatform();
   selectedTradingPlatform = isValidTradingPlatform(platform) ? platform : '';
   const platformLabels = {
     mt5: 'MetaTrader 5',
@@ -4862,7 +4730,6 @@ function setTradingPlatform(platform){
     if(card) card.classList.toggle('selected',input.checked);
   });
   setPaymentAccess();
-  if(selectedTradingPlatform && !wasUnlocked) setCurrency('usdt');
 }
 
 function normalizeCheckoutSelection(model, size, planKey, productId, submittedPrice){
@@ -5058,8 +4925,6 @@ function updateCheckoutPrice(){
   document.getElementById('coSubtotalRow').style.display = couponApplied ? '' : 'none';
   document.getElementById('coDiscountRow').style.display = couponApplied ? '' : 'none';
   document.getElementById('coTotal').textContent = formatCheckoutAmount(total);
-  document.getElementById('coPayAmt2').textContent = formatCheckoutAmount(total);
-  document.getElementById('qrModalAmount').textContent = formatCheckoutAmount(total);
 }
 
 function applyCheckoutCoupon(){
@@ -5159,7 +5024,6 @@ function renderCheckout(selection,accountDetails={billing:{},message:''}){
     if(message) message.textContent = '';
   });
   setTradingPlatform('cf');
-  currentCurrency = 'usdt';
   pendingSubmissionId = getPendingSubmissionId(pendingPurchase);
   checkoutBasePrice = selection.price;
   const classicCouponEligible = selection.productModel === 'classic';
@@ -5197,20 +5061,11 @@ function renderCheckout(selection,accountDetails={billing:{},message:''}){
     });
   }
 
-  const attachBtn = document.getElementById('attachBtn');
-  const attachPreview = document.getElementById('attachPreview');
-  const proofInput = document.getElementById('proofInput');
-  if(proofInput) proofInput.value = '';
-  if(attachPreview) attachPreview.style.display = 'none';
-  if(attachBtn){ attachBtn.classList.remove('has-file'); attachBtn.textContent = '📎 Attach payment screenshot'; }
-
 }
 function closeCheckout(preservePending=false){
   pendingCheckoutResumeKey = '';
   checkoutOwnerUid = '';
   setTradingPlatform('');
-  closeQrPopup(false);
-  closeUpiPopup(false);
   if(!preservePending){
     clearPendingCheckout();
     pendingPurchase = null;
@@ -5220,194 +5075,11 @@ function closeCheckout(preservePending=false){
   checkout.classList.remove('active');
   document.body.classList.remove('checkout-open');
 }
-function setCurrency(cur){
-  if(!hasSelectedTradingPlatform()) return;
-  currentCurrency = cur;
-  document.querySelectorAll('#curTabs .net-tab').forEach(t=> t.classList.toggle('active', t.dataset.cur===cur));
-  const netTabsEl = document.getElementById('netTabs');
-  const nets = cryptoGroups[cur].networks;
-  netTabsEl.innerHTML = nets.map((n,i)=>`<button type="button" class="net-tab${i===0?' active':''}" data-net="${n.key}">${n.label}</button>`).join('');
-  setNetwork(nets[0].key);
-}
-function findNetwork(key){
-  for(const cur in cryptoGroups){ const n = cryptoGroups[cur].networks.find(x=>x.key===key); if(n) return n; }
-  return null;
-}
-function setNetwork(netKey){
-  if(!hasSelectedTradingPlatform()) return;
-  document.querySelectorAll('#netTabs .net-tab').forEach(t=> t.classList.toggle('active', t.dataset.net===netKey));
-  const net = findNetwork(netKey);
-  if(!net) return;
-  document.getElementById('addrText').textContent = net.addr;
-  document.getElementById('netLabel').textContent = net.label;
-  document.getElementById('curLabel').textContent = cryptoGroups[currentCurrency].label;
-  document.getElementById('qrModalNetwork').textContent = net.label;
-  document.getElementById('qrModalCurrency').textContent = cryptoGroups[currentCurrency].label;
-  document.getElementById('qrModalAddress').textContent = net.addr;
-  const qrEl = document.getElementById('qrCode');
-  const qrUnavailableEl = document.getElementById('qrUnavailable');
-  qrEl.replaceChildren();
-  if(typeof QRCode !== 'undefined'){
-    qrInstance = new QRCode(qrEl, { text: net.addr, width:160, height:160, colorDark:'#0a0d0c', colorLight:'#ffffff' });
-    qrUnavailableEl.style.display = 'none';
-  }else{
-    qrUnavailableEl.style.display = 'grid';
-  }
-}
-const qrPopupEl = document.getElementById('qrPopup');
-const qrOpenBtnEl = document.getElementById('qrOpenBtn');
-const qrCloseBtnEl = document.getElementById('qrCloseBtn');
-function closeQrPopup(restoreFocus=true){
-  if(!qrPopupEl) return;
-  const wasOpen = qrPopupEl.classList.contains('show');
-  qrPopupEl.classList.remove('show');
-  if(qrOpenBtnEl) qrOpenBtnEl.setAttribute('aria-expanded','false');
-  if(restoreFocus && wasOpen && qrOpenBtnEl) qrOpenBtnEl.focus();
-}
-if(qrOpenBtnEl && qrPopupEl){
-  qrOpenBtnEl.setAttribute('aria-haspopup','dialog');
-  qrOpenBtnEl.setAttribute('aria-expanded','false');
-  qrOpenBtnEl.addEventListener('click',()=>{
-    if(!hasSelectedTradingPlatform()) return;
-    qrPopupEl.classList.add('show');
-    qrOpenBtnEl.setAttribute('aria-expanded','true');
-    qrCloseBtnEl.focus();
-  });
-}
-if(qrCloseBtnEl) qrCloseBtnEl.addEventListener('click',()=>closeQrPopup());
-if(qrPopupEl){
-  qrPopupEl.addEventListener('click',event=>{
-    if(event.target === qrPopupEl) closeQrPopup();
-  });
-  document.addEventListener('keydown',event=>{
-    if(event.key === 'Escape' && qrPopupEl.classList.contains('show')) closeQrPopup();
-  });
-}
-const upiPopupEl = document.getElementById('upiPopup');
-const upiOpenBtnEl = document.getElementById('upiOpenBtn');
-const upiCloseBtnEl = document.getElementById('upiPopupClose');
-function closeUpiPopup(restoreFocus=true){
-  if(!upiPopupEl) return;
-  const wasOpen = upiPopupEl.classList.contains('show');
-  upiPopupEl.classList.remove('show');
-  if(upiOpenBtnEl) upiOpenBtnEl.setAttribute('aria-expanded','false');
-  if(restoreFocus && wasOpen && upiOpenBtnEl) upiOpenBtnEl.focus();
-}
-if(upiOpenBtnEl && upiPopupEl){
-  upiOpenBtnEl.setAttribute('aria-haspopup','dialog');
-  upiOpenBtnEl.setAttribute('aria-expanded','false');
-  upiOpenBtnEl.addEventListener('click',()=>{
-    if(!hasSelectedTradingPlatform()) return;
-    upiPopupEl.classList.add('show');
-    upiOpenBtnEl.setAttribute('aria-expanded','true');
-    upiCloseBtnEl.focus();
-  });
-}
-if(upiCloseBtnEl) upiCloseBtnEl.addEventListener('click',()=>closeUpiPopup());
-if(upiPopupEl){
-  upiPopupEl.addEventListener('click',event=>{
-    if(event.target === upiPopupEl) closeUpiPopup();
-  });
-  document.addEventListener('keydown',event=>{
-    if(event.key === 'Escape' && upiPopupEl.classList.contains('show')) closeUpiPopup();
-  });
-}
-const curTabsEl = document.getElementById('curTabs');
-if(curTabsEl){
-  curTabsEl.addEventListener('click', e=>{
-    if(!hasSelectedTradingPlatform()) return;
-    const btn = e.target.closest('.net-tab');
-    if(btn) setCurrency(btn.dataset.cur);
-  });
-}
-const netTabsEl = document.getElementById('netTabs');
-if(netTabsEl){
-  netTabsEl.addEventListener('click', e=>{
-    if(!hasSelectedTradingPlatform()) return;
-    const btn = e.target.closest('.net-tab');
-    if(btn) setNetwork(btn.dataset.net);
-  });
-}
 document.querySelectorAll('input[name="tradingPlatform"]').forEach(input=>{
   input.addEventListener('change',()=>{
     if(input.checked) setTradingPlatform(input.value);
   });
 });
-const copyBtnEl = document.getElementById('copyBtn');
-if(copyBtnEl){
-  let copyButtonResetTimer = null;
-  const showCopyStatus = (copied,message)=>{
-    clearTimeout(copyButtonResetTimer);
-    copyBtnEl.textContent = message;
-    copyBtnEl.classList.toggle('copied',copied);
-    copyButtonResetTimer = setTimeout(()=>{
-      copyBtnEl.textContent = 'Copy Address';
-      copyBtnEl.classList.remove('copied');
-    },1600);
-  };
-  copyBtnEl.addEventListener('click',async ()=>{
-    if(!billingPaymentUnlocked || !hasSelectedTradingPlatform()) return;
-    const addressEl = document.getElementById('addrText');
-    const address = addressEl.textContent;
-    if(!address) return;
-    if(navigator.clipboard && window.isSecureContext){
-      try{
-        await navigator.clipboard.writeText(address);
-        showCopyStatus(true,'Copied ✓');
-        return;
-      }catch(error){}
-    }
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(addressEl);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    let copied = false;
-    try{ copied = document.execCommand('copy'); }
-    catch(error){}
-    if(copied){
-      selection.removeAllRanges();
-      showCopyStatus(true,'Copied ✓');
-    }else{
-      showCopyStatus(false,'Address selected — press Ctrl+C');
-    }
-  });
-}
-const attachBtnEl = document.getElementById('attachBtn');
-const proofInputEl = document.getElementById('proofInput');
-const attachPreviewEl = document.getElementById('attachPreview');
-if(attachBtnEl && proofInputEl){
-  attachBtnEl.addEventListener('click', ()=>{
-    if(!hasSelectedTradingPlatform()) return;
-    proofInputEl.click();
-  });
-  proofInputEl.addEventListener('change', ()=>{
-    if(!hasSelectedTradingPlatform()){
-      proofInputEl.value = '';
-      return;
-    }
-    const file = proofInputEl.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = e=>{
-      document.getElementById('attachImg').src = e.target.result;
-      document.getElementById('attachName').textContent = file.name;
-      attachPreviewEl.style.display = 'flex';
-      attachBtnEl.classList.add('has-file');
-      attachBtnEl.textContent = '✅ Screenshot attached';
-    };
-    reader.readAsDataURL(file);
-  });
-  const attachRemoveEl = document.getElementById('attachRemove');
-  if(attachRemoveEl){
-    attachRemoveEl.addEventListener('click', ()=>{
-      proofInputEl.value = '';
-      attachPreviewEl.style.display = 'none';
-      attachBtnEl.classList.remove('has-file');
-      attachBtnEl.textContent = '📎 Attach payment screenshot';
-    });
-  }
-}
 const coBackEl = document.getElementById('coBack');
 if(coBackEl) coBackEl.addEventListener('click', ()=>{ closeCheckout(); document.querySelector('#pricing').scrollIntoView({behavior:'smooth'}); });
 const coPayBtnEl = document.getElementById('coPayBtn');
@@ -5488,19 +5160,6 @@ if(checkoutSubmissionFormEl && coPayBtnEl){
     }
   });
 }
-const attachPopupOkEl = document.getElementById('attachPopupOk');
-if(attachPopupOkEl){
-  attachPopupOkEl.addEventListener('click', ()=>{
-    document.getElementById('attachPopup').classList.remove('show');
-  });
-}
-const attachPopupEl = document.getElementById('attachPopup');
-if(attachPopupEl){
-  attachPopupEl.addEventListener('click', e=>{
-    if(e.target === attachPopupEl) attachPopupEl.classList.remove('show');
-  });
-}
-
 async function refreshDashboard(preferredAccountId){
   try{
     await loadDashboardAccounts();
@@ -5675,16 +5334,34 @@ function renderAccount(){
   if(!data) return;
 
   document.getElementById('accountTitle').textContent = '$' + data.size.toLocaleString() + ' challenge';
-  document.getElementById('accountSummary').textContent = ['pending','pending_payment_verification'].includes(data.status)
-    ? 'Payment submitted. Awaiting admin approval.'
+  const provisioningPending = data.provisioningStatus === 'pending' || data.status === 'pending_provisioning';
+  document.getElementById('accountSummary').textContent = provisioningPending
+    ? 'Payment verified. Account provisioning is pending; reopen or refresh the dashboard to retry. No additional payment is needed.'
+    : ['pending','pending_payment_verification'].includes(data.status)
+      ? 'Payment submitted. Awaiting admin approval.'
     : ['rejected','payment_rejected'].includes(data.status)
       ? 'Payment was rejected. Contact support for assistance.'
       : data.label + ' challenge';
   document.getElementById('accountPlan').textContent = data.label.toUpperCase();
   const statusBadge = document.querySelector('#accountOverview .account-badge.active');
-  statusBadge.textContent = ['pending','pending_payment_verification'].includes(data.status)
-    ? 'PAYMENT PENDING'
+  statusBadge.textContent = provisioningPending
+    ? 'PROVISIONING PENDING'
+    : ['pending','pending_payment_verification'].includes(data.status)
+      ? 'PAYMENT PENDING'
     : data.status.replaceAll('_',' ').toUpperCase();
+  const phaseBadge = document.getElementById('accountPhase');
+  if(phaseBadge){
+    const phaseNumber = Number.isInteger(data.phaseNumber) ? data.phaseNumber : 1;
+    phaseBadge.textContent = typeof data.phaseName === 'string' && data.phaseName.trim()
+      ? data.phaseName.toUpperCase()
+      : 'PHASE ' + String(phaseNumber).padStart(2,'0');
+  }
+  const engineIdBadge = document.getElementById('accountEngineId');
+  if(engineIdBadge){
+    const hasEngineId = typeof data.tradingEngineAccountId === 'string' && data.tradingEngineAccountId.trim();
+    engineIdBadge.hidden = !hasEngineId;
+    engineIdBadge.textContent = hasEngineId ? 'ENGINE ' + data.tradingEngineAccountId : '';
+  }
   const money = value => value != null && Number.isFinite(Number(value)) ? '$' + Number(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
   const tradingActive = data.status === 'active' && data.tradingEnabled === true;
   document.getElementById('dBalance').textContent = tradingActive ? '—' : money(data.balance);

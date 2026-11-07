@@ -37,6 +37,7 @@ FRONTEND_ORIGINS = {
 }
 MAX_PROOF_BYTES = 5 * 1024 * 1024
 CLOUDFLARE_PROVISIONING_TIMEOUT_SECONDS = 15
+CLOUDFLARE_PROVISIONING_LEASE_SECONDS = 60
 CLOUDFLARE_TRADING_TIMEOUT_SECONDS = 15
 MAX_CLOUDFLARE_RESPONSE_BYTES = 64 * 1024
 
@@ -106,22 +107,18 @@ NETWORKS = {
 }
 NOWPAYMENTS_API_BASE = "https://api.nowpayments.io/v1"
 NOWPAYMENTS_TIMEOUT_SECONDS = 15
-NOWPAYMENTS_CURRENCY_OPTIONS = {
-    "btc": ("btc", "bitcoin"),
-    "eth": ("eth", "ethereum"),
-    "bnbbsc": ("bnbbsc", "bsc"),
-    "usdttrc20": ("usdttrc20", "tron"),
-    "usdterc20": ("usdterc20", "ethereum"),
-    "usdc": ("usdc", "ethereum"),
-    "usdtbsc": ("usdtbsc", "bsc"),
-    "usdtt": ("usdtt", "ton"),
-    "usdcbsc": ("usdcbsc", "bsc"),
-}
 NOWPAYMENTS_PAYMENT_STATUSES = {
     "waiting", "confirming", "confirmed", "sending", "partially_paid",
     "finished", "failed", "refunded", "expired", "reversed",
 }
 TRADING_PLATFORMS = {"mt5", "ctrader", "match_trader", "cf"}
+TRADING_ENGINE_MODEL_CODES = {
+    "1step": "1_STEP",
+    "2step": "2_STEP",
+    "instant": "INSTANT",
+    "spark_1step": "SPARK_1_STEP",
+    "spark_instant": "SPARK_INSTANT",
+}
 IMAGE_SIGNATURES = (
     (b"\x89PNG\r\n\x1a\n", "png"),
     (b"\xff\xd8\xff", "jpeg"),
@@ -676,10 +673,31 @@ def purchase_response(purchase_id, purchase, status_code=201, replay=False):
 
 
 def purchase_payment_allows_approval(purchase):
+    if purchase.get("status") == "rejected":
+        return False
     if purchase.get("paymentProvider") != "nowpayments":
         return True
+    if purchase.get("paymentStatus") != "finished":
+        return False
+    if (
+        purchase.get("settlementStatus") == "exact"
+        and purchase.get("settlementVerified") is True
+    ):
+        return purchase.get("manualReviewRequired") is not True
     return (
-        purchase.get("paymentStatus") == "finished"
+        purchase.get("settlementStatus") == "overpaid"
+        and purchase.get("manualReviewRequired") is True
+    )
+
+
+def purchase_payment_allows_auto_provisioning(purchase):
+    return (
+        isinstance(purchase, dict)
+        and purchase.get("status") != "rejected"
+        and purchase.get("paymentProvider") == "nowpayments"
+        and purchase.get("paymentStatus") == "finished"
+        and purchase.get("settlementStatus") == "exact"
+        and purchase.get("settlementVerified") is True
         and purchase.get("manualReviewRequired") is not True
     )
 
@@ -700,6 +718,12 @@ def nowpayments_configuration():
     return config
 
 
+class NOWPaymentsRequestError(RuntimeError):
+    def __init__(self, message, safe_to_retry=False):
+        super().__init__(message)
+        self.safe_to_retry = safe_to_retry
+
+
 def nowpayments_api_request(method, path, api_key, payload=None):
     body = None
     headers = {"x-api-key": api_key, "Accept": "application/json"}
@@ -718,21 +742,16 @@ def nowpayments_api_request(method, path, api_key, payload=None):
         if len(response_body) > 1024 * 1024:
             raise RuntimeError("NOWPayments returned an oversized response.")
         result = json.loads(response_body.decode("utf-8"))
-    except (HTTPError, URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise RuntimeError("NOWPayments request failed.") from error
+    except HTTPError as error:
+        raise NOWPaymentsRequestError(
+            "NOWPayments request failed.",
+            safe_to_retry=400 <= error.code < 500,
+        ) from error
+    except (URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise NOWPaymentsRequestError("NOWPayments request failed.") from error
     if not isinstance(result, dict):
         raise RuntimeError("NOWPayments returned an invalid response.")
     return result
-
-
-def nowpayments_currency_is_available(currency, api_key):
-    response = nowpayments_api_request("GET", "/currencies", api_key)
-    currencies = response.get("currencies")
-    if not isinstance(currencies, list):
-        raise RuntimeError("NOWPayments returned an invalid currencies response.")
-    return currency.lower() in {
-        str(item).strip().lower() for item in currencies if isinstance(item, str)
-    }
 
 
 def nowpayments_signature_is_valid(payload, received_signature, ipn_secret):
@@ -758,6 +777,43 @@ def nowpayments_amount_matches(value, total_cents):
     except (InvalidOperation, TypeError, ValueError):
         return False
     return amount.is_finite() and amount == Decimal(total_cents) / Decimal(100)
+
+
+def nowpayments_settlement_details(provider_payment, payment_currency):
+    provider_currency = str(provider_payment.get("pay_currency", "")).strip().lower()
+    if not provider_currency or provider_currency != payment_currency:
+        return {"status": "currency_mismatch"}
+
+    raw_expected = provider_payment.get("pay_amount")
+    raw_received = provider_payment.get("actually_paid")
+    if raw_expected is None or raw_received is None:
+        return {"status": "missing"}
+
+    try:
+        expected = Decimal(str(raw_expected))
+        received = Decimal(str(raw_received))
+    except (InvalidOperation, TypeError, ValueError):
+        return {"status": "invalid"}
+    if (
+        not expected.is_finite()
+        or not received.is_finite()
+        or expected <= 0
+        or received < 0
+    ):
+        return {"status": "invalid"}
+
+    if received < expected:
+        status = "underpaid"
+    elif received > expected:
+        status = "overpaid"
+    else:
+        status = "exact"
+    return {
+        "status": status,
+        "currency": provider_currency,
+        "payAmount": format(expected, "f"),
+        "actuallyPaid": format(received, "f"),
+    }
 
 
 def firebase_service_error(service_name, error):
@@ -1017,6 +1073,304 @@ def provision_cloudflare_account(worker_url, token, provisioning_payload):
         )
 
     return {**account, "id": account_id.strip()}
+
+
+def provisioning_lease_is_active(started_at):
+    if not isinstance(started_at, datetime):
+        return False
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    return started_at > datetime.now(timezone.utc) - timedelta(
+        seconds=CLOUDFLARE_PROVISIONING_LEASE_SECONDS
+    )
+
+
+def trading_engine_account_matches_purchase(account, purchase_values):
+    if not isinstance(account, dict):
+        return False
+    expected_model = TRADING_ENGINE_MODEL_CODES.get(purchase_values["planKey"])
+    try:
+        actual_size = Decimal(str(account.get("challenge_size")))
+        expected_size = Decimal(str(purchase_values["accountSize"]))
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+    return (
+        is_valid_trading_engine_account_id(account.get("id"))
+        and account.get("user_id") == purchase_values["ownerUid"]
+        and account.get("purchase_id") == purchase_values["purchaseId"]
+        and account.get("model_code") == expected_model
+        and actual_size.is_finite()
+        and actual_size == expected_size
+        and isinstance(account.get("status"), str)
+        and bool(account["status"].strip())
+    )
+
+
+def finite_engine_number(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value if math.isfinite(value) else None
+
+
+def provision_verified_purchase(purchase, database=None):
+    if purchase is None:
+        return {"state": "not_found"}
+    database = database or get_firestore()
+    purchase_id = str(purchase.reference.id)
+    purchase_ref = purchase.reference
+    attempt_id = str(uuid.uuid4())
+
+    @firestore.transactional
+    def claim_provisioning(transaction):
+        snapshot = purchase_ref.get(transaction=transaction)
+        current = snapshot.to_dict() or {}
+        if not purchase_payment_allows_auto_provisioning(current):
+            return {"state": "not_eligible"}
+
+        values = purchase_provisioning_values(purchase_id, current)
+        account_ref = user_document(values["ownerUid"]).collection(
+            "accounts"
+        ).document(values["accountId"])
+        account_snapshot = account_ref.get(transaction=transaction)
+        account = account_snapshot.to_dict() or {}
+        if account_snapshot.exists and not firestore_account_matches_purchase(account, values):
+            raise CloudflareProvisioningError(
+                "firestore_account_mismatch",
+                "Firestore account does not match its purchase.",
+                409,
+            )
+        if account.get("status") == "rejected":
+            return {"state": "account_rejected"}
+        engine_account_id = account.get("tradingEngineAccountId")
+        if (
+            is_valid_trading_engine_account_id(engine_account_id)
+            and account.get("status") == "active"
+            and account.get("tradingEnabled") is True
+        ):
+            return {"state": "provisioned", "accountId": engine_account_id.strip()}
+        if (
+            current.get("provisioningStatus") == "in_progress"
+            and provisioning_lease_is_active(current.get("provisioningStartedAt"))
+        ):
+            return {"state": "in_progress"}
+
+        if current.get("status") != "approved":
+            award_referral_reward(
+                transaction,
+                database,
+                values["ownerUid"],
+                values["purchaseId"],
+            )
+
+        account_fields = {
+            "ownerUid": values["ownerUid"],
+            "userUid": values["ownerUid"],
+            "purchaseId": values["purchaseId"],
+            "accountId": values["accountId"],
+            "planKey": values["planKey"],
+            "accountSize": values["accountSize"],
+            "phase": "instant" if values["planKey"] in {"instant", "spark_instant"} else "phase_1",
+            "status": "pending_provisioning",
+            "provisioningStatus": "pending",
+            "tradingEnabled": False,
+            "balance": None,
+            "equity": None,
+            "profit": None,
+            "dailyDrawdown": None,
+            "overallDrawdown": None,
+            "tradingDays": None,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        }
+        if account_snapshot.exists:
+            transaction.update(account_ref, account_fields)
+        else:
+            account_fields["createdAt"] = current.get("createdAt") or firestore.SERVER_TIMESTAMP
+            transaction.set(account_ref, account_fields)
+        transaction.update(purchase_ref, {
+            "status": "approved",
+            "approvalSource": "automatic_nowpayments",
+            "approvedAt": current.get("approvedAt") or firestore.SERVER_TIMESTAMP,
+            "provisioningStatus": "in_progress",
+            "provisioningAttemptId": attempt_id,
+            "provisioningStartedAt": firestore.SERVER_TIMESTAMP,
+            "provisioningErrorCode": None,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        })
+        return {
+            "state": "claimed",
+            "attemptId": attempt_id,
+            "purchaseValues": values,
+            "accountRef": account_ref,
+            "existingEngineAccountId": (
+                engine_account_id.strip()
+                if is_valid_trading_engine_account_id(engine_account_id)
+                else None
+            ),
+        }
+
+    try:
+        claim = claim_provisioning(database.transaction())
+    except CloudflareProvisioningError as error:
+        app.logger.error(
+            "Could not claim trading account provisioning for purchase %s (%s)",
+            purchase_id,
+            error.code,
+        )
+        return {"state": "pending", "code": error.code}
+    except Exception as error:
+        app.logger.exception(
+            "Could not claim trading account provisioning for purchase %s (%s)",
+            purchase_id,
+            type(error).__name__,
+        )
+        return {"state": "pending", "code": "firestore_unavailable"}
+    if claim["state"] != "claimed":
+        return claim
+
+    values = claim["purchaseValues"]
+    try:
+        worker_url, provisioning_token = cloudflare_worker_configuration()
+        worker_account = provision_cloudflare_account(
+            worker_url,
+            provisioning_token,
+            {
+                "user_id": values["ownerUid"],
+                "purchase_id": values["purchaseId"],
+                "plan_key": values["planKey"],
+                "account_size": values["accountSize"],
+            },
+        )
+        if not trading_engine_account_matches_purchase(worker_account, values):
+            raise CloudflareProvisioningError(
+                "worker_account_mismatch",
+                "Trading engine returned an account for a different purchase.",
+            )
+    except CloudflareProvisioningError as error:
+        failure_code = error.code
+    except Exception as error:
+        app.logger.exception(
+            "Trading account provisioning failed for purchase %s (%s)",
+            purchase_id,
+            type(error).__name__,
+        )
+        failure_code = "worker_unavailable"
+    else:
+        failure_code = None
+
+    if failure_code is not None:
+        @firestore.transactional
+        def mark_provisioning_pending(transaction):
+            current = purchase_ref.get(transaction=transaction).to_dict() or {}
+            if (
+                current.get("provisioningAttemptId") != attempt_id
+                or current.get("status") == "rejected"
+            ):
+                return False
+            account_snapshot = claim["accountRef"].get(transaction=transaction)
+            account = account_snapshot.to_dict() or {}
+            if account_snapshot.exists and not firestore_account_matches_purchase(account, values):
+                return False
+            transaction.update(purchase_ref, {
+                "provisioningStatus": "pending",
+                "provisioningErrorCode": failure_code,
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+            })
+            if account_snapshot.exists and not (
+                is_valid_trading_engine_account_id(account.get("tradingEngineAccountId"))
+                and account.get("status") == "active"
+                and account.get("tradingEnabled") is True
+            ):
+                transaction.update(claim["accountRef"], {
+                    "status": "pending_provisioning",
+                    "provisioningStatus": "pending",
+                    "provisioningErrorCode": failure_code,
+                    "tradingEnabled": False,
+                    "updatedAt": firestore.SERVER_TIMESTAMP,
+                })
+            return True
+
+        try:
+            mark_provisioning_pending(database.transaction())
+        except Exception as error:
+            app.logger.exception(
+                "Could not record pending trading account provisioning for purchase %s (%s)",
+                purchase_id,
+                type(error).__name__,
+            )
+        return {"state": "pending", "code": failure_code}
+
+    engine_account_id = worker_account["id"].strip()
+    engine_status = worker_account["status"].strip().lower()
+    phase_number = worker_account.get("phase_number")
+    if not isinstance(phase_number, int) or isinstance(phase_number, bool) or phase_number < 1:
+        phase_number = 1
+
+    @firestore.transactional
+    def save_provisioned_account(transaction):
+        current = purchase_ref.get(transaction=transaction).to_dict() or {}
+        if (
+            current.get("provisioningAttemptId") != attempt_id
+            or not purchase_payment_allows_auto_provisioning(current)
+        ):
+            return "purchase_changed"
+        current_values = purchase_provisioning_values(purchase_id, current)
+        if current_values != values:
+            return "purchase_changed"
+        account_snapshot = claim["accountRef"].get(transaction=transaction)
+        account = account_snapshot.to_dict() or {}
+        if (
+            not account_snapshot.exists
+            or not firestore_account_matches_purchase(account, values)
+        ):
+            return "account_mismatch"
+        saved_id = account.get("tradingEngineAccountId")
+        if is_valid_trading_engine_account_id(saved_id) and saved_id.strip() != engine_account_id:
+            return "engine_account_mismatch"
+
+        account_updates = {
+            "tradingEngineAccountId": engine_account_id,
+            "status": engine_status,
+            "tradingStatus": engine_status,
+            "provisioningStatus": "provisioned",
+            "provisioningErrorCode": None,
+            "tradingEnabled": engine_status == "active",
+            "phase": "instant" if values["planKey"] in {"instant", "spark_instant"} else f"phase_{phase_number}",
+            "phaseNumber": phase_number,
+            "phaseName": worker_account.get("phase_name") if isinstance(worker_account.get("phase_name"), str) else None,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        }
+        for field in ("starting_balance", "balance", "equity"):
+            normalized = finite_engine_number(worker_account.get(field))
+            if normalized is not None:
+                account_updates[
+                    "balance" if field == "starting_balance" else field
+                ] = normalized
+        transaction.update(claim["accountRef"], account_updates)
+        transaction.update(purchase_ref, {
+            "provisioningStatus": "provisioned",
+            "provisioningErrorCode": None,
+            "tradingEngineAccountId": engine_account_id,
+            "provisioningCompletedAt": firestore.SERVER_TIMESTAMP,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        })
+        return "saved"
+
+    try:
+        save_result = save_provisioned_account(database.transaction())
+    except Exception as error:
+        app.logger.exception(
+            "Could not save trading account provisioning for purchase %s (%s)",
+            purchase_id,
+            type(error).__name__,
+        )
+        save_result = "save_failed"
+    if save_result != "saved":
+        return {"state": "pending", "code": save_result}
+    return {
+        "state": "provisioned",
+        "accountId": engine_account_id,
+        "tradingStatus": engine_status,
+    }
 
 
 class CloudflareTradingApiError(Exception):
@@ -1776,11 +2130,17 @@ def list_accounts():
         accounts.append({
             "id": document.id,
             "accountId": row.get("accountId", document.id),
+            "purchaseId": row.get("purchaseId"),
+            "tradingEngineAccountId": row.get("tradingEngineAccountId"),
             "label": plan["label"],
             "plan": plan_key,
             "size": row.get("accountSize"),
             "phase": row.get("phase"),
+            "phaseNumber": row.get("phaseNumber"),
+            "phaseName": row.get("phaseName"),
             "status": row.get("status"),
+            "provisioningStatus": row.get("provisioningStatus"),
+            "tradingStatus": row.get("tradingStatus", row.get("status")),
             "balance": row.get("balance"),
             "equity": row.get("equity"),
             "profit": row.get("profit"),
@@ -1794,6 +2154,41 @@ def list_accounts():
             "profitSplit": plan["profit_split"],
         })
     return jsonify(firestore_json(accounts))
+
+
+@app.post("/api/my/purchases/<purchase_id>/provision")
+@firebase_auth_required
+def retry_my_purchase_provisioning(purchase_id):
+    purchase = find_purchase_document(purchase_id)
+    if purchase is None:
+        return jsonify(error="Purchase not found."), 404
+    purchase_data = purchase.to_dict() or {}
+    if purchase_data.get("ownerUid") != g.firebase_uid:
+        return jsonify(error="Purchase not found."), 404
+    if not purchase_payment_allows_auto_provisioning(purchase_data):
+        return jsonify(error="This purchase is not eligible for automatic provisioning."), 409
+
+    result = provision_verified_purchase(purchase)
+    if result["state"] == "pending":
+        return jsonify(
+            purchaseId=purchase_id,
+            provisioningStatus="pending",
+            message="Payment is verified; account provisioning is pending. Retry without paying again.",
+        ), 202
+    if result["state"] == "in_progress":
+        return jsonify(
+            purchaseId=purchase_id,
+            provisioningStatus="in_progress",
+            message="Account provisioning is already in progress.",
+        ), 202
+    if result["state"] != "provisioned":
+        return jsonify(error="Purchase is not eligible for account provisioning."), 409
+    return jsonify(
+        purchaseId=purchase_id,
+        provisioningStatus="provisioned",
+        tradingStatus=result.get("tradingStatus", "active"),
+        tradingEngineAccountId=result.get("accountId"),
+    ), 200
 
 
 @app.get("/api/trading/accounts")
@@ -2154,12 +2549,6 @@ def create_crypto_checkout():
     if trading_platform not in TRADING_PLATFORMS:
         return jsonify(error="Select a supported trading platform."), 400
 
-    currency_option = str(payload.get("currency", "")).strip().lower()
-    currency_details = NOWPAYMENTS_CURRENCY_OPTIONS.get(currency_option)
-    if currency_details is None:
-        return jsonify(error="Select a supported crypto currency and network."), 400
-    payment_currency, payment_network = currency_details
-
     try:
         list_price, discount, total, coupon_code = calculate_purchase_amount(
             plan_key, size, payload.get("coupon")
@@ -2177,6 +2566,7 @@ def create_crypto_checkout():
 
     uid = g.firebase_uid
     purchase_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"daily-funded:{uid}:{submission_id}"))
+    retry_existing = False
     try:
         database = get_firestore()
         user_ref = database.collection("users").document(uid)
@@ -2189,8 +2579,6 @@ def create_crypto_checkout():
                 or existing.get("planKey") != plan_key
                 or existing.get("accountSize") != size
                 or existing.get("couponCode") != coupon_code
-                or existing.get("paymentCurrency") != payment_currency
-                or existing.get("paymentNetwork") != payment_network
                 or existing.get("tradingPlatform") != trading_platform
                 or existing.get("billingDetails") != billing_details
                 or existing.get("paymentProvider") != "nowpayments"
@@ -2206,17 +2594,21 @@ def create_crypto_checkout():
                     totalCents=existing.get("totalCents"),
                     idempotentReplay=True,
                 ), 200
-            return jsonify(error="This checkout is already being prepared. Please wait or contact support."), 503
+            if existing.get("invoiceCreationStatus") == "reconciliation_required":
+                return jsonify(
+                    error="Crypto checkout could not be confirmed. Please contact support before retrying."
+                ), 503
+            if existing.get("invoiceCreationStatus") != "failed":
+                return jsonify(error="This checkout is already being prepared. Please wait or contact support."), 503
+            retry_existing = True
     except Exception as error:
         app.logger.exception("Could not check existing crypto checkout %s", purchase_id)
         return firebase_service_error("Firestore", error)
 
     try:
         config = nowpayments_configuration()
-        if not nowpayments_currency_is_available(payment_currency, config["api_key"]):
-            return jsonify(error="That crypto currency/network is not currently available."), 400
-    except Exception as error:
-        app.logger.exception("Could not validate NOWPayments configuration or currencies")
+    except Exception:
+        app.logger.exception("Could not validate NOWPayments configuration")
         return jsonify(error="Crypto checkout is temporarily unavailable."), 503
 
     try:
@@ -2229,6 +2621,55 @@ def create_crypto_checkout():
     except Exception as error:
         app.logger.exception("Could not load user profile for crypto checkout %s", purchase_id)
         return firebase_service_error("Firestore", error)
+
+    if retry_existing:
+        @firestore.transactional
+        def claim_invoice_retry(transaction):
+            snapshot = purchase_ref.get(transaction=transaction)
+            existing = snapshot.to_dict() or {}
+            if (
+                existing.get("ownerUid") != uid
+                or existing.get("planKey") != plan_key
+                or existing.get("accountSize") != size
+                or existing.get("couponCode") != coupon_code
+                or existing.get("tradingPlatform") != trading_platform
+                or existing.get("billingDetails") != billing_details
+                or existing.get("paymentProvider") != "nowpayments"
+            ):
+                return "purchase_mismatch", existing
+            if existing.get("invoiceUrl"):
+                return "invoice_exists", existing
+            if (
+                existing.get("invoiceCreationStatus") != "failed"
+                or not purchase_status_is_pending(existing.get("status"))
+                or existing.get("paymentStatus") != "waiting"
+            ):
+                return "already_in_progress", existing
+            transaction.update(purchase_ref, {
+                "invoiceCreationStatus": "creating",
+                "invoiceCreationErrorType": None,
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+            })
+            return "claimed", existing
+
+        try:
+            retry_result, existing = claim_invoice_retry(database.transaction())
+        except Exception as error:
+            app.logger.exception("Could not claim NOWPayments invoice retry %s", purchase_id)
+            return firebase_service_error("Firestore", error)
+        if retry_result == "purchase_mismatch":
+            return jsonify(error="This submissionId is already associated with a different purchase."), 409
+        if retry_result == "invoice_exists":
+            return jsonify(
+                purchaseId=purchase_id,
+                invoiceUrl=existing["invoiceUrl"],
+                status=existing.get("status", "pending"),
+                paymentStatus=existing.get("paymentStatus", "waiting"),
+                totalCents=existing.get("totalCents"),
+                idempotentReplay=True,
+            ), 200
+        if retry_result != "claimed":
+            return jsonify(error="This checkout is already being prepared. Please wait or contact support."), 503
 
     purchase_data = {
         "purchaseId": purchase_id,
@@ -2243,8 +2684,6 @@ def create_crypto_checkout():
         "discountCents": discount,
         "totalCents": total,
         "couponCode": coupon_code,
-        "paymentCurrency": payment_currency,
-        "paymentNetwork": payment_network,
         "paymentMethod": "crypto",
         "paymentProvider": "nowpayments",
         "tradingPlatform": trading_platform,
@@ -2254,43 +2693,41 @@ def create_crypto_checkout():
         "invoiceCreationStatus": "creating",
         "createdAt": firestore.SERVER_TIMESTAMP,
     }
-    try:
-        purchase_ref.create(purchase_data)
-    except AlreadyExists:
+    if not retry_existing:
         try:
-            existing = purchase_ref.get().to_dict() or {}
+            purchase_ref.create(purchase_data)
+        except AlreadyExists:
+            try:
+                existing = purchase_ref.get().to_dict() or {}
+            except Exception as error:
+                app.logger.exception("Could not confirm crypto checkout %s", purchase_id)
+                return firebase_service_error("Firestore", error)
+            if (
+                existing.get("ownerUid") == uid
+                and existing.get("planKey") == plan_key
+                and existing.get("accountSize") == size
+                and existing.get("couponCode") == coupon_code
+                and existing.get("tradingPlatform") == trading_platform
+                and existing.get("billingDetails") == billing_details
+                and existing.get("paymentProvider") == "nowpayments"
+                and existing.get("invoiceUrl")
+            ):
+                return jsonify(
+                    purchaseId=purchase_id,
+                    invoiceUrl=existing["invoiceUrl"],
+                    status=existing.get("status", "pending"),
+                    paymentStatus=existing.get("paymentStatus", "waiting"),
+                    totalCents=existing.get("totalCents"),
+                    idempotentReplay=True,
+                ), 200
+            return jsonify(error="This checkout is already being prepared. Please wait or contact support."), 503
         except Exception as error:
-            app.logger.exception("Could not confirm crypto checkout %s", purchase_id)
+            app.logger.exception("Could not reserve crypto checkout %s", purchase_id)
             return firebase_service_error("Firestore", error)
-        if (
-            existing.get("ownerUid") == uid
-            and existing.get("planKey") == plan_key
-            and existing.get("accountSize") == size
-            and existing.get("couponCode") == coupon_code
-            and existing.get("paymentCurrency") == payment_currency
-            and existing.get("paymentNetwork") == payment_network
-            and existing.get("tradingPlatform") == trading_platform
-            and existing.get("billingDetails") == billing_details
-            and existing.get("paymentProvider") == "nowpayments"
-            and existing.get("invoiceUrl")
-        ):
-            return jsonify(
-                purchaseId=purchase_id,
-                invoiceUrl=existing["invoiceUrl"],
-                status=existing.get("status", "pending"),
-                paymentStatus=existing.get("paymentStatus", "waiting"),
-                totalCents=existing.get("totalCents"),
-                idempotentReplay=True,
-            ), 200
-        return jsonify(error="This checkout is already being prepared. Please wait or contact support."), 503
-    except Exception as error:
-        app.logger.exception("Could not reserve crypto checkout %s", purchase_id)
-        return firebase_service_error("Firestore", error)
 
     invoice_payload = {
         "price_amount": total / 100,
         "price_currency": "usd",
-        "pay_currency": payment_currency,
         "order_id": purchase_id,
         "order_description": f"{plan['label']} ${size:,} account",
         "ipn_callback_url": config["callback_url"],
@@ -2302,6 +2739,24 @@ def create_crypto_checkout():
         invoice = nowpayments_api_request(
             "POST", "/invoice", config["api_key"], invoice_payload
         )
+    except Exception as error:
+        app.logger.exception("Could not create NOWPayments invoice for purchase %s", purchase_id)
+        retryable_failure = (
+            isinstance(error, NOWPaymentsRequestError) and error.safe_to_retry
+        )
+        try:
+            purchase_ref.update({
+                "invoiceCreationStatus": "failed" if retryable_failure else "reconciliation_required",
+                "invoiceCreationErrorType": type(error).__name__,
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+            })
+        except Exception:
+            app.logger.exception("Could not record NOWPayments invoice failure for %s", purchase_id)
+        if retryable_failure:
+            return jsonify(error="Crypto checkout could not be created. Please retry."), 503
+        return jsonify(error="Crypto checkout could not be confirmed. Please contact support before retrying."), 503
+
+    try:
         invoice_id = str(invoice.get("id") or invoice.get("invoice_id") or "").strip()
         invoice_url = str(invoice.get("invoice_url") or "").strip()
         parsed_invoice_url = urlsplit(invoice_url)
@@ -2311,6 +2766,19 @@ def create_crypto_checkout():
             or parsed_invoice_url.hostname != "nowpayments.io"
         ):
             raise RuntimeError("NOWPayments returned an invalid invoice.")
+    except Exception as error:
+        app.logger.exception("NOWPayments returned an invalid invoice for purchase %s", purchase_id)
+        try:
+            purchase_ref.update({
+                "invoiceCreationStatus": "reconciliation_required",
+                "invoiceCreationErrorType": type(error).__name__,
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+            })
+        except Exception:
+            app.logger.exception("Could not record invalid NOWPayments invoice for %s", purchase_id)
+        return jsonify(error="Crypto checkout could not be confirmed. Please contact support before retrying."), 503
+
+    try:
         purchase_ref.update({
             "invoiceId": invoice_id,
             "invoiceUrl": invoice_url,
@@ -2318,16 +2786,17 @@ def create_crypto_checkout():
             "updatedAt": firestore.SERVER_TIMESTAMP,
         })
     except Exception as error:
-        app.logger.exception("Could not create NOWPayments invoice for purchase %s", purchase_id)
+        app.logger.exception("Could not save NOWPayments invoice for purchase %s", purchase_id)
         try:
             purchase_ref.update({
-                "invoiceCreationStatus": "failed",
-                "invoiceCreationErrorType": type(error).__name__,
+                "invoiceId": invoice_id,
+                "invoiceUrl": invoice_url,
+                "invoiceCreationStatus": "created",
                 "updatedAt": firestore.SERVER_TIMESTAMP,
             })
         except Exception:
-            app.logger.exception("Could not record NOWPayments invoice failure for %s", purchase_id)
-        return jsonify(error="Crypto checkout could not be created. Please contact support before retrying."), 503
+            app.logger.exception("Could not reconcile NOWPayments invoice for purchase %s", purchase_id)
+        return firebase_service_error("Firestore", error)
 
     return jsonify(
         purchaseId=purchase_id,
@@ -2377,13 +2846,21 @@ def nowpayments_ipn():
     if str(payload.get("order_id")) != order_id:
         return jsonify(error="Invalid NOWPayments order identifier."), 400
     invoice_id = payload.get("invoice_id")
-    if invoice_id is not None and str(invoice_id) != str(purchase_data.get("invoiceId", "")):
+    if (
+        invoice_id is None
+        or not purchase_data.get("invoiceId")
+        or str(invoice_id) != str(purchase_data.get("invoiceId", ""))
+    ):
         return jsonify(error="Invalid NOWPayments invoice identifier."), 400
 
-    expected_currency = str(purchase_data.get("paymentCurrency", "")).lower()
+    payment_currency = str(payload.get("pay_currency", "")).strip().lower()
     if (
         str(payload.get("price_currency", "")).lower() != "usd"
-        or str(payload.get("pay_currency", "")).lower() != expected_currency
+        or not re.fullmatch(r"[a-z0-9]{2,32}", payment_currency)
+        or (
+            purchase_data.get("paymentCurrency")
+            and str(purchase_data.get("paymentCurrency", "")).lower() != payment_currency
+        )
         or not nowpayments_amount_matches(payload.get("price_amount"), purchase_data["totalCents"])
     ):
         return jsonify(error="NOWPayments amount or currency does not match the purchase."), 400
@@ -2398,8 +2875,12 @@ def nowpayments_ipn():
     if (
         str(provider_payment.get("payment_id", "")) != payment_id
         or str(provider_payment.get("order_id", "")) != order_id
+        or (
+            provider_payment.get("invoice_id") is not None
+            and str(provider_payment.get("invoice_id")) != str(purchase_data.get("invoiceId", ""))
+        )
         or str(provider_payment.get("price_currency", "")).lower() != "usd"
-        or str(provider_payment.get("pay_currency", "")).lower() != expected_currency
+        or str(provider_payment.get("pay_currency", "")).strip().lower() != payment_currency
         or str(provider_payment.get("payment_status", "")).lower() != payment_status
         or not nowpayments_amount_matches(
             provider_payment.get("price_amount"), purchase_data["totalCents"]
@@ -2409,6 +2890,11 @@ def nowpayments_ipn():
 
     database = get_firestore()
     purchase_ref = purchase.reference
+    settlement = nowpayments_settlement_details(provider_payment, payment_currency)
+    settlement_status = settlement["status"]
+    if payment_status != "finished" and settlement_status == "exact":
+        settlement_status = "awaiting_finished"
+    settlement_verified = payment_status == "finished" and settlement_status == "exact"
 
     @firestore.transactional
     def apply_payment_update(transaction):
@@ -2418,7 +2904,10 @@ def nowpayments_ipn():
             current.get("paymentProvider") != "nowpayments"
             or current.get("purchaseId") != order_id
             or current.get("totalCents") != purchase_data["totalCents"]
-            or str(current.get("paymentCurrency", "")).lower() != expected_currency
+            or (
+                current.get("paymentCurrency")
+                and str(current.get("paymentCurrency", "")).lower() != payment_currency
+            )
         ):
             return "purchase_changed"
         stored_payment_id = current.get("providerPaymentId")
@@ -2428,24 +2917,179 @@ def nowpayments_ipn():
         current_status = str(current.get("paymentStatus", "")).lower()
         if current_status in {"refunded", "reversed"} and payment_status not in {"refunded", "reversed"}:
             return "terminal_refund"
-        if current_status == "finished" and payment_status not in {"refunded", "reversed"}:
+        if current_status == "finished" and payment_status not in {"finished", "refunded", "reversed"}:
             return "already_finished"
-        if current_status == payment_status and str(stored_payment_id or "") == payment_id:
-            return "duplicate"
+
+        settlement_updates = {
+            "settlementStatus": settlement_status,
+            "settlementVerified": settlement_verified,
+            "settlementCurrency": settlement.get("currency"),
+            "settlementPayAmount": settlement.get("payAmount"),
+            "settlementActuallyPaid": settlement.get("actuallyPaid"),
+        }
+        if current.get("status") == "rejected":
+            if (
+                current_status == payment_status
+                and str(stored_payment_id or "") == payment_id
+                and current.get("manualReviewRequired") is True
+                and current.get("settlementStatus") == settlement_status
+                and current.get("settlementPayAmount") == settlement.get("payAmount")
+                and current.get("settlementActuallyPaid") == settlement.get("actuallyPaid")
+            ):
+                return "duplicate"
+            updates = {
+                "providerPaymentId": payment_id,
+                "paymentCurrency": payment_currency,
+                "paymentStatus": payment_status,
+                "providerStatus": payment_status,
+                **settlement_updates,
+                "paymentUpdatedAt": firestore.SERVER_TIMESTAMP,
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+                "manualReviewRequired": True,
+                "manualReviewSource": "rejected_purchase",
+                "manualReviewReason": current.get("manualReviewReason")
+                or current.get("rejectionReason")
+                or "NOWPayments reported a payment update after purchase rejection.",
+            }
+            if payment_status in {"refunded", "reversed"}:
+                updates["manualReviewReason"] = f"NOWPayments reported {payment_status} after purchase rejection."
+            transaction.update(purchase_ref, updates)
+            return "rejected_payment_recorded"
+
+        if (
+            payment_status == "finished"
+            and current_status == "finished"
+            and str(stored_payment_id or "") == payment_id
+            and current.get("settlementStatus") == "exact"
+            and current.get("settlementVerified") is True
+            and current.get("manualReviewRequired") is not True
+            and current.get("provisioningStatus") == "provisioned"
+        ):
+            values = purchase_provisioning_values(order_id, current)
+            account_ref = user_document(values["ownerUid"]).collection(
+                "accounts"
+            ).document(values["accountId"])
+            account_snapshot = account_ref.get(transaction=transaction)
+            account = account_snapshot.to_dict() or {}
+            if account_snapshot.exists and not firestore_account_matches_purchase(account, values):
+                raise CloudflareProvisioningError(
+                    "firestore_account_mismatch",
+                    "Firestore account does not match its purchase.",
+                    409,
+                )
+            if (
+                account_snapshot.exists
+                and account.get("status") == "active"
+                and account.get("tradingEnabled") is True
+                and is_valid_trading_engine_account_id(account.get("tradingEngineAccountId"))
+            ):
+                return "duplicate"
 
         updates = {
             "providerPaymentId": payment_id,
+            "paymentCurrency": payment_currency,
             "paymentStatus": payment_status,
             "providerStatus": payment_status,
+            **settlement_updates,
             "paymentUpdatedAt": firestore.SERVER_TIMESTAMP,
             "updatedAt": firestore.SERVER_TIMESTAMP,
         }
+        requires_settlement_review = payment_status == "finished" and settlement_status != "exact"
+        if settlement_status in {"underpaid", "overpaid", "invalid", "currency_mismatch"}:
+            requires_settlement_review = True
+        if requires_settlement_review:
+            updates.update({
+                "manualReviewRequired": True,
+                "manualReviewSource": "settlement",
+                "manualReviewReason": f"NOWPayments settlement requires review ({settlement_status}).",
+            })
+        elif settlement_verified and current.get("manualReviewSource") == "settlement":
+            updates.update({
+                "manualReviewRequired": False,
+                "manualReviewSource": None,
+                "manualReviewReason": None,
+            })
         if payment_status in {"refunded", "reversed"}:
             updates.update({
                 "manualReviewRequired": True,
+                "manualReviewSource": "provider_status",
                 "manualReviewReason": f"NOWPayments reported {payment_status}.",
             })
+
+        auto_provision = (
+            settlement_verified
+            and current.get("manualReviewRequired") is not True
+            and current.get("manualReviewSource") not in {"rejected_purchase", "provider_status"}
+        )
+        if auto_provision:
+            values = purchase_provisioning_values(order_id, current)
+            account_ref = user_document(values["ownerUid"]).collection(
+                "accounts"
+            ).document(values["accountId"])
+            account_snapshot = account_ref.get(transaction=transaction)
+            account = account_snapshot.to_dict() or {}
+            if account_snapshot.exists and not firestore_account_matches_purchase(account, values):
+                raise CloudflareProvisioningError(
+                    "firestore_account_mismatch",
+                    "Firestore account does not match its purchase.",
+                    409,
+                )
+            if account.get("status") == "rejected":
+                return "account_rejected"
+            if current.get("status") != "approved":
+                award_referral_reward(
+                    transaction,
+                    database,
+                    values["ownerUid"],
+                    values["purchaseId"],
+                )
+                updates.update({
+                    "status": "approved",
+                    "approvalSource": "automatic_nowpayments",
+                    "approvedAt": current.get("approvedAt") or firestore.SERVER_TIMESTAMP,
+                })
+            updates["provisioningStatus"] = current.get("provisioningStatus") or "pending"
+            if not account_snapshot.exists:
+                transaction.set(account_ref, {
+                    "ownerUid": values["ownerUid"],
+                    "userUid": values["ownerUid"],
+                    "purchaseId": values["purchaseId"],
+                    "accountId": values["accountId"],
+                    "planKey": values["planKey"],
+                    "accountSize": values["accountSize"],
+                    "phase": "instant" if values["planKey"] in {"instant", "spark_instant"} else "phase_1",
+                    "status": "pending_provisioning",
+                    "provisioningStatus": "pending",
+                    "tradingEnabled": False,
+                    "balance": None,
+                    "equity": None,
+                    "profit": None,
+                    "dailyDrawdown": None,
+                    "overallDrawdown": None,
+                    "tradingDays": None,
+                    "createdAt": firestore.SERVER_TIMESTAMP,
+                    "updatedAt": firestore.SERVER_TIMESTAMP,
+                })
+            elif not (
+                is_valid_trading_engine_account_id(account.get("tradingEngineAccountId"))
+                and account.get("status") == "active"
+                and account.get("tradingEnabled") is True
+            ):
+                transaction.update(account_ref, {
+                    "status": "pending_provisioning",
+                    "provisioningStatus": "pending",
+                    "tradingEnabled": False,
+                    "updatedAt": firestore.SERVER_TIMESTAMP,
+                })
         transaction.update(purchase_ref, updates)
+        if (
+            current_status == payment_status
+            and str(stored_payment_id or "") == payment_id
+            and current.get("settlementStatus") == settlement_status
+            and current.get("settlementPayAmount") == settlement.get("payAmount")
+            and current.get("settlementActuallyPaid") == settlement.get("actuallyPaid")
+        ):
+            return "duplicate"
         return "updated"
 
     try:
@@ -2455,9 +3099,55 @@ def nowpayments_ipn():
         return firebase_service_error("Firestore", error)
     if update_result == "payment_id_conflict":
         return jsonify(error="A different provider payment is already associated with this purchase."), 409
-    if update_result == "purchase_changed":
+    if update_result in {"purchase_changed", "account_rejected"}:
         return jsonify(error="Purchase changed during payment verification."), 409
-    return jsonify(received=True, duplicate=update_result != "updated"), 200
+    if update_result in {"terminal_refund", "already_finished"}:
+        return jsonify(
+            received=True,
+            duplicate=True,
+            paymentStatus=purchase_data.get("paymentStatus"),
+        ), 200
+
+    if (
+        settlement_verified
+        and update_result != "rejected_payment_recorded"
+        and not (
+            update_result == "duplicate"
+            and purchase_data.get("provisioningStatus") == "provisioned"
+        )
+    ):
+        provisioning = provision_verified_purchase(purchase, database)
+        if provisioning["state"] == "pending":
+            return jsonify(
+                received=True,
+                duplicate=update_result == "duplicate",
+                paymentStatus="finished",
+                settlementStatus="exact",
+                provisioningStatus="pending",
+                message="Payment is verified; account provisioning is pending and can be retried.",
+            ), 503
+    else:
+        provisioning = {
+            "state": purchase_data.get("provisioningStatus", "not_started")
+            if update_result != "rejected_payment_recorded"
+            else "review_required"
+        }
+
+    return jsonify(
+        received=True,
+        duplicate=update_result not in {"updated", "rejected_payment_recorded"},
+        paymentStatus=(
+            purchase_data.get("paymentStatus")
+            if update_result == "duplicate"
+            else payment_status
+        ),
+        settlementStatus=settlement_status,
+        settlementVerified=settlement_verified,
+        provisioningStatus=provisioning["state"],
+        manualReviewRequired=update_result == "rejected_payment_recorded" or (
+            payment_status == "finished" and settlement_status != "exact"
+        ) or provisioning["state"] == "not_eligible",
+    ), 200
 
 
 @app.get("/api/admin/purchases/pending")
@@ -2488,8 +3178,15 @@ def admin_pending_purchases():
             "paymentProvider": data.get("paymentProvider"),
             "paymentStatus": data.get("paymentStatus"),
             "providerPaymentId": data.get("providerPaymentId"),
+            "invoiceId": data.get("invoiceId"),
+            "settlementStatus": data.get("settlementStatus"),
+            "settlementVerified": data.get("settlementVerified", False),
+            "settlementCurrency": data.get("settlementCurrency"),
+            "settlementPayAmount": data.get("settlementPayAmount"),
+            "settlementActuallyPaid": data.get("settlementActuallyPaid"),
             "manualReviewRequired": data.get("manualReviewRequired", False),
             "manualReviewReason": data.get("manualReviewReason"),
+            "provisioningStatus": data.get("provisioningStatus"),
             "paymentCurrency": data.get("paymentCurrency"),
             "paymentNetwork": data.get("paymentNetwork"),
             "tradingPlatform": data.get("tradingPlatform"),
@@ -2506,6 +3203,7 @@ def admin_pending_purchases():
         if account is not None:
             row["accountId"] = account.get("accountId")
             row["accountStatus"] = account.get("status")
+            row["tradingEngineAccountId"] = account.get("tradingEngineAccountId")
         return row
 
     database = get_firestore()
@@ -2652,6 +3350,11 @@ def admin_approve_purchase(purchase_id):
             engine_account_id = None
         else:
             engine_account_id = engine_account_id.strip()
+        engine_status = account.get("tradingStatus")
+        if not isinstance(engine_status, str):
+            engine_status = None
+        else:
+            engine_status = engine_status.strip().lower()
 
         reviewed_at = data.get("reviewedAt") or firestore.SERVER_TIMESTAMP
         reviewed_by = data.get("reviewedBy") or g.firebase_uid
@@ -2699,6 +3402,7 @@ def admin_approve_purchase(purchase_id):
         return {
             "purchaseValues": values,
             "engineAccountId": engine_account_id,
+            "engineStatus": engine_status,
             "alreadyApproved": status == "approved",
         }
 
@@ -2715,7 +3419,8 @@ def admin_approve_purchase(purchase_id):
 
     purchase_values = prepared["purchaseValues"]
     engine_account_id = prepared["engineAccountId"]
-    if engine_account_id is None:
+    engine_status = prepared["engineStatus"]
+    if engine_account_id is None or engine_status is None:
         try:
             worker_url, provisioning_token = cloudflare_worker_configuration()
             worker_payload = {
@@ -2727,7 +3432,13 @@ def admin_approve_purchase(purchase_id):
             provisioned_account = provision_cloudflare_account(
                 worker_url, provisioning_token, worker_payload
             )
+            if not trading_engine_account_matches_purchase(provisioned_account, purchase_values):
+                raise CloudflareProvisioningError(
+                    "worker_account_mismatch",
+                    "Trading engine returned an account for a different purchase.",
+                )
             engine_account_id = provisioned_account["id"].strip()
+            engine_status = provisioned_account["status"].strip().lower()
         except CloudflareProvisioningError as error:
             return jsonify(
                 error=str(error),
@@ -2762,11 +3473,13 @@ def admin_approve_purchase(purchase_id):
                 saved_id = saved_id.strip()
             if saved_id and saved_id != engine_account_id:
                 return "engine_account_mismatch"
-            if not saved_id:
-                transaction.update(account_ref, {
-                    "tradingEngineAccountId": engine_account_id,
-                    "tradingEnabled": False,
-                })
+            transaction.update(account_ref, {
+                "tradingEngineAccountId": engine_account_id,
+                "tradingStatus": engine_status,
+                "provisioningStatus": "provisioned",
+                "status": engine_status,
+                "tradingEnabled": False,
+            })
             return "saved"
 
         try:
@@ -2778,6 +3491,13 @@ def admin_approve_purchase(purchase_id):
             return firebase_service_error("Firestore", error)
         if saved_status != "saved":
             return jsonify(error="Purchase or account changed during provisioning."), 409
+
+    if engine_status != "active":
+        return jsonify(
+            error="The trading engine account exists but is not active yet.",
+            provisioningStatus="provisioned",
+            tradingStatus=engine_status,
+        ), 409
 
     @firestore.transactional
     def enable_trading(transaction):
@@ -2800,6 +3520,7 @@ def admin_approve_purchase(purchase_id):
             not account_snapshot.exists
             or not firestore_account_matches_purchase(account, purchase_values)
             or account.get("tradingEngineAccountId") != engine_account_id
+            or account.get("tradingStatus") != "active"
         ):
             return False
 
@@ -2808,8 +3529,8 @@ def admin_approve_purchase(purchase_id):
         transaction.update(account_ref, {
             "userUid": purchase_values["ownerUid"],
             "phase": "instant" if purchase_values["planKey"] in {"instant", "spark_instant"} else "phase_1",
-            "balance": purchase_values["accountSize"],
-            "equity": purchase_values["accountSize"],
+            "balance": account.get("balance"),
+            "equity": account.get("equity"),
             "status": "active",
             "tradingEnabled": True,
             "reviewedBy": reviewed_by,
@@ -2861,6 +3582,8 @@ def admin_reject_purchase(purchase_id):
         data = snapshot.to_dict() or {}
         if data.get("status") == "rejected":
             return True
+        if purchase_payment_allows_auto_provisioning(data):
+            return "payment_verified"
         if not purchase_status_is_pending(data.get("status")):
             return None
         owner_uid = data.get("ownerUid")
@@ -2889,6 +3612,7 @@ def admin_reject_purchase(purchase_id):
         if account_snapshot is not None and account_snapshot.exists:
             transaction.update(account_ref, {
                 "status": "rejected",
+                "provisioningStatus": "rejected",
                 "tradingEnabled": False,
                 "reviewedBy": g.firebase_uid,
                 "reviewedAt": reviewed_at,
@@ -2897,6 +3621,8 @@ def admin_reject_purchase(purchase_id):
         return True
 
     rejected = reject_in_transaction(transaction)
+    if rejected == "payment_verified":
+        return jsonify(error="Verified payment cannot be rejected; account provisioning will continue."), 409
     if rejected is None:
         return jsonify(error="Purchase is not currently awaiting payment verification."), 409
     if not rejected:

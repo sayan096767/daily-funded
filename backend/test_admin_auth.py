@@ -1307,6 +1307,7 @@ class AdminPurchaseTransitionTests(unittest.TestCase):
         }
         if engine_account_id is not None:
             account_data["tradingEngineAccountId"] = engine_account_id
+            account_data["tradingStatus"] = "active"
         events = []
         purchase_ref = MagicMock()
         purchase_snapshot = MagicMock()
@@ -1365,7 +1366,19 @@ class AdminPurchaseTransitionTests(unittest.TestCase):
         if worker_payload is None:
             worker_payload = {
                 "success": True,
-                "account": {"id": "ACC_11111111-1111-4111-8111-111111111111"},
+                "account": {
+                    "id": "ACC_11111111-1111-4111-8111-111111111111",
+                    "user_id": "user-a",
+                    "purchase_id": "purchase-a",
+                    "model_code": "1_STEP",
+                    "challenge_size": 25000,
+                    "phase_number": 1,
+                    "phase_name": "Phase 1",
+                    "starting_balance": 25000,
+                    "balance": 25000,
+                    "equity": 25000,
+                    "status": "active",
+                },
             }
         worker_response = MagicMock()
         worker_response.status = worker_status

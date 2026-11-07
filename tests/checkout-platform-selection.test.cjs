@@ -27,7 +27,6 @@ function platformContext() {
     closest() { return this.card; }
   }));
   const unlocked = [];
-  const currencies = [];
   const platformSummary = {textContent: '—'};
   const loggedErrors = [];
   const context = vm.createContext({
@@ -36,7 +35,6 @@ function platformContext() {
       getElementById: id => id === 'coPlatform' ? platformSummary : null
     },
     setPaymentAccess: () => unlocked.push(false),
-    setCurrency: value => currencies.push(value),
     selectedTradingPlatform: '',
     tradingPlatforms: new Set(['mt5', 'ctrader', 'match_trader', 'cf'])
   });
@@ -47,18 +45,17 @@ function platformContext() {
       extractFunction('setTradingPlatform', 'normalizeCheckoutSelection'),
     context
   );
-  return {context, radios, unlocked, currencies, platformSummary};
+  return {context, radios, unlocked, platformSummary};
 }
 
-test('checkout defaults to CF and presents logo-only platform choices inline', () => {
+test('checkout defaults to CF and directs customers to hosted crypto selection', () => {
   const platformInputs = [...checkoutHtml.matchAll(/<input type="radio" name="tradingPlatform" value="([^"]+)"([^>]*)>/g)];
   assert.deepEqual(platformInputs.map(match => match[1]), ['mt5', 'ctrader', 'match_trader', 'cf']);
   assert.ok(platformInputs.slice(0, -1).every(match => !/\bchecked\b/.test(match[2])));
   assert.match(platformInputs.at(-1)[2], /\bchecked\b/);
   const platformChoiceIndex = checkoutHtml.indexOf('<fieldset class="platform-choice"');
-  const cryptoDividerIndex = checkoutHtml.indexOf('OR PAY WITH CRYPTO');
-  assert.ok(platformChoiceIndex >= 0 && platformChoiceIndex < cryptoDividerIndex);
-  assert.match(checkoutHtml, /OR PAY WITH CRYPTO<\/div>\s*<h4>Pay with crypto<\/h4>\s*<div class="net-tabs" id="curTabs">/);
+  const paymentStepIndex = checkoutHtml.indexOf('id="paymentStep"');
+  assert.ok(platformChoiceIndex >= 0 && platformChoiceIndex < paymentStepIndex);
   const platformCards = [...checkoutHtml.matchAll(/<label class="platform-card"[^>]*>([\s\S]*?)<\/label>/g)];
   assert.equal(platformCards.length, 4);
   assert.deepEqual(
@@ -74,9 +71,14 @@ test('checkout defaults to CF and presents logo-only platform choices inline', (
   assert.match(checkoutHtml, /id="paymentStep" class="payment-step"[^>]*hidden/);
   assert.match(checkoutHtml, /id="billingStep" class="billing-details"/);
   assert.doesNotMatch(checkoutHtml, /id="paymentInterface" hidden/);
-  assert.match(checkoutHtml, /id="copyBtn" disabled/);
-  assert.match(checkoutHtml, /id="qrOpenBtn" disabled/);
-  assert.match(checkoutHtml, /id="attachBtn" disabled/);
+  assert.match(checkoutHtml, /class="hosted-crypto-panel"/);
+  assert.match(checkoutHtml, /Continue to NOWPayments to choose an available cryptocurrency and network/);
+  assert.doesNotMatch(checkoutHtml, /cryptoCurrencySelect|id="curTabs"|id="netTabs"/);
+  assert.doesNotMatch(checkoutHtml, /id="copyBtn"|id="qrOpenBtn"|id="attachBtn"|id="proofInput"/);
+  assert.match(checkoutHtml, /id="coLabel"/);
+  assert.match(checkoutHtml, /id="coSize"/);
+  assert.match(checkoutHtml, /id="coSplit"/);
+  assert.match(checkoutHtml, /id="coPlatform"/);
   assert.doesNotMatch(checkoutHtml, /Platform selected\. Payment options are now available\./);
 });
 
@@ -99,7 +101,7 @@ test('each supported platform selection remains selected without bypassing billi
 });
 
 test('changing platform retains only the final canonical selection', () => {
-  const {context, radios, unlocked, currencies, platformSummary} = platformContext();
+  const {context, radios, unlocked, platformSummary} = platformContext();
   context.setTradingPlatform('mt5');
   context.setTradingPlatform('match_trader');
 
@@ -107,29 +109,112 @@ test('changing platform retains only the final canonical selection', () => {
   assert.equal(radios.find(radio => radio.value === 'mt5').checked, false);
   assert.equal(radios.find(radio => radio.value === 'match_trader').checked, true);
   assert.deepEqual(unlocked, [false, false]);
-  assert.deepEqual(currencies, ['usdt']);
   assert.equal(platformSummary.textContent, 'Match-Trader');
   context.setTradingPlatform('');
   assert.equal(platformSummary.textContent, '—');
 });
 
-test('opening checkout selects CF and retains submission guards', () => {
+test('checkout selects CF and posts the authenticated hosted-checkout request without currency', () => {
   const renderStart = checkoutHtml.indexOf('function renderCheckout(');
   const renderEnd = checkoutHtml.indexOf('\nfunction closeCheckout', renderStart);
   const renderSource = checkoutHtml.slice(renderStart, renderEnd);
   assert.match(renderSource, /setTradingPlatform\('cf'\)/);
 
-  const createPurchaseStart = checkoutHtml.indexOf('async function createPurchase(purchase){');
-  const createPurchaseEnd = checkoutHtml.indexOf('\nconst pendingCheckoutStorageKey', createPurchaseStart);
-  const createPurchaseSource = checkoutHtml.slice(createPurchaseStart, createPurchaseEnd);
-  assert.match(createPurchaseSource, /if\(!isValidTradingPlatform\(selectedTradingPlatform\)\)/);
-  assert.match(createPurchaseSource, /form\.set\('tradingPlatform',selectedTradingPlatform\)/);
-  assert.match(checkoutHtml, /if\(!hasSelectedTradingPlatform\(\)\) return;/);
+  const createCheckoutStart = checkoutHtml.indexOf('async function createCryptoCheckout(purchase){');
+  const createCheckoutEnd = checkoutHtml.indexOf('\nfunction getPendingSubmissionId', createCheckoutStart);
+  const createCheckoutSource = checkoutHtml.slice(createCheckoutStart, createCheckoutEnd);
+  assert.ok(createCheckoutStart >= 0 && createCheckoutEnd > createCheckoutStart);
+  assert.match(createCheckoutSource, /if\(!isValidTradingPlatform\(selectedTradingPlatform\)\)/);
+  assert.match(createCheckoutSource, /firebaseApiHeaders\(/);
+  assert.match(createCheckoutSource, /fetch\(API_BASE \+ '\/api\/crypto\/checkout'/);
+  assert.match(createCheckoutSource, /tradingPlatform: selectedTradingPlatform/);
+  assert.doesNotMatch(createCheckoutSource, /\bcurrency\s*:/);
+  assert.match(checkoutHtml, /window\.location\.assign\(purchase\.invoiceUrl\)/);
+  assert.doesNotMatch(checkoutHtml, /cryptoCurrencySelect/);
 });
 
 test('checkout stacks panels for tablet and uses a 2-by-2 platform grid on phones', () => {
   assert.match(checkoutHtml, /@media\(max-width:820px\)\{\.checkout-grid\{grid-template-columns:1fr;\}\}/);
   assert.match(checkoutHtml, /@media\(max-width:520px\)\{\.platform-card-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\);\}\}/);
+});
+
+test('checkout price and coupon rendering use only elements present in the hosted markup', () => {
+  const ids = new Set([...checkoutHtml.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
+  const elements = new Map([...ids].map(id => [id, {
+    textContent: '',
+    value: '',
+    className: '',
+    style: {},
+    disabled: false,
+    hidden: false,
+    classList: {add() {}, remove() {}},
+    reset() {},
+    removeAttribute() {},
+    replaceChildren() {},
+    appendChild() {}
+  }]));
+  const queryElements = new Map();
+  const context = vm.createContext({
+    document: {
+      getElementById: id => elements.get(id) || null,
+      querySelector: selector => {
+        if (!queryElements.has(selector)) queryElements.set(selector, {style: {}, hidden: false});
+        return queryElements.get(selector);
+      },
+      body: {classList: {add() {}, remove() {}}},
+      createElement: () => ({textContent: ''})
+    },
+    window: {scrollTo() {}},
+    checkout: {classList: {add() {}, remove() {}}},
+    mainSections: [],
+    billingFields: {},
+    pricing: {'1step': {extra: []}},
+    pendingHomepageCoupon: '',
+    getPendingSubmissionId: () => 'submission-id',
+    setTradingPlatform() {},
+    checkoutBasePrice: 39,
+    couponApplied: false,
+    activeCouponCode: 'CRAZYFUNDED30',
+    pendingPurchase: {productModel: 'classic'}
+  });
+  const formatPrice = extractFunction('formatCheckoutAmount', 'updateCheckoutPrice');
+  const updatePrice = extractFunction('updateCheckoutPrice', 'applyCheckoutCoupon');
+  const renderCheckout = extractFunction('renderCheckout', 'closeCheckout');
+  const applyCouponStart = checkoutHtml.indexOf('function applyCheckoutCoupon()');
+  const applyCouponEnd = checkoutHtml.indexOf("\ndocument.getElementById('applyCouponBtn')", applyCouponStart);
+  assert.ok(applyCouponStart >= 0 && applyCouponEnd > applyCouponStart);
+
+  vm.runInContext(
+    `${formatPrice}\n${updatePrice}\n${renderCheckout}\n${checkoutHtml.slice(applyCouponStart, applyCouponEnd)}`,
+    context
+  );
+  context.renderCheckout({
+    productModel: 'classic',
+    planKey: '1step',
+    label: '1-Step',
+    size: 5000,
+    split: '80%',
+    price: 39
+  });
+  assert.equal(elements.get('coLabel').textContent, '1-Step Challenge');
+  assert.equal(elements.get('coTotal').textContent, '$39');
+  assert.equal(elements.get('coTotal').textContent, '$39');
+
+  elements.get('couponCodeInput').value = 'CRAZYFUNDED30';
+  context.applyCheckoutCoupon();
+  assert.equal(context.couponApplied, true);
+  assert.equal(elements.get('coSubtotal').textContent, '$39');
+  assert.equal(elements.get('coDiscount').textContent, '−$11.70');
+  assert.equal(elements.get('coTotal').textContent, '$27.30');
+  assert.equal(elements.get('coSubtotalRow').style.display, '');
+  assert.equal(elements.get('coDiscountRow').style.display, '');
+
+  elements.get('couponCodeInput').value = '';
+  context.applyCheckoutCoupon();
+  assert.equal(context.couponApplied, false);
+  assert.equal(elements.get('coTotal').textContent, '$39');
+  assert.equal(elements.get('coSubtotalRow').style.display, 'none');
+  assert.equal(elements.get('coDiscountRow').style.display, 'none');
 });
 
 function billingContext(values = {}) {
@@ -161,7 +246,7 @@ function billingContext(values = {}) {
   );
   const status = {textContent: ''};
   const sourceStart = checkoutHtml.indexOf('function validateBillingDetails(');
-  const sourceEnd = checkoutHtml.indexOf('\nasync function createPurchase(', sourceStart);
+  const sourceEnd = checkoutHtml.indexOf('\nasync function createCryptoCheckout(', sourceStart);
   assert.ok(sourceStart >= 0 && sourceEnd > sourceStart);
   const context = vm.createContext({
     document: {getElementById: id => fields[id] || errors[id] || (id === 'billingContinueStatus' ? status : null)},
@@ -273,18 +358,17 @@ test('continuing with incomplete billing scrolls to the first invalid field and 
   assert.equal(status.textContent, '');
 });
 
-test('billing form precedes proof and the submit control, and submission uses shared validation', () => {
+test('billing form precedes hosted payment and submission uses shared validation', () => {
   const billingIndex = checkoutHtml.indexOf('id="billingDetailsTitle"');
   const continueIndex = checkoutHtml.indexOf('id="billingContinueBtn"');
   const paymentIndex = checkoutHtml.indexOf('id="paymentStep"');
-  const proofIndex = checkoutHtml.indexOf('id="proofInput"');
   const submitIndex = checkoutHtml.indexOf('id="coPayBtn"');
-  assert.ok(billingIndex >= 0 && billingIndex < continueIndex && continueIndex < paymentIndex && paymentIndex < proofIndex && proofIndex < submitIndex);
+  assert.ok(billingIndex >= 0 && billingIndex < continueIndex && continueIndex < paymentIndex && paymentIndex < submitIndex);
   assert.match(checkoutHtml, /id="checkoutSubmissionForm" novalidate/);
   assert.match(checkoutHtml, /id="paymentStep" class="payment-step"[^>]*hidden/);
   assert.match(checkoutHtml, /id="billingEmail" name="email" type="email"[^>]*required/);
   assert.match(checkoutHtml, /id="billingPhone" name="phone" type="tel"[^>]*required/);
-  assert.match(checkoutHtml, /form\.set\('billing_details',JSON\.stringify\(billing\.details\)\)/);
+  assert.match(checkoutHtml, /billing_details: billing\.details/);
   assert.match(checkoutHtml, /billingContinueBtnEl\.addEventListener\('click',continueToPayment\)/);
   assert.match(checkoutHtml, /billingBackBtnEl\.addEventListener\('click',returnToBilling\)/);
   assert.match(checkoutHtml, /checkoutSubmissionFormEl\.addEventListener\('submit'/);
@@ -418,9 +502,7 @@ test('checkout pre-fills only account-matched identity fields and leaves other b
 test('payment and billing replace each other in place without clearing billing values', () => {
   const billingStep = {hidden: false, scrollIntoView(options) { this.scrollOptions = options; }};
   const paymentStep = {hidden: true, scrollIntoView(options) { this.scrollOptions = options; }};
-  const controls = Object.fromEntries(
-    ['upiOpenBtn', 'copyBtn', 'qrOpenBtn', 'attachBtn', 'proofInput'].map(id => [id, {disabled: true}])
-  );
+  const controls = {};
   controls.coPayBtn = {setAttribute(name, value) { this[name] = value; }, disabled: true};
   const nodes = {billingStep, paymentStep, ...controls};
   const values = {
@@ -434,12 +516,11 @@ test('payment and billing replace each other in place without clearing billing v
   const context = vm.createContext({
     document: {getElementById: id => nodes[id] || null},
     hasSelectedTradingPlatform: () => true,
-    closeQrPopup() {}
   });
   const accessStart = checkoutHtml.indexOf('function setPaymentAccess(){');
   const accessEnd = checkoutHtml.indexOf('\nfunction setTradingPlatform(', accessStart);
   const backStart = checkoutHtml.indexOf('function returnToBilling(){');
-  const backEnd = checkoutHtml.indexOf('\nasync function createPurchase(', backStart);
+  const backEnd = checkoutHtml.indexOf('\nasync function createCryptoCheckout(', backStart);
   assert.ok(accessStart >= 0 && accessEnd > accessStart && backStart >= 0 && backEnd > backStart);
   vm.runInContext(
     'let billingPaymentUnlocked = false;\n' +
@@ -452,12 +533,12 @@ test('payment and billing replace each other in place without clearing billing v
   vm.runInContext('billingPaymentUnlocked = true; setPaymentAccess();', context);
   assert.equal(billingStep.hidden, true);
   assert.equal(paymentStep.hidden, false);
-  assert.equal(controls.proofInput.disabled, false);
+  assert.equal(controls.coPayBtn.disabled, false);
 
   context.returnToBilling();
   assert.equal(billingStep.hidden, false);
   assert.equal(paymentStep.hidden, true);
-  assert.equal(controls.proofInput.disabled, true);
+  assert.equal(controls.coPayBtn.disabled, true);
   assert.equal(billingStep.scrollOptions.behavior, 'smooth');
   assert.equal(billingStep.scrollOptions.block, 'start');
   assert.deepEqual(values, {
@@ -470,19 +551,77 @@ test('payment and billing replace each other in place without clearing billing v
   });
 });
 
-test('QR is shown only in the existing popup and copy uses the visible address', () => {
-  const setNetworkStart = checkoutHtml.indexOf('function setNetwork(netKey){');
-  const setNetworkEnd = checkoutHtml.indexOf('\nconst qrPopupEl', setNetworkStart);
-  const setNetworkSource = checkoutHtml.slice(setNetworkStart, setNetworkEnd);
-  assert.match(setNetworkSource, /document\.getElementById\('addrText'\)\.textContent = net\.addr/);
-  assert.match(setNetworkSource, /new QRCode\(qrEl,\s*\{\s*text: net\.addr/);
-  assert.doesNotMatch(checkoutHtml, /id="paymentQrCode"|payment-qr-box|paymentQrUnavailable/);
-  assert.match(checkoutHtml, /<div class="qr-box"><div id="qrCode"><\/div>/);
-  assert.match(checkoutHtml, /id="qrOpenBtn"[^>]*>Show QR code<\/button>/);
-  assert.match(checkoutHtml, /navigator\.clipboard\.writeText\(address\)/);
-  assert.match(checkoutHtml, /document\.execCommand\('copy'\)/);
-  assert.match(checkoutHtml, /showCopyStatus\(true,'Copied ✓'\)/);
-  assert.match(checkoutHtml, /showCopyStatus\(false,'Address selected — press Ctrl\+C'\)/);
+test('hosted checkout uses the provider URL and keeps coin selection off-site', () => {
+  const requestStart = checkoutHtml.indexOf('async function createCryptoCheckout(purchase){');
+  const requestEnd = checkoutHtml.indexOf('\nfunction getPendingSubmissionId', requestStart);
+  const requestSource = checkoutHtml.slice(requestStart, requestEnd);
+  assert.ok(requestStart >= 0 && requestEnd > requestStart);
+  assert.match(requestSource, /fetch\(API_BASE \+ '\/api\/crypto\/checkout'/);
+  assert.match(requestSource, /firebaseApiHeaders\(/);
+  assert.match(requestSource, /billing_details: billing\.details/);
+  assert.doesNotMatch(requestSource, /\bcurrency\s*:/);
+  assert.match(requestSource, /invoiceUrl\.hostname !== 'nowpayments\.io'/);
+  assert.match(checkoutHtml, /window\.location\.assign\(purchase\.invoiceUrl\)/);
+  assert.doesNotMatch(checkoutHtml, /cryptoCurrencySelect|id="curTabs"|id="netTabs"/);
+});
+
+test('dashboard retries paid pending provisioning and reloads the actual engine account', async () => {
+  const start = checkoutHtml.indexOf('async function loadDashboardAccounts(){');
+  const end = checkoutHtml.indexOf('\nlet billingValidationAttempted', start);
+  assert.ok(start >= 0 && end > start);
+  const source = checkoutHtml.slice(start, end);
+  const requests = [];
+  const responses = [
+    {
+      ok: true,
+      status: 200,
+      json: async () => [{
+        id: 'purchase-doc-id',
+        purchaseId: 'purchase-verified',
+        provisioningStatus: 'pending',
+        status: 'pending_provisioning'
+      }]
+    },
+    {
+      ok: true,
+      status: 200,
+      json: async () => ({provisioningStatus: 'provisioned'})
+    },
+    {
+      ok: true,
+      status: 200,
+      json: async () => [{
+        id: 'purchase-doc-id',
+        purchaseId: 'purchase-verified',
+        provisioningStatus: 'provisioned',
+        status: 'active',
+        tradingEnabled: true,
+        tradingEngineAccountId: 'ACC_11111111-1111-4111-8111-111111111111'
+      }]
+    }
+  ];
+  const context = vm.createContext({
+    API_BASE: 'https://api.example.test',
+    firebaseApiHeaders: async headers => ({...headers, Authorization: 'Bearer test-token'}),
+    fetch: async (url, options = {}) => {
+      requests.push({url, options});
+      return responses.shift();
+    },
+    console: {error() {}}
+  });
+  vm.runInContext(`${source}\nthis.loadDashboardAccounts = loadDashboardAccounts;`, context);
+  await context.loadDashboardAccounts();
+
+  assert.deepEqual(requests.map(request => request.options.method || 'GET'), ['GET', 'POST', 'GET']);
+  assert.equal(
+    requests[1].url,
+    'https://api.example.test/api/my/purchases/purchase-verified/provision'
+  );
+  assert.equal(requests[1].options.headers.Authorization, 'Bearer test-token');
+  assert.equal(context.dashboardAccounts[0].tradingEngineAccountId, 'ACC_11111111-1111-4111-8111-111111111111');
+  assert.match(checkoutHtml, /Payment verified\. Account provisioning is pending/);
+  assert.match(checkoutHtml, /id="accountEngineId"/);
+  assert.doesNotMatch(checkoutHtml, /MT5 password|trading credentials/i);
 });
 
 test('all supplied platform images are present and admin supports historical records', () => {
@@ -496,4 +635,5 @@ test('all supplied platform images are present and admin supports historical rec
   }
   const adminHtml = fs.readFileSync(path.join(root, 'hosting-public/admin/index.html'), 'utf8');
   assert.match(adminHtml, /platformLabels\[purchase\.tradingPlatform\] \|\| 'Not recorded'/);
+  assert.match(adminHtml, /Settlement \$\{escapeHtml\(purchase\.settlementStatus\)\}/);
 });

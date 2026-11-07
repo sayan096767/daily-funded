@@ -511,7 +511,13 @@
         const amount = formatPurchaseAmount(purchase);
         const status = escapeHtml(purchase.status || 'pending');
         const accountStatus = purchase.accountStatus
-          ? `<br><span class="muted">Account ${escapeHtml(purchase.accountStatus)}</span>`
+          ? `<br><span class="muted">Account ${escapeHtml(purchase.accountStatus)}${purchase.tradingEngineAccountId ? ' · ' + escapeHtml(purchase.tradingEngineAccountId) : ''}</span>`
+          : '';
+        const reviewStatus = purchase.manualReviewRequired
+          ? `<br><span class="muted">Review: ${escapeHtml(purchase.manualReviewReason || 'required')}</span>`
+          : '';
+        const settlement = purchase.settlementStatus
+          ? `<br><span class="muted">Settlement ${escapeHtml(purchase.settlementStatus)} · received ${escapeHtml(purchase.settlementActuallyPaid ?? '—')} / expected ${escapeHtml(purchase.settlementPayAmount ?? '—')} ${escapeHtml(purchase.settlementCurrency || '')}</span>`
           : '';
         const currency = escapeHtml(purchase.paymentCurrency || '—');
         const network = escapeHtml(purchase.paymentNetwork || '—');
@@ -526,7 +532,7 @@
             <td>${coupon}</td>
             <td>${discount}</td>
             <td>${amount}</td>
-            <td>${status}${accountStatus}</td>
+            <td>${status}${reviewStatus}${settlement}${accountStatus}</td>
             <td>${currency}</td>
             <td>${network}</td>
             <td>${submitted}</td>
