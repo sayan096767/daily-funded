@@ -3,49 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>
+try{
+  const checkoutRestoreParams = new URLSearchParams(window.location.search);
+  if(checkoutRestoreParams.get('checkout') === '1' || sessionStorage.getItem('dailyFundedPendingCheckout') !== null){
+    document.documentElement.classList.add('checkout-restore-pending');
+  }
+}catch(error){
+  console.error('Could not inspect saved checkout state:',error);
+}
+</script>
 <title>Crazy Funded — Trade our capital</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="/referral-links.js"></script>
-<script>
-const firebaseConfig = {
-  apiKey: 'AIzaSyArsv-HojE9hn_3BAcJVFh5zp4XS9Dw480',
-  authDomain: 'daily-funded.firebaseapp.com',
-  projectId: 'daily-funded',
-  storageBucket: 'daily-funded.firebasestorage.app',
-  messagingSenderId: '1080360028653',
-  appId: '1:1080360028653:web:9afa42197ba011c1613fe4',
-  measurementId: 'G-Y7SP58FQ6H'
-};
-const firebaseConfigReady = Object.values(firebaseConfig).every(value=>value && !value.startsWith('REPLACE_'));
-if(firebaseConfigReady && !firebase.apps.length) firebase.initializeApp(firebaseConfig);
-const firebaseAuth = firebaseConfigReady ? firebase.auth() : null;
-const ReferralLinks = window.CrazyFundedReferralLinks;
-const firebaseAuthPersistenceReady = firebaseAuth
-  ? firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
-  : Promise.resolve();
-let firebaseCurrentUser = null;
-function requireFirebaseAuth(){
-  if(!firebaseAuth) throw new Error('Add your Firebase web app configuration to FundingForge.html first.');
-  return firebaseAuth;
-}
-async function firebaseApiHeaders(headers={}){
-  const auth = requireFirebaseAuth();
-  await firebaseAuthPersistenceReady;
-  const user = auth.currentUser;
-  if(!user) throw new Error('Sign in to continue.');
-  return {...headers,Authorization:'Bearer ' + await user.getIdToken()};
-}
-const PRODUCTION_API_BASE = 'https://daily-funded-api.onrender.com';
-const LOCAL_API_BASE = PRODUCTION_API_BASE;
-const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
-  ? LOCAL_API_BASE
-  : PRODUCTION_API_BASE;
-</script>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"></noscript>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   :root{
     --bg:#0a0d0c; --bg2:#0f1311; --panel:#121614; --panel-b:#1e2521;
@@ -60,6 +33,59 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
     padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
     -webkit-font-smoothing:antialiased;
   }
+  html.checkout-restore-pending body>:not(#checkoutRestoreSkeleton):not(script):not(style){visibility:hidden!important;}
+  #checkoutRestoreSkeleton{display:none;}
+  html.checkout-restore-pending #checkoutRestoreSkeleton{
+    --restore-bg:#060A13; --restore-card:#121B2E; --restore-line:#25314A; --restore-base:#1a2740; --restore-shine:rgba(151,180,224,.13);
+    position:fixed; inset:0; z-index:2147483000; display:block; overflow:auto; padding:24px 20px 40px;
+    background:var(--restore-bg); color:#E7EDF7; font-family:'IBM Plex Sans',system-ui,sans-serif; color-scheme:dark;
+  }
+  .checkout-restore-shell{width:min(100%,1080px); margin:0 auto;}
+  .checkout-restore-heading{display:grid; grid-template-columns:95px minmax(0,1fr); align-items:center; gap:20px; margin-bottom:22px;}
+  .checkout-restore-shimmer{position:relative; overflow:hidden; border-radius:7px; background:var(--restore-base);}
+  .checkout-restore-shimmer::after{position:absolute; inset:0; transform:translateX(-100%); background:linear-gradient(90deg,transparent,var(--restore-shine),transparent); animation:checkout-restore-shimmer 1.35s ease-in-out infinite; content:'';}
+  .checkout-restore-back{width:88px; height:34px;}
+  .checkout-restore-title{width:min(280px,70%); height:30px;}
+  .checkout-restore-eyebrow{width:74px; height:10px; margin-bottom:10px;}
+  .checkout-restore-grid{display:grid; grid-template-columns:1.3fr 1fr; align-items:start; gap:22px;}
+  .checkout-restore-card{min-width:0; padding:24px; border:1px solid var(--restore-line); border-radius:12px; background:var(--restore-card);}
+  .checkout-restore-card-title{width:45%; height:18px; margin-bottom:22px;}
+  .checkout-restore-platforms{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-bottom:24px;}
+  .checkout-restore-platform{height:62px; border-radius:10px;}
+  .checkout-restore-field-title{width:42%; height:15px; margin:0 0 15px;}
+  .checkout-restore-fields{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 12px;}
+  .checkout-restore-field{height:62px; border-radius:8px;}
+  .checkout-restore-field.wide{grid-column:1/-1;}
+  .checkout-restore-button{height:46px; margin-top:4px; border-radius:8px;}
+  .checkout-restore-row{height:36px; border-bottom:1px solid var(--restore-line); background:linear-gradient(90deg,transparent 0 40%,var(--restore-base) 40% 72%,transparent 72%);}
+  .checkout-restore-input{height:42px; margin:15px 0;}
+  .checkout-restore-total{height:50px; margin-top:12px;}
+  .checkout-restore-rules{height:105px; margin-top:22px;}
+  .checkout-restore-error{display:none; max-width:540px; margin:48px auto; padding:24px; border:1px solid var(--restore-line); border-radius:12px; background:var(--restore-card); color:#E7EDF7;}
+  .checkout-restore-error h1{margin-bottom:8px; font-size:20px;}
+  .checkout-restore-error p{margin-bottom:18px; color:#AFC0D8; font-size:14px; line-height:1.5;}
+  .checkout-restore-actions{display:flex; flex-wrap:wrap; gap:10px;}
+  .checkout-restore-actions button{min-height:42px; padding:9px 14px; border:1px solid #477bd2; border-radius:8px; background:#2466d1; color:#fff; font:600 13px inherit; cursor:pointer;}
+  .checkout-restore-actions button:last-child{border-color:var(--restore-line); background:transparent; color:#E7EDF7;}
+  #checkoutRestoreSkeleton[data-state="error"] .checkout-restore-grid,
+  #checkoutRestoreSkeleton[data-state="error"] .checkout-restore-heading{display:none;}
+  #checkoutRestoreSkeleton[data-state="error"] .checkout-restore-error{display:block;}
+  @keyframes checkout-restore-shimmer{to{transform:translateX(100%);}}
+  @media(prefers-color-scheme:light){
+    html.checkout-restore-pending #checkoutRestoreSkeleton{--restore-bg:#E3E9F4;--restore-card:#fff;--restore-line:#DDE4EF;--restore-base:#e8edf5;--restore-shine:rgba(77,107,153,.12);color:#0F1B2E;color-scheme:light;}
+    .checkout-restore-error{color:#0F1B2E;}
+    .checkout-restore-error p{color:#5B6B82;}
+    .checkout-restore-actions button:last-child{color:#0F1B2E;}
+  }
+  @media(max-width:760px){
+    html.checkout-restore-pending #checkoutRestoreSkeleton{padding:18px 16px 32px;}
+    .checkout-restore-heading{grid-template-columns:76px minmax(0,1fr);gap:14px;}
+    .checkout-restore-back{width:72px;}
+    .checkout-restore-grid{grid-template-columns:1fr;gap:14px;}
+    .checkout-restore-card{padding:18px;}
+  }
+  @media(max-width:480px){.checkout-restore-fields{grid-template-columns:1fr;gap:12px;}.checkout-restore-field.wide{grid-column:auto;}}
+  @media(prefers-reduced-motion:reduce){.checkout-restore-shimmer::after{animation:none;transform:none;opacity:.35;}}
   .wrap{max-width:1080px; margin:0 auto; padding:0 24px;}
   a{color:inherit; text-decoration:none;}
 
@@ -1595,10 +1621,90 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .payout-mission-banner iframe{display:block; width:100%; height:660px; border:0;}
   @media(max-width:700px){.payout-mission-banner iframe{height:680px;}}
 </style>
-<link rel="stylesheet" href="/hero-background.css">
+<link rel="preload" as="style" href="/hero-background.css" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="/hero-background.css"></noscript>
 </head>
 <body>
 
+<div id="checkoutRestoreSkeleton" data-state="loading" role="status" aria-live="polite" aria-busy="true">
+  <div class="checkout-restore-shell">
+    <p class="sr-only">Restoring your secure checkout…</p>
+    <div class="checkout-restore-heading" aria-hidden="true">
+      <span class="checkout-restore-shimmer checkout-restore-back"></span>
+      <div><span class="checkout-restore-shimmer checkout-restore-eyebrow"></span><span class="checkout-restore-shimmer checkout-restore-title"></span></div>
+    </div>
+    <div class="checkout-restore-grid" aria-hidden="true">
+      <section class="checkout-restore-card">
+        <div class="checkout-restore-shimmer checkout-restore-card-title"></div>
+        <div class="checkout-restore-platforms">
+          <span class="checkout-restore-shimmer checkout-restore-platform"></span><span class="checkout-restore-shimmer checkout-restore-platform"></span>
+          <span class="checkout-restore-shimmer checkout-restore-platform"></span><span class="checkout-restore-shimmer checkout-restore-platform"></span>
+        </div>
+        <div class="checkout-restore-shimmer checkout-restore-field-title"></div>
+        <div class="checkout-restore-fields">
+          <span class="checkout-restore-shimmer checkout-restore-field"></span><span class="checkout-restore-shimmer checkout-restore-field"></span>
+          <span class="checkout-restore-shimmer checkout-restore-field"></span><span class="checkout-restore-shimmer checkout-restore-field"></span>
+          <span class="checkout-restore-shimmer checkout-restore-field wide"></span><span class="checkout-restore-shimmer checkout-restore-field wide"></span>
+          <span class="checkout-restore-shimmer checkout-restore-field wide"></span><span class="checkout-restore-shimmer checkout-restore-button wide"></span>
+        </div>
+      </section>
+      <section class="checkout-restore-card">
+        <div class="checkout-restore-shimmer checkout-restore-card-title"></div>
+        <div class="checkout-restore-shimmer checkout-restore-row"></div><div class="checkout-restore-shimmer checkout-restore-row"></div>
+        <div class="checkout-restore-shimmer checkout-restore-row"></div><div class="checkout-restore-shimmer checkout-restore-row"></div>
+        <div class="checkout-restore-shimmer checkout-restore-input"></div><div class="checkout-restore-shimmer checkout-restore-total"></div>
+        <div class="checkout-restore-shimmer checkout-restore-rules"></div>
+      </section>
+    </div>
+    <section class="checkout-restore-error" role="alert">
+      <h1>We couldn’t restore your checkout</h1>
+      <p id="checkoutRestoreErrorMessage">Check your connection and try again. Your selected account is saved.</p>
+      <div class="checkout-restore-actions">
+        <button type="button" id="checkoutRestoreRetry">Retry checkout</button>
+        <button type="button" id="checkoutRestoreBack">Return to pricing</button>
+      </div>
+    </section>
+  </div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" onerror="window.checkoutRestoreFirebaseSdkFailed=true"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" onerror="window.checkoutRestoreFirebaseSdkFailed=true"></script>
+<script src="/referral-links.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: 'AIzaSyArsv-HojE9hn_3BAcJVFh5zp4XS9Dw480',
+  authDomain: 'daily-funded.firebaseapp.com',
+  projectId: 'daily-funded',
+  storageBucket: 'daily-funded.firebasestorage.app',
+  messagingSenderId: '1080360028653',
+  appId: '1:1080360028653:web:9afa42197ba011c1613fe4',
+  measurementId: 'G-Y7SP58FQ6H'
+};
+const firebaseConfigReady = Object.values(firebaseConfig).every(value=>value && !value.startsWith('REPLACE_'));
+const firebaseSdkReady = typeof firebase !== 'undefined' && firebase.apps && typeof firebase.auth === 'function';
+if(firebaseConfigReady && firebaseSdkReady && !firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const firebaseAuth = firebaseConfigReady && firebaseSdkReady ? firebase.auth() : null;
+const ReferralLinks = window.CrazyFundedReferralLinks;
+const firebaseAuthPersistenceReady = firebaseAuth
+  ? firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+  : Promise.resolve();
+let firebaseCurrentUser = null;
+function requireFirebaseAuth(){
+  if(!firebaseAuth) throw new Error('Firebase sign-in is unavailable. Check your connection and retry.');
+  return firebaseAuth;
+}
+async function firebaseApiHeaders(headers={}){
+  const auth = requireFirebaseAuth();
+  await firebaseAuthPersistenceReady;
+  const user = auth.currentUser;
+  if(!user) throw new Error('Sign in to continue.');
+  return {...headers,Authorization:'Bearer ' + await user.getIdToken()};
+}
+const PRODUCTION_API_BASE = 'https://daily-funded-api.onrender.com';
+const LOCAL_API_BASE = PRODUCTION_API_BASE;
+const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
+  ? LOCAL_API_BASE
+  : PRODUCTION_API_BASE;
+</script>
 <header>
   <nav class="wrap">
     <div class="brand"><img class="mark" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACsAAAAlCAYAAADbVxCwAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAN4SURBVFhHzZjPaxNBFMff/mrS5mdNaKVS8RdiRQ+i3ipWEXtQr978A7yI0JsXDwVv/iPizYItSEHB6kUUtERKpa1KtbW1abNJs93drPNmJ5B09meySf3AkjeTMO+bN2/mzY6Qzg5aEAJBFkGIySD0SAAyeSSBfRMAk7gyTLD2yKMZYBk19kUwAosVFBHERAwgLrOeCKgaUCtrYOnBRIvs0xMx2QNiLhGtUISMh+Pi+EHwFStle0FIkoh2EBwf/fjhKZYOEHU03SB+/AS7iqVT0y2hdTAtPFLCUSwupk5PvRvoF/074dhLV70HMlkUuIWFQR5IMssfN/+cRyrCY/pF8s/zE9cgNT7CevyJjwxC/uEYJK6eZD0+EP9OweDFkg3fC7FPsT/Tzf9eSsepKA5RgJ7jOWoqQxkQU3Fq++GkgxeLlakFUrfOQvbeZW66c/dHoW/0BLXj54cg/+BKIMFOOvhYYwmNCBSuHMlA9fMqqK8WoPx2ieZj7Ngh9gsPHHTwYsPU+hCoswtg7eqsFQAHHbzYFkiMnQLlaD+1ceFhbnaCtsX2XhyG1M0zIGXs6hMjiyxz9wK1o6ZtsfUS+fvRFGw8nQVjTQ21p4YhkjSoY2xWmNUZiFg8zjY+0WGR8yqCW9bhJ7cheeM0bdcCL7RmbZFGVs71McvG3KnCztQ8mMVd2q6pGpRfL4K2+Ie2w9K22LoQjFx+4jrIg0kw1lXah1TmlkB9WbDt9ytQmvlK7VZoW+zuhx9UgLlti9YKa7D97CO1oyaSNMCp1b9vUbs0UwB9dZvadaoL61B5twza/C/W0xqR5WxlbhlK04WmFKiDb7I7L76AvlZiPa3Bi8XXZS/Y94LSXLv3Vv5C+c031ooABx3kVXygqVfqJyva45gokAPGwONxsrQtMH4WWW94cGEWn3+ydyUnyGyYW837NicWT0VCyvtNoffSMKTvnOOiG5b1yWmy59p78X6skkbvFBrhxOIJXcz7l0uMsDKUBkFqLe1xDzY2y6zFU9tQuRsbTiwiZUkqdPvNthFS+cwiX7odw7I//N3Gzb+jWEs3wSKl8SBAv+jfCdeEwzqO09FV8KLOI0ieq4PmTbcEu+RpI75LGQfodErg+H5CEV+xCE5NDbeZqKOM007G9Zr6Rhy3Li/sm28lgptvvZWb73BiD5JAafB/APAPFfYs6pSvNHcAAAAASUVORK5CYII=" alt="FundingForge">FundingForge</div>
@@ -3998,14 +4104,20 @@ if(firebaseAuth){
       }else if(!user && hasPendingCheckout()){
         const selection = readPendingCheckout();
         if(selection){
+          clearCheckoutRestoreShell();
           openRegistration();
           showLoginForm();
+        }else if(document.documentElement.classList.contains('checkout-restore-pending')){
+          showCheckoutRestoreError('We couldn’t validate the saved account selection. Return to pricing and choose an account again.');
         }else{
           showPendingCheckoutError('The selected account is no longer available. Please choose another account.');
         }
       }
     },error=>{
       console.error('Firebase auth state could not be restored:',error);
+      if(document.documentElement.classList.contains('checkout-restore-pending')){
+        showCheckoutRestoreError('We couldn’t restore your sign-in session. Check your connection and retry checkout.');
+      }
       if(!firebaseAuthStateInitialized){
         firebaseAuthStateInitialized = true;
         resolveFirebaseAuthState(null);
@@ -4013,6 +4125,9 @@ if(firebaseAuth){
     });
   }).catch(error=>{
     console.error('Firebase Auth persistence could not be initialized:',error);
+    if(document.documentElement.classList.contains('checkout-restore-pending')){
+      showCheckoutRestoreError('We couldn’t restore your sign-in session. Check your connection and retry checkout.');
+    }
     firebaseAuthStateInitialized = true;
     resolveFirebaseAuthState(null);
   });
@@ -4892,8 +5007,82 @@ function normalizeCheckoutSelection(model, size, planKey, productId, submittedPr
   };
 }
 
+function readCheckoutRoute(){
+  const params = new URLSearchParams(window.location.search);
+  if(params.get('checkout') !== '1') return {requested:false,selection:null};
+  const size = Number(params.get('size'));
+  const selection = params.get('market') === 'forex'
+    ? normalizeCheckoutSelection(params.get('model'),size,params.get('plan'),params.get('product'))
+    : null;
+  return {requested:true,selection};
+}
+
+function writeCheckoutRoute(selection){
+  try{
+    const url = new URL(window.location.href);
+    url.searchParams.set('checkout','1');
+    url.searchParams.set('market',selection.market);
+    url.searchParams.set('model',selection.productModel);
+    url.searchParams.set('plan',selection.planKey);
+    url.searchParams.set('product',selection.productId);
+    url.searchParams.set('size',String(selection.size));
+    window.history.replaceState(window.history.state,'',url.pathname + url.search + url.hash);
+  }catch(error){
+    console.error('Could not update the checkout URL:',error);
+  }
+}
+
+function clearCheckoutRoute(){
+  try{
+    const url = new URL(window.location.href);
+    if(url.searchParams.get('checkout') !== '1') return;
+    for(const key of ['checkout','market','model','plan','product','size']){
+      url.searchParams.delete(key);
+    }
+    window.history.replaceState(window.history.state,'',url.pathname + url.search + url.hash);
+  }catch(error){
+    console.error('Could not clear the checkout URL:',error);
+  }
+}
+
+function readStoredPendingCheckout(){
+  let serialized;
+  try{serialized = sessionStorage.getItem(pendingCheckoutStorageKey);}
+  catch(error){
+    console.error('Could not read the pending checkout selection:',error);
+    return null;
+  }
+  if(serialized === null) return null;
+  let saved;
+  try{saved = JSON.parse(serialized);}
+  catch(error){
+    console.error('Could not parse the pending checkout selection:',error);
+    try{sessionStorage.removeItem(pendingCheckoutStorageKey);}
+    catch(removeError){console.error('Could not clear the invalid checkout selection:',removeError);}
+    return null;
+  }
+  if(!saved || saved.version !== 1 || saved.market !== 'forex'){
+    try{sessionStorage.removeItem(pendingCheckoutStorageKey);}
+    catch(error){console.error('Could not clear the invalid checkout selection:',error);}
+    return null;
+  }
+  const selection = normalizeCheckoutSelection(saved.productModel,saved.size,saved.planKey,saved.productId);
+  if(!selection){
+    try{sessionStorage.removeItem(pendingCheckoutStorageKey);}
+    catch(error){console.error('Could not clear the invalid checkout selection:',error);}
+    return null;
+  }
+  return {
+    selection,
+    couponCode:typeof saved.couponCode === 'string' ? saved.couponCode : '',
+    couponApplied:saved.couponApplied === true,
+    tradingPlatform:isValidTradingPlatform(saved.tradingPlatform) ? saved.tradingPlatform : 'cf'
+  };
+}
+
 function hasPendingCheckout(){
   if(pendingPurchase) return true;
+  if(readCheckoutRoute().requested) return true;
   try{return sessionStorage.getItem(pendingCheckoutStorageKey) !== null;}
   catch(error){
     console.error('Could not inspect the pending checkout selection:',error);
@@ -4901,7 +5090,21 @@ function hasPendingCheckout(){
   }
 }
 
-function savePendingCheckout(selection){
+function savePendingCheckout(selection,preserveCheckoutState=false){
+  const saved = preserveCheckoutState ? readStoredPendingCheckout() : null;
+  const sameSelection = saved
+    && saved.selection.productModel === selection.productModel
+    && saved.selection.planKey === selection.planKey
+    && saved.selection.productId === selection.productId
+    && saved.selection.size === selection.size;
+  const checkoutIsActive = preserveCheckoutState
+    && checkout.classList.contains('active')
+    && pendingPurchase
+    && pendingPurchase.productModel === selection.productModel
+    && pendingPurchase.planKey === selection.planKey
+    && pendingPurchase.productId === selection.productId
+    && pendingPurchase.size === selection.size;
+  const couponInput = checkoutIsActive ? document.getElementById('couponCodeInput') : null;
   try{
     sessionStorage.setItem(pendingCheckoutStorageKey,JSON.stringify({
       version:1,
@@ -4909,48 +5112,60 @@ function savePendingCheckout(selection){
       productModel:selection.productModel,
       planKey:selection.planKey,
       size:selection.size,
-      productId:selection.productId
+      productId:selection.productId,
+      couponCode:checkoutIsActive ? couponInput.value : sameSelection ? saved.couponCode : '',
+      couponApplied:checkoutIsActive ? couponApplied : sameSelection && saved.couponApplied,
+      tradingPlatform:checkoutIsActive ? selectedTradingPlatform : sameSelection ? saved.tradingPlatform : 'cf'
     }));
   }catch(error){
     console.error('Could not persist the pending checkout selection:',error);
   }
+  writeCheckoutRoute(selection);
 }
 
 function clearPendingCheckout(){
   try{sessionStorage.removeItem(pendingCheckoutStorageKey);}
   catch(error){console.error('Could not clear the pending checkout selection:',error);}
+  clearCheckoutRoute();
 }
 
 function readPendingCheckout(){
-  let serialized;
-  try{serialized = sessionStorage.getItem(pendingCheckoutStorageKey);}
-  catch(error){
-    console.error('Could not read the pending checkout selection:',error);
-    return pendingPurchase ? normalizeCheckoutSelection(
-      pendingPurchase.productModel,pendingPurchase.size,pendingPurchase.planKey,pendingPurchase.productId,pendingPurchase.price
-    ) : null;
-  }
-  if(serialized === null) return pendingPurchase ? normalizeCheckoutSelection(
+  const route = readCheckoutRoute();
+  if(route.requested) return route.selection;
+  const saved = readStoredPendingCheckout();
+  if(saved) return saved.selection;
+  return pendingPurchase ? normalizeCheckoutSelection(
     pendingPurchase.productModel,pendingPurchase.size,pendingPurchase.planKey,pendingPurchase.productId,pendingPurchase.price
   ) : null;
-  let saved;
-  try{saved = JSON.parse(serialized);}
-  catch(error){
-    clearPendingCheckout();
-    return null;
-  }
-  if(!saved || saved.version !== 1 || saved.market !== 'forex'){
-    clearPendingCheckout();
-    return null;
-  }
-  const selection = normalizeCheckoutSelection(saved.productModel,saved.size,saved.planKey,saved.productId);
-  if(!selection) clearPendingCheckout();
-  return selection;
+}
+
+function readPendingCheckoutState(selection){
+  const saved = readStoredPendingCheckout();
+  if(!saved
+    || saved.selection.productModel !== selection.productModel
+    || saved.selection.planKey !== selection.planKey
+    || saved.selection.productId !== selection.productId
+    || saved.selection.size !== selection.size) return null;
+  return saved;
+}
+
+function clearCheckoutRestoreShell(){
+  document.documentElement.classList.remove('checkout-restore-pending');
+}
+
+function showCheckoutRestoreError(message){
+  const skeleton = document.getElementById('checkoutRestoreSkeleton');
+  if(!skeleton) return;
+  skeleton.dataset.state = 'error';
+  skeleton.setAttribute('aria-busy','false');
+  const status = document.getElementById('checkoutRestoreErrorMessage');
+  if(status) status.textContent = message;
 }
 
 function showPendingCheckoutError(message){
   clearPendingCheckout();
   pendingPurchase = null;
+  clearCheckoutRestoreShell();
   if(checkout.classList.contains('active')) closeCheckout();
   if(registrationSection.classList.contains('active')) closeRegistration();
   const notice = document.getElementById('checkoutSelectionNotice');
@@ -4969,6 +5184,10 @@ async function routeAuthenticatedCheckout(user){
 
 function showCheckoutAuthError(error){
   console.error('Could not continue to the selected checkout:',error);
+  if(document.documentElement.classList.contains('checkout-restore-pending')){
+    showCheckoutRestoreError('We couldn’t restore your sign-in session. Check your connection and retry checkout.');
+    return;
+  }
   openRegistration();
   showLoginForm();
   loginStatus.className = 'registration-status error';
@@ -4989,21 +5208,26 @@ async function finishPendingCheckout(user){
   checkoutOwnerUid = currentUser.uid;
   const selection = readPendingCheckout();
   if(!selection){
-    showPendingCheckoutError('The selected account is no longer available. Please choose another account.');
+    if(document.documentElement.classList.contains('checkout-restore-pending')){
+      showCheckoutRestoreError('We couldn’t validate the saved account selection. Return to pricing and choose an account again.');
+    }else{
+      showPendingCheckoutError('The selected account is no longer available. Please choose another account.');
+    }
     return;
   }
   const resumeKey = JSON.stringify([currentUser.uid,selection.market,selection.productModel,selection.productId,selection.planKey,selection.size]);
   if(pendingCheckoutResumeKey === resumeKey) return;
   pendingCheckoutResumeKey = resumeKey;
   if(registrationSection.classList.contains('active')) closeRegistration();
-  pendingPurchase = selection;
-  try{
-    const accountDetails = await loadCheckoutAccountDetails(currentUser);
-    renderCheckout(selection,accountDetails);
-  }catch(error){
-    if(pendingCheckoutResumeKey === resumeKey) pendingCheckoutResumeKey = '';
-    throw error;
-  }
+  const checkoutMatchesSelection = checkout.classList.contains('active')
+    && pendingPurchase
+    && pendingPurchase.planKey === selection.planKey
+    && pendingPurchase.productId === selection.productId
+    && pendingPurchase.size === selection.size;
+  if(!checkoutMatchesSelection) renderCheckout(selection,{billing:{},message:'Loading your saved account details…'});
+  else pendingPurchase = selection;
+  const accountDetails = await loadCheckoutAccountDetails(currentUser);
+  applyCheckoutAccountDetails(accountDetails,true);
 }
 
 function mapAccountToBillingDetails(profile,user){
@@ -5017,6 +5241,22 @@ function mapAccountToBillingDetails(profile,user){
     phone: typeof profile.phone === 'string' ? profile.phone.trim() : '',
     country: typeof profile.country === 'string' ? profile.country.trim().toUpperCase() : ''
   };
+}
+
+function applyCheckoutAccountDetails(accountDetails,onlyEmpty=false){
+  const billing = accountDetails.billing || {};
+  for(const [key,id] of Object.entries({
+    full_name:'billingFullName',
+    email:'billingEmail',
+    phone:'billingPhone',
+    country:'billingCountry'
+  })){
+    const field = document.getElementById(id);
+    const value = typeof billing[key] === 'string' ? billing[key].trim() : '';
+    if(field && value && (!onlyEmpty || !field.value)) field.value = value;
+  }
+  document.getElementById('billingAccountInfoStatus').textContent = accountDetails.message
+    || 'Account details are filled in when available. Complete any required fields that remain blank.';
 }
 
 async function loadCheckoutAccountDetails(user){
@@ -5059,6 +5299,12 @@ function updateCheckoutPrice(){
   document.getElementById('coTotal').textContent = formatCheckoutAmount(total);
 }
 
+function persistPendingCheckoutState(){
+  if(pendingPurchase && checkout.classList.contains('active')){
+    savePendingCheckout(pendingPurchase,true);
+  }
+}
+
 function applyCheckoutCoupon(){
   const input = document.getElementById('couponCodeInput');
   const status = document.getElementById('couponStatus');
@@ -5068,15 +5314,18 @@ function applyCheckoutCoupon(){
     status.className = 'coupon-status error';
     status.textContent = 'CRAZYFUNDED30 is only available for Classic accounts.';
     updateCheckoutPrice();
+    persistPendingCheckoutState();
     return;
   }
   couponApplied = input.value.trim().toUpperCase() === activeCouponCode;
   status.className = 'coupon-status ' + (couponApplied ? 'success' : 'error');
   status.textContent = couponApplied ? 'Coupon applied: 30% off.' : 'Invalid coupon code.';
   updateCheckoutPrice();
+  persistPendingCheckoutState();
 }
 
 document.getElementById('applyCouponBtn').addEventListener('click',applyCheckoutCoupon);
+document.getElementById('couponCodeInput').addEventListener('input',persistPendingCheckoutState);
 document.getElementById('couponCodeInput').addEventListener('keydown',event=>{
   if(event.key === 'Enter'){
     event.preventDefault();
@@ -5131,21 +5380,10 @@ async function openCheckout(size, label, price, split, planKey, productId=planKe
 
 function renderCheckout(selection,accountDetails={billing:{},message:''}){
   pendingPurchase = selection;
+  const savedCheckoutState = readPendingCheckoutState(selection);
   const submissionForm = document.getElementById('checkoutSubmissionForm');
   if(submissionForm) submissionForm.reset();
-  const billing = accountDetails.billing || {};
-  for(const [key,id] of Object.entries({
-    full_name:'billingFullName',
-    email:'billingEmail',
-    phone:'billingPhone',
-    country:'billingCountry'
-  })){
-    const field = document.getElementById(id);
-    const value = typeof billing[key] === 'string' ? billing[key].trim() : '';
-    if(field && value) field.value = value;
-  }
-  document.getElementById('billingAccountInfoStatus').textContent = accountDetails.message
-    || 'Account details are filled in when available. Complete any required fields that remain blank.';
+  applyCheckoutAccountDetails(accountDetails);
   billingValidationAttempted = false;
   billingPaymentUnlocked = false;
   document.getElementById('billingContinueStatus').textContent = '';
@@ -5155,13 +5393,21 @@ function renderCheckout(selection,accountDetails={billing:{},message:''}){
     if(field) field.removeAttribute('aria-invalid');
     if(message) message.textContent = '';
   });
-  setTradingPlatform('cf');
+  if(savedCheckoutState) setTradingPlatform(savedCheckoutState.tradingPlatform);
+  else setTradingPlatform('cf');
   pendingSubmissionId = getPendingSubmissionId(pendingPurchase);
   checkoutBasePrice = selection.price;
   const classicCouponEligible = selection.productModel === 'classic';
-  const couponForCheckout = classicCouponEligible ? pendingHomepageCoupon : '';
+  const couponForCheckout = classicCouponEligible
+    ? pendingHomepageCoupon || (savedCheckoutState ? savedCheckoutState.couponCode : '')
+    : '';
+  const applyRestoredCoupon = classicCouponEligible
+    && savedCheckoutState
+    && savedCheckoutState.couponApplied
+    && couponForCheckout.trim().toUpperCase() === activeCouponCode;
+  const applyHomepageCoupon = classicCouponEligible && pendingHomepageCoupon.trim().toUpperCase() === activeCouponCode;
   pendingHomepageCoupon = '';
-  couponApplied = false;
+  couponApplied = Boolean(applyRestoredCoupon || applyHomepageCoupon);
   const couponBox = document.querySelector('.coupon-box');
   const couponInput = document.getElementById('couponCodeInput');
   const applyCouponButton = document.getElementById('applyCouponBtn');
@@ -5169,8 +5415,10 @@ function renderCheckout(selection,accountDetails={billing:{},message:''}){
   couponInput.disabled = !classicCouponEligible;
   applyCouponButton.disabled = !classicCouponEligible;
   couponInput.value = couponForCheckout;
-  document.getElementById('couponStatus').textContent = classicCouponEligible ? '' : 'CRAZYFUNDED30 is only available for Classic accounts.';
-  document.getElementById('couponStatus').className = 'coupon-status';
+  document.getElementById('couponStatus').textContent = !classicCouponEligible
+    ? 'CRAZYFUNDED30 is only available for Classic accounts.'
+    : couponApplied ? 'Coupon applied: 30% off.' : '';
+  document.getElementById('couponStatus').className = couponApplied ? 'coupon-status success' : 'coupon-status';
   mainSections.forEach(sel=>{ const el = document.querySelector(sel); if(el) el.style.display = 'none'; });
   document.querySelector('footer').style.display = 'none';
   checkout.classList.add('active');
@@ -5181,7 +5429,7 @@ function renderCheckout(selection,accountDetails={billing:{},message:''}){
   document.getElementById('coSize').textContent = '$' + selection.size.toLocaleString();
   document.getElementById('coSplit').textContent = selection.split || '—';
   updateCheckoutPrice();
-  if(couponForCheckout) applyCheckoutCoupon();
+  if(couponForCheckout && !couponApplied) applyCheckoutCoupon();
   const rules = document.getElementById('coRules');
   rules.replaceChildren();
   const plan = pricing[selection.planKey];
@@ -5192,8 +5440,25 @@ function renderCheckout(selection,accountDetails={billing:{},message:''}){
       rules.appendChild(item);
     });
   }
-
+  clearCheckoutRestoreShell();
 }
+
+function initializeCheckoutRestore(){
+  if(!document.documentElement.classList.contains('checkout-restore-pending')) return;
+  const route = readCheckoutRoute();
+  const selection = readPendingCheckout();
+  if(!selection){
+    showCheckoutRestoreError('We couldn’t validate the saved account selection. Return to pricing and choose an account again.');
+    return;
+  }
+  pendingPurchase = selection;
+  if(!route.requested || !readStoredPendingCheckout()) savePendingCheckout(selection,true);
+  else writeCheckoutRoute(selection);
+  if(window.checkoutRestoreFirebaseSdkFailed || !firebaseAuth){
+    showCheckoutRestoreError('Secure sign-in could not be loaded. Check your connection and retry checkout.');
+  }
+}
+
 function closeCheckout(preservePending=false){
   pendingCheckoutResumeKey = '';
   checkoutOwnerUid = '';
@@ -5209,11 +5474,24 @@ function closeCheckout(preservePending=false){
 }
 document.querySelectorAll('input[name="tradingPlatform"]').forEach(input=>{
   input.addEventListener('change',()=>{
-    if(input.checked) setTradingPlatform(input.value);
+    if(input.checked){
+      setTradingPlatform(input.value);
+      persistPendingCheckoutState();
+    }
   });
 });
 const coBackEl = document.getElementById('coBack');
 if(coBackEl) coBackEl.addEventListener('click', ()=>{ closeCheckout(); document.querySelector('#pricing').scrollIntoView({behavior:'smooth'}); });
+const checkoutRestoreRetryEl = document.getElementById('checkoutRestoreRetry');
+if(checkoutRestoreRetryEl) checkoutRestoreRetryEl.addEventListener('click',()=>window.location.reload());
+const checkoutRestoreBackEl = document.getElementById('checkoutRestoreBack');
+if(checkoutRestoreBackEl) checkoutRestoreBackEl.addEventListener('click',()=>{
+  clearPendingCheckout();
+  pendingPurchase = null;
+  clearCheckoutRestoreShell();
+  window.location.reload();
+});
+initializeCheckoutRestore();
 const coPayBtnEl = document.getElementById('coPayBtn');
 const checkoutSubmissionFormEl = document.getElementById('checkoutSubmissionForm');
 const billingContinueBtnEl = document.getElementById('billingContinueBtn');

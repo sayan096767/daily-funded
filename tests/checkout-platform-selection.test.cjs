@@ -109,6 +109,72 @@ test('Firebase serves the main page with its embedded NOWPayments checkout', () 
   );
 });
 
+test('checkout refresh routes to the saved product before blocking Firebase scripts load', () => {
+  const restoreBootstrapIndex = checkoutHtml.indexOf("checkoutRestoreParams.get('checkout') === '1'");
+  const firebaseScriptIndex = checkoutHtml.indexOf('firebase-app-compat.js');
+  const skeletonIndex = checkoutHtml.indexOf('id="checkoutRestoreSkeleton"');
+  assert.ok(restoreBootstrapIndex >= 0 && restoreBootstrapIndex < firebaseScriptIndex);
+  assert.ok(skeletonIndex > 0 && skeletonIndex < firebaseScriptIndex);
+  assert.match(checkoutHtml, /html\.checkout-restore-pending body>:not\(#checkoutRestoreSkeleton\)/);
+  assert.match(checkoutHtml, /checkout-restore-grid/);
+  assert.match(checkoutHtml, /checkout-restore-field/);
+  assert.match(checkoutHtml, /@media\(prefers-reduced-motion:reduce\)\{\.checkout-restore-shimmer::after\{animation:none/);
+  assert.match(checkoutHtml, /id="checkoutRestoreRetry"/);
+  assert.match(checkoutHtml, /id="checkoutRestoreBack"/);
+  assert.match(checkoutHtml, /onload="this\.onload=null;this\.rel='stylesheet'"/);
+});
+
+test('checkout URL preserves its existing parameters and canonical product selection', () => {
+  const pricing = getFrontendPricing();
+  const selection = {
+    market: 'forex',
+    productModel: 'spark',
+    planKey: 'spark_1step',
+    productId: pricing.spark_1step.productId,
+    size: 25000
+  };
+  const url = new URL(
+    `https://daily-funded.web.app/FundingForge.html?checkout-theme=20261108&checkout=1&market=forex&model=${selection.productModel}&plan=${selection.planKey}&product=${selection.productId}&size=${selection.size}`
+  );
+  const context = vm.createContext({
+    window: {
+      location: {href: url.href, search: url.search},
+      history: {state: {existing: true}, replaceState(_state, _title, next) { this.next = next; }}
+    },
+    URL,
+    URLSearchParams,
+    pricing,
+    sizes: [5000, 10000, 25000, 50000, 100000],
+    sparkSizes: [25000, 50000, 100000]
+  });
+  const normalizeStart = checkoutHtml.indexOf('function normalizeCheckoutSelection(');
+  const routeStart = checkoutHtml.indexOf('function readCheckoutRoute()', normalizeStart);
+  const writeStart = checkoutHtml.indexOf('function writeCheckoutRoute(', routeStart);
+  const clearStart = checkoutHtml.indexOf('function clearCheckoutRoute()', writeStart);
+  const end = checkoutHtml.indexOf('\nfunction readStoredPendingCheckout()', clearStart);
+  assert.ok(normalizeStart >= 0 && routeStart > normalizeStart && writeStart > routeStart && clearStart > writeStart && end > clearStart);
+  vm.runInContext(
+    `const sizes = [5000,10000,25000,50000,100000];\n` +
+      `const sparkSizes = [25000,50000,100000];\n` +
+      `${checkoutHtml.slice(normalizeStart, routeStart)}\n` +
+      `${checkoutHtml.slice(routeStart, end)}`,
+    context
+  );
+  const restored = context.readCheckoutRoute();
+  assert.equal(restored.requested, true);
+  assert.equal(restored.selection.planKey, selection.planKey);
+  assert.equal(restored.selection.productModel, selection.productModel);
+  assert.equal(restored.selection.productId, selection.productId);
+  assert.equal(restored.selection.size, selection.size);
+  context.writeCheckoutRoute(restored.selection);
+  assert.match(context.window.history.next, /checkout-theme=20261108/);
+  assert.match(context.window.history.next, /plan=spark_1step/);
+  assert.match(context.window.history.next, /size=25000/);
+  context.clearCheckoutRoute();
+  assert.match(context.window.history.next, /checkout-theme=20261108/);
+  assert.doesNotMatch(context.window.history.next, /(?:^|[?&])checkout=/);
+});
+
 test('hosted payment step shows unavailable UPI and selected crypto reference cards', () => {
   assert.match(checkoutHtml, /class="hosted-method-card hosted-method-card-unavailable" aria-label="UPI is unavailable"/);
   assert.match(checkoutHtml, /Unavailable — UPI payments are not supported at this time\./);
@@ -275,6 +341,7 @@ test('checkout price and coupon rendering use only elements present in the hoste
   const queryElements = new Map();
   const context = vm.createContext({
     document: {
+      documentElement: {classList: {contains() { return false; }, remove() {}}},
       getElementById: id => elements.get(id) || null,
       querySelector: selector => {
         if (!queryElements.has(selector)) queryElements.set(selector, {style: {}, hidden: false});
@@ -284,7 +351,24 @@ test('checkout price and coupon rendering use only elements present in the hoste
       createElement: () => ({textContent: ''})
     },
     window: {scrollTo() {}},
-    checkout: {classList: {add() {}, remove() {}}},
+    readPendingCheckoutState: () => null,
+    applyCheckoutAccountDetails(accountDetails) {
+      const billing = accountDetails.billing || {};
+      for (const [key, id] of Object.entries({
+        full_name: 'billingFullName',
+        email: 'billingEmail',
+        phone: 'billingPhone',
+        country: 'billingCountry'
+      })) {
+        const field = elements.get(id);
+        const value = typeof billing[key] === 'string' ? billing[key].trim() : '';
+        if (field && value) field.value = value;
+      }
+      elements.get('billingAccountInfoStatus').textContent = accountDetails.message || '';
+    },
+    persistPendingCheckoutState() {},
+    clearCheckoutRestoreShell() {},
+    checkout: {classList: {add() {}, remove() {}, contains() {return false;}}},
     mainSections: [],
     billingFields: {},
     pricing: {'1step': {extra: []}},
@@ -601,20 +685,36 @@ test('checkout loads the authenticated profile and visibly reports when profile 
 
 test('checkout pre-fills only account-matched identity fields and leaves other billing details untouched', () => {
   const renderStart = checkoutHtml.indexOf('function renderCheckout(selection,accountDetails=');
-  const renderEnd = checkoutHtml.indexOf('\nfunction closeCheckout', renderStart);
+  const renderEnd = checkoutHtml.indexOf('\nfunction initializeCheckoutRestore', renderStart);
   const renderSource = checkoutHtml.slice(renderStart, renderEnd);
-  for (const [key, id] of [
-    ['full_name', 'billingFullName'],
-    ['email', 'billingEmail'],
-    ['phone', 'billingPhone'],
-    ['country', 'billingCountry']
-  ]) {
-    assert.match(renderSource, new RegExp(`${key}:'${id}'`));
-  }
-  assert.match(renderSource, /if\(field && value\) field\.value = value/);
-  assert.match(renderSource, /Complete any required fields that remain blank/);
-  assert.match(checkoutHtml, /const accountDetails = await loadCheckoutAccountDetails\(currentUser\);\s*renderCheckout\(selection,accountDetails\)/);
-  assert.doesNotMatch(renderSource, /billing(State|City|PostalCode|AddressLine1|AddressLine2|CompanyName|TaxId).*accountDetails/);
+  assert.match(renderSource, /applyCheckoutAccountDetails\(accountDetails\)/);
+  assert.match(checkoutHtml, /renderCheckout\(selection,\{billing:\{\},message:'Loading your saved account details…'\}\)/);
+  assert.match(checkoutHtml, /applyCheckoutAccountDetails\(accountDetails,true\)/);
+  const helperStart = checkoutHtml.indexOf('function applyCheckoutAccountDetails(');
+  const helperEnd = checkoutHtml.indexOf('\nasync function loadCheckoutAccountDetails(', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const values = {
+    billingFullName: {value: ''},
+    billingEmail: {value: 'typed@example.com'},
+    billingPhone: {value: ''},
+    billingCountry: {value: ''},
+    billingState: {value: 'User State'},
+    billingCity: {value: 'User City'},
+    billingAccountInfoStatus: {textContent: ''}
+  };
+  const context = vm.createContext({document: {getElementById: id => values[id] || null}});
+  vm.runInContext(checkoutHtml.slice(helperStart, helperEnd), context);
+  context.applyCheckoutAccountDetails({
+    billing: {full_name: 'Ada Lovelace', email: 'profile@example.com', phone: '+442079460123', country: 'GB'},
+    message: 'Profile details loaded.'
+  }, true);
+  assert.equal(values.billingFullName.value, 'Ada Lovelace');
+  assert.equal(values.billingEmail.value, 'typed@example.com');
+  assert.equal(values.billingPhone.value, '+442079460123');
+  assert.equal(values.billingCountry.value, 'GB');
+  assert.equal(values.billingState.value, 'User State');
+  assert.equal(values.billingCity.value, 'User City');
+  assert.equal(values.billingAccountInfoStatus.textContent, 'Profile details loaded.');
 });
 
 test('payment and billing replace each other in place without clearing billing values', () => {
