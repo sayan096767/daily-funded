@@ -9,7 +9,16 @@ const checkoutHtml = fs.readFileSync(
   path.join(root, 'hosting-public/FundingForge.html'),
   'utf8'
 );
+const termsHtml = fs.readFileSync(
+  path.join(root, 'hosting-public/terms-and-conditions.html'),
+  'utf8'
+);
+const privacyHtml = fs.readFileSync(
+  path.join(root, 'hosting-public/privacy-policy.html'),
+  'utf8'
+);
 const backendSource = fs.readFileSync(path.join(root, 'backend/app.py'), 'utf8');
+const firebaseConfig = JSON.parse(fs.readFileSync(path.join(root, 'firebase.json'), 'utf8'));
 
 function extractFunction(name, nextName) {
   const start = checkoutHtml.indexOf(`function ${name}(`);
@@ -47,6 +56,85 @@ function platformContext() {
   );
   return {context, radios, unlocked, platformSummary};
 }
+
+function getFrontendPricing() {
+  const start = checkoutHtml.indexOf('const pricing = {');
+  const end = checkoutHtml.indexOf('\nfunction renderPlans(', start);
+  assert.ok(start >= 0 && end > start, 'frontend pricing catalog was not found');
+  const context = vm.createContext({});
+  vm.runInContext(
+    `${checkoutHtml.slice(start, end)}\nthis.pricing = pricing;`,
+    context
+  );
+  return JSON.parse(JSON.stringify(context.pricing));
+}
+
+function getBackendPrices(planKey) {
+  const catalogStart = backendSource.indexOf('CATALOG = {');
+  const planStart = backendSource.indexOf(`"${planKey}": {`, catalogStart);
+  const pricesStart = backendSource.indexOf('"prices": {', planStart);
+  const pricesEnd = backendSource.indexOf('}', pricesStart);
+  assert.ok(catalogStart >= 0 && planStart > catalogStart && pricesEnd > pricesStart);
+  return Object.fromEntries(
+    [...backendSource.slice(pricesStart, pricesEnd).matchAll(/(\d+)\s*:\s*(\d+)/g)]
+      .map(([, size, price]) => [Number(size), Number(price)])
+  );
+}
+
+test('Firebase serves the main page with its embedded NOWPayments checkout', () => {
+  assert.equal(firebaseConfig.hosting.public, 'hosting-public');
+  assert.match(checkoutHtml, /<section id="checkout">/);
+  assert.match(checkoutHtml, /Secure checkout · NOWPayments/);
+  assert.doesNotMatch(
+    checkoutHtml,
+    /Attach a payment screenshot with your confirmation|checkout will show a notice when you select it/i
+  );
+  assert.doesNotMatch(checkoutHtml, /<input[^>]*(?:UPI|upi)|<option[^>]*>UPI/i);
+  assert.match(checkoutHtml, /payment updates to our server, which verifies the purchase and settlement/);
+  assert.doesNotMatch(
+    checkoutHtml,
+    /payment proof submission are still required|required payment proof|submit payment proof/i
+  );
+  assert.match(termsHtml, /NOWPayments sends payment updates to our server/);
+  assert.match(termsHtml, /finished payment with an exact verified settlement/);
+  assert.match(termsHtml, /current checkout uses NOWPayments as its payment provider/);
+  assert.match(termsHtml, /does not ask customers to upload payment proof/);
+  assert.match(privacyHtml, /current checkout uses NOWPayments as its payment provider/);
+  assert.match(privacyHtml, /server verifies the provider notification and checks payment details against the purchase and NOWPayments records/);
+  assert.match(privacyHtml, /NOWPayments for payment processing/);
+  assert.match(privacyHtml, /does not ask customers to upload payment proof/);
+  assert.doesNotMatch(
+    privacyHtml,
+    /Payment Proofs|payment confirmation, receipt, transaction screenshot|payment proofs/i
+  );
+});
+
+test('checkout uses the requested responsive color palette and form dimensions', () => {
+  assert.match(checkoutHtml, /family=IBM\+Plex\+Sans/);
+  assert.match(checkoutHtml, /body\.checkout-open\{[\s\S]*--bg:#060A13;[\s\S]*--bg2:#0E1626;[\s\S]*--panel:#121B2E;[\s\S]*--panel-b:#25314A;/);
+  assert.match(checkoutHtml, /@media\(prefers-color-scheme:light\)\{[\s\S]*--bg:#E3E9F4;[\s\S]*--bg2:#F7F9FC;[\s\S]*--panel:#FFFFFF;[\s\S]*--panel-b:#DDE4EF;/);
+  assert.match(checkoutHtml, /--checkout-selected:#16264A;[\s\S]*--checkout-check:#34C98B;[\s\S]*--checkout-error:#E5484D/);
+  assert.match(checkoutHtml, /--checkout-selected:#E8EFFF;[\s\S]*--checkout-check:#12A06B;[\s\S]*--checkout-error:#E5484D/);
+  assert.match(checkoutHtml, /#checkout \.platform-choice\{border:1px solid var\(--panel-b\); border-radius:12px; padding:24px; background:var\(--panel\)/);
+  assert.match(checkoutHtml, /height:42px; min-height:42px; padding:0 12px; border:1px solid var\(--panel-b\); border-radius:8px/);
+  assert.match(checkoutHtml, /height:46px; border-radius:8px; background:var\(--checkout-accent\); color:var\(--checkout-on-accent\)/);
+  assert.match(checkoutHtml, /#applyCouponBtn\{[\s\S]*height:46px;[\s\S]*background:var\(--checkout-accent\);[\s\S]*color:var\(--checkout-on-accent\)/);
+});
+
+test('every displayed challenge price matches the backend purchase catalog', () => {
+  const frontendPricing = getFrontendPricing();
+  for (const planKey of ['1step', '2step', 'instant', 'spark_1step', 'spark_instant']) {
+    const frontendPrices = Object.fromEntries(
+      Object.entries(frontendPricing[planKey].prices)
+        .map(([size, price]) => [Number(size), price])
+    );
+    assert.deepEqual(frontendPrices, getBackendPrices(planKey), planKey);
+  }
+  assert.doesNotMatch(
+    checkoutHtml,
+    /basePrice\s*\*\s*\(1\s*-\s*plan\.discount\)|plan\.prices\?\.\[size\]\s*\?\?/
+  );
+});
 
 test('checkout defaults to CF and directs customers to hosted crypto selection', () => {
   const platformInputs = [...checkoutHtml.matchAll(/<input type="radio" name="tradingPlatform" value="([^"]+)"([^>]*)>/g)];
@@ -172,7 +260,7 @@ test('checkout price and coupon rendering use only elements present in the hoste
     pendingHomepageCoupon: '',
     getPendingSubmissionId: () => 'submission-id',
     setTradingPlatform() {},
-    checkoutBasePrice: 39,
+    checkoutBasePrice: 32,
     couponApplied: false,
     activeCouponCode: 'CRAZYFUNDED30',
     pendingPurchase: {productModel: 'classic'}
@@ -194,25 +282,24 @@ test('checkout price and coupon rendering use only elements present in the hoste
     label: '1-Step',
     size: 5000,
     split: '80%',
-    price: 39
+    price: 32
   });
   assert.equal(elements.get('coLabel').textContent, '1-Step Challenge');
-  assert.equal(elements.get('coTotal').textContent, '$39');
-  assert.equal(elements.get('coTotal').textContent, '$39');
+  assert.equal(elements.get('coTotal').textContent, '$32');
 
   elements.get('couponCodeInput').value = 'CRAZYFUNDED30';
   context.applyCheckoutCoupon();
   assert.equal(context.couponApplied, true);
-  assert.equal(elements.get('coSubtotal').textContent, '$39');
-  assert.equal(elements.get('coDiscount').textContent, '−$11.70');
-  assert.equal(elements.get('coTotal').textContent, '$27.30');
+  assert.equal(elements.get('coSubtotal').textContent, '$32');
+  assert.equal(elements.get('coDiscount').textContent, '−$9.60');
+  assert.equal(elements.get('coTotal').textContent, '$22.40');
   assert.equal(elements.get('coSubtotalRow').style.display, '');
   assert.equal(elements.get('coDiscountRow').style.display, '');
 
   elements.get('couponCodeInput').value = '';
   context.applyCheckoutCoupon();
   assert.equal(context.couponApplied, false);
-  assert.equal(elements.get('coTotal').textContent, '$39');
+  assert.equal(elements.get('coTotal').textContent, '$32');
   assert.equal(elements.get('coSubtotalRow').style.display, 'none');
   assert.equal(elements.get('coDiscountRow').style.display, 'none');
 });

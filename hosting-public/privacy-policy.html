@@ -118,12 +118,11 @@
         <h3>1.3 Billing and Purchase Information</h3>
         <p>When you purchase a challenge or other service, we may collect information necessary to process and manage your purchase, including:</p>
         <ul>
-          <li>Billing name</li><li>Billing email</li><li>Billing phone number</li><li>Billing address</li><li>Country and location information</li><li>Selected product, challenge, plan, or account size</li><li>Purchase reference information</li><li>Payment status</li><li>Transaction or payment references</li><li>Information required to review and approve a purchase</li>
+          <li>Billing name</li><li>Billing email</li><li>Billing phone number</li><li>Billing address</li><li>Country and location information</li><li>Selected product, challenge, plan, or account size</li><li>Purchase reference information</li><li>Payment status</li><li>NOWPayments invoice, transaction, and settlement references</li>
         </ul>
-        <p>We do not intend to collect payment-card credentials directly through Crazy Funded unless specifically stated on the Site. Payment processing may involve third-party payment or financial service providers.</p>
-        <h3>1.4 Payment Proofs</h3>
-        <p>If Crazy Funded requires payment verification, you may be asked to upload a payment confirmation, receipt, transaction screenshot, or other payment proof for the purpose of verifying and approving purchases.</p>
-        <p>You should not upload unnecessary sensitive information or information belonging to another person.</p>
+        <p>The current checkout uses NOWPayments as its payment provider. Our server creates a hosted invoice using the purchase reference, amount, and order description; customers select an available cryptocurrency and network and complete payment through NOWPayments. Information collected directly by NOWPayments is handled under its own terms and privacy policy.</p>
+        <h3>1.4 NOWPayments Verification</h3>
+        <p>NOWPayments sends payment updates to our server. The server verifies the provider notification and checks payment details against the purchase and NOWPayments records. An exact verified settlement may be provisioned automatically; discrepancies or other flagged cases may require administrator review. Returning to the Site or initiating a transfer does not by itself confirm payment. The current checkout does not ask customers to upload payment proof.</p>
         <h3>1.5 Trading and Challenge Information</h3>
         <p>When you participate in a Crazy Funded challenge or simulated trading service, we may collect information relating to your use of the trading environment, including:</p>
         <ul>
@@ -154,7 +153,7 @@
         <h2>3. How We Use Your Information</h2>
         <p>We may use information collected through the Site to:</p>
         <ul>
-          <li>Create and manage your Crazy Funded account</li><li>Authenticate users and maintain account sessions</li><li>Process and manage purchases</li><li>Verify payment information and payment proofs</li><li>Approve or reject purchase requests</li><li>Provide challenges and simulated trading services</li><li>Maintain trading accounts and trading records</li><li>Communicate with you regarding your account or purchases</li><li>Respond to support requests</li><li>Provide customer service</li><li>Detect and prevent fraud, abuse, unauthorized access, and other illegal activity</li><li>Protect the security and integrity of our services</li><li>Troubleshoot technical problems</li><li>Monitor and improve Site performance</li><li>Analyze general usage and trends where appropriate</li><li>Enforce our Terms and Conditions and other applicable policies</li><li>Comply with applicable legal obligations</li>
+          <li>Create and manage your Crazy Funded account</li><li>Authenticate users and maintain account sessions</li><li>Process and manage purchases</li><li>Verify NOWPayments updates and reconcile payment status and settlement</li><li>Review flagged purchase discrepancies where needed</li><li>Provide challenges and simulated trading services</li><li>Maintain trading accounts and trading records</li><li>Communicate with you regarding your account or purchases</li><li>Respond to support requests</li><li>Provide customer service</li><li>Detect and prevent fraud, abuse, unauthorized access, and other illegal activity</li><li>Protect the security and integrity of our services</li><li>Troubleshoot technical problems</li><li>Monitor and improve Site performance</li><li>Analyze general usage and trends where appropriate</li><li>Enforce our Terms and Conditions and other applicable policies</li><li>Comply with applicable legal obligations</li>
         </ul>
         <p>We may also use your information to send service-related communications. Marketing communications may be sent where permitted by applicable law and may include an option to stop receiving promotional communications.</p>
       </article>
@@ -164,7 +163,7 @@
         <h3>Service Providers</h3>
         <p>We may share information with trusted third-party service providers that provide services on our behalf, including providers involved in:</p>
         <ul>
-          <li>Website hosting</li><li>Authentication</li><li>Cloud storage</li><li>Backend infrastructure</li><li>Database services</li><li>Trading infrastructure</li><li>Payment processing</li><li>Security</li><li>Technical support</li><li>Email or communication services</li>
+          <li>Website hosting</li><li>Authentication</li><li>Cloud storage</li><li>Backend infrastructure</li><li>Database services</li><li>Trading infrastructure</li><li>NOWPayments for payment processing</li><li>Security</li><li>Technical support</li><li>Email or communication services</li>
         </ul>
         <p>These providers may process information only as necessary to provide the relevant services or perform their functions.</p>
         <h3>Legal Requirements</h3>
@@ -178,7 +177,7 @@
       <article id="third-parties">
         <h2>5. Third-Party Services</h2>
         <p>Crazy Funded relies on third-party infrastructure and services to operate parts of the Site and its services.</p>
-        <p>Other service providers required to operate payment, communication, security, or website functionality may also be used. Third-party services may process information according to their own privacy policies and terms.</p>
+        <p>NOWPayments is the payment provider for the current checkout. Other third-party services may support communication, security, or website functionality and may process information under their own privacy policies and terms.</p>
         <p>We encourage you to review the privacy policies of third-party services that you interact with.</p>
       </article>
       <article id="security">
