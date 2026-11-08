@@ -806,6 +806,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .billing-continue-status{min-height:0; margin:0 0 10px; color:#ef8c7d; font-size:11px; line-height:1.5;}
   .billing-continue-status:empty{display:none;}
   .checkout-submit{width:100%; justify-content:center; font:inherit; cursor:pointer;}
+  .checkout-lock-icon{width:16px; height:16px; flex:0 0 16px; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;}
   .checkout-submit:disabled{opacity:.55; cursor:not-allowed;}
   @media(max-width:520px){.billing-grid{grid-template-columns:minmax(0,1fr);}.billing-field.wide{grid-column:auto;}}
   .payment-step{padding-top:18px; margin-top:20px; border-top:1px solid var(--panel-b);}
@@ -816,7 +817,53 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .hosted-crypto-panel h4{margin:8px 0; font-size:20px;}
   .hosted-crypto-panel p{max-width:560px; color:var(--sub); font-size:13px; line-height:1.6;}
   .hosted-crypto-steps{display:flex; flex-wrap:wrap; gap:8px 20px; margin:14px 0; color:var(--text); font-size:12px; font-weight:600;}
-  .hosted-crypto-note{margin:12px 0!important; font-size:11px!important;}
+  .hosted-crypto-panel .hosted-crypto-note{max-width:none; padding:14px 16px; margin:16px 0!important; border:1px solid #34517d; border-left:4px solid #34c98b; border-radius:10px; background:#10213b; background:linear-gradient(115deg,#123229,#142648); box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 6px 18px rgba(10,25,48,.18); color:#f4f8ff; font-size:12px!important; line-height:1.6!important;}
+  .hosted-crypto-note strong{display:block; margin-bottom:3px; color:#67e6ab; font-size:14px;}
+  .hosted-payment-methods{display:grid; gap:12px; margin:18px 0;}
+  .hosted-method-card{display:grid; grid-template-columns:24px auto minmax(0,1fr) auto; align-items:center; gap:10px 12px; min-width:0; padding:14px 16px; border:1px solid #d5d6dc; border-radius:15px; color:#f7f8fb; box-shadow:0 6px 16px rgba(0,0,0,.14);}
+  .hosted-method-card-unavailable{background:linear-gradient(115deg,#535359,#424248);}
+  .hosted-method-card-selected{border:2px solid #347bff; padding:13px 15px; background:linear-gradient(110deg,#172033,#101725); box-shadow:0 0 0 2px rgba(52,123,255,.12),0 8px 20px rgba(0,0,0,.22);}
+  .hosted-method-radio{display:grid; place-items:center; width:23px; height:23px; border:2px solid #aeb1bd; border-radius:50%;}
+  .hosted-method-card-selected .hosted-method-radio{border-color:#4b8cff;}
+  .hosted-method-card-selected .hosted-method-radio::after{width:11px; height:11px; border-radius:50%; background:#4b8cff; content:'';}
+  .hosted-upi-wordmark{display:flex; align-items:center; gap:2px; color:#fff; font-size:24px; font-style:italic; font-weight:900; letter-spacing:-.08em;}
+  .hosted-upi-arrows{font-size:25px; font-style:normal; letter-spacing:-.2em;}
+  .hosted-upi-arrows span:first-child{color:#51c47d;}
+  .hosted-upi-arrows span:last-child{color:#ff994d;}
+  .hosted-method-copy{display:grid; gap:3px; min-width:0;}
+  .hosted-method-copy strong{font-size:14px; line-height:1.25;}
+  .hosted-method-copy > span{color:#c4c6cf; font-size:11px; line-height:1.45;}
+  .hosted-unavailable-badge{padding:5px 10px; border:1px solid rgba(255,255,255,.1); border-radius:20px; color:#c8c9d1; font-size:10px; white-space:nowrap;}
+  .hosted-upi-apps{display:flex; grid-column:3/5; flex-wrap:wrap; align-items:center; gap:7px;}
+  .hosted-upi-app{display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:5px 9px; border-radius:9px; background:#fff; color:#41424a; font-size:11px; font-weight:700; white-space:nowrap;}
+  .hosted-upi-app img{display:block; width:18px; height:18px; object-fit:contain;}
+  .hosted-upi-app .hosted-bhim-mark{color:#52535a; font-size:11px; font-style:italic; font-weight:900;}
+  .hosted-upi-app .hosted-bhim-arrows{color:#e77c35; font-size:15px; letter-spacing:-.25em;}
+  .hosted-crypto-coins{display:flex; align-items:center; gap:7px;}
+  .hosted-crypto-coin{display:grid; place-items:center; width:32px; height:32px; flex:0 0 32px; border-radius:50%;}
+  .hosted-crypto-coin img{display:block; width:18px; height:18px; object-fit:contain;}
+  .hosted-crypto-coin-btc{background:#f7931a;}
+  .hosted-crypto-coin-eth{background:#627eea;}
+  .hosted-crypto-coin-usdt{background:#26a17b;}
+  .hosted-crypto-coin-usdc{background:#2775ca;}
+  .hosted-crypto-coin-bnb{background:#f0b90b;}
+  @media(max-width:960px){
+    .hosted-method-card{grid-template-columns:22px minmax(0,1fr) auto; gap:9px 10px; padding:13px;}
+    .hosted-method-card-selected{padding:12px;}
+    .hosted-method-radio{width:21px;height:21px;}
+    .hosted-method-copy strong{font-size:13px;}
+    .hosted-method-copy > span{font-size:10px;}
+    .hosted-method-card .hosted-method-radio{grid-column:1;grid-row:1/3;}
+    .hosted-method-card .hosted-method-copy{grid-column:2/4;grid-row:2;}
+    .hosted-method-card-unavailable .hosted-upi-wordmark{grid-column:2;grid-row:1;}
+    .hosted-unavailable-badge{grid-column:3;grid-row:1;justify-self:end;padding:4px 8px;font-size:9px;}
+    .hosted-upi-apps{grid-column:2/4;grid-row:3;gap:5px;}
+    .hosted-upi-app{gap:4px;min-height:30px;padding:4px 6px;font-size:9px;}
+    .hosted-upi-app img{width:15px;height:15px;}
+    .hosted-method-card-selected > .hosted-crypto-coin-btc{grid-column:2;grid-row:1;}
+    .hosted-crypto-coins{grid-column:2/4;grid-row:3;flex-wrap:wrap;gap:6px;}
+    .hosted-crypto-coin{width:29px;height:29px;flex-basis:29px;}
+  }
   @media(max-width:520px){.hosted-crypto-panel{padding-left:12px}.hosted-crypto-panel h4{font-size:18px}.hosted-crypto-steps{display:grid;gap:8px}}
   #billingBackBtn{margin-bottom:16px; border-color:var(--green-dim); background:var(--panel); color:var(--green);}
   .payment-subheading{margin:18px 0 8px; color:var(--sub); font-size:12px;}
@@ -2010,13 +2057,39 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
               <span class="hosted-crypto-brand">Secure checkout · NOWPayments</span>
               <h4 id="paymentStepTitle">Pay securely with crypto</h4>
               <p>Continue to NOWPayments to choose an available cryptocurrency and network, then follow the provider’s payment instructions.</p>
+              <div class="hosted-payment-methods" aria-label="Available payment methods">
+                <div class="hosted-method-card hosted-method-card-unavailable" aria-label="UPI is unavailable">
+                  <span class="hosted-method-radio" aria-hidden="true"></span>
+                  <span class="hosted-upi-wordmark" aria-hidden="true">UPI<span class="hosted-upi-arrows"><span>›</span><span>›</span></span></span>
+                  <span class="hosted-method-copy"><strong>UPI</strong><span>Unavailable — UPI payments are not supported at this time.</span></span>
+                  <span class="hosted-unavailable-badge">Unavailable</span>
+                  <span class="hosted-upi-apps" aria-label="UPI app logos">
+                    <span class="hosted-upi-app"><img alt="" loading="lazy" src="https://cdn.simpleicons.org/googlepay/5F6368">Pay</span>
+                    <span class="hosted-upi-app"><img alt="" loading="lazy" src="https://cdn.simpleicons.org/phonepe/5F259F">PhonePe</span>
+                    <span class="hosted-upi-app"><img alt="" loading="lazy" src="https://cdn.simpleicons.org/paytm/00BAF2">paytm</span>
+                    <span class="hosted-upi-app"><span class="hosted-bhim-mark">BHIM</span><span class="hosted-bhim-arrows" aria-hidden="true">››</span></span>
+                  </span>
+                </div>
+                <div class="hosted-method-card hosted-method-card-selected" aria-label="Crypto selected, pay with cryptocurrency">
+                  <span class="hosted-method-radio" aria-hidden="true"></span>
+                  <span class="hosted-crypto-coin hosted-crypto-coin-btc" aria-hidden="true"><img alt="" loading="lazy" src="https://cdn.simpleicons.org/bitcoin/FFFFFF"></span>
+                  <span class="hosted-method-copy"><strong>Crypto</strong><span>Pay with cryptocurrency</span></span>
+                  <span class="hosted-crypto-coins" aria-label="Bitcoin, Ethereum, Tether, USD Coin, and Binance logos">
+                    <span class="hosted-crypto-coin hosted-crypto-coin-btc"><img alt="" loading="lazy" src="https://cdn.simpleicons.org/bitcoin/FFFFFF"></span>
+                    <span class="hosted-crypto-coin hosted-crypto-coin-eth"><img alt="" loading="lazy" src="https://cdn.simpleicons.org/ethereum/FFFFFF"></span>
+                    <span class="hosted-crypto-coin hosted-crypto-coin-usdt"><img alt="" loading="lazy" src="https://cdn.simpleicons.org/tether/FFFFFF"></span>
+                    <span class="hosted-crypto-coin hosted-crypto-coin-usdc"><img alt="" loading="lazy" src="https://cdn.simpleicons.org/circle/FFFFFF"></span>
+                    <span class="hosted-crypto-coin hosted-crypto-coin-bnb"><img alt="" loading="lazy" src="https://cdn.simpleicons.org/binance/FFFFFF"></span>
+                  </span>
+                </div>
+              </div>
               <div class="hosted-crypto-steps" aria-label="Checkout steps">
                 <span>1. Review your order</span>
                 <span>2. Choose a coin and network</span>
                 <span>3. Complete provider verification</span>
               </div>
-              <p class="hosted-crypto-note">Your account is provisioned automatically after payment is independently verified. Returning to this site alone does not grant account access.</p>
-              <button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn" aria-disabled="true" disabled>Continue to Secure Checkout →</button>
+              <p class="hosted-crypto-note">Your trading journey starts here! Complete your payment and get ready to unlock your funded trading opportunity. Your account will be activated once your payment is successfully verified.</p>
+              <button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn" aria-disabled="true" disabled><svg class="checkout-lock-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3"/></svg>Continue to Secure Checkout →</button>
             </div>
           </section>
         </form>

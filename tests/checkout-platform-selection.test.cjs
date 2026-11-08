@@ -109,6 +109,37 @@ test('Firebase serves the main page with its embedded NOWPayments checkout', () 
   );
 });
 
+test('hosted payment step shows unavailable UPI and selected crypto reference cards', () => {
+  assert.match(checkoutHtml, /class="hosted-method-card hosted-method-card-unavailable" aria-label="UPI is unavailable"/);
+  assert.match(checkoutHtml, /Unavailable — UPI payments are not supported at this time\./);
+  assert.match(checkoutHtml, /class="hosted-method-card hosted-method-card-selected" aria-label="Crypto selected, pay with cryptocurrency"/);
+  for (const logo of ['googlepay', 'phonepe', 'paytm', 'bitcoin', 'ethereum', 'tether', 'circle', 'binance']) {
+    assert.ok(checkoutHtml.includes(`cdn.simpleicons.org/${logo}/`), `${logo} logo should be displayed`);
+  }
+  assert.match(checkoutHtml, /\.hosted-method-card-selected\{border:2px solid #347bff/);
+  assert.match(checkoutHtml, /\.hosted-upi-app\{display:inline-flex/);
+  assert.match(checkoutHtml, /@media\(max-width:960px\)\{[\s\S]*\.hosted-method-card\{grid-template-columns:22px minmax\(0,1fr\) auto/);
+  assert.match(checkoutHtml, /\.hosted-method-card \.hosted-method-copy\{grid-column:2\/4;grid-row:2;\}/);
+  assert.match(checkoutHtml, /\.hosted-upi-apps\{grid-column:2\/4;grid-row:3;gap:5px;\}/);
+});
+
+test('checkout highlights the supplied payment and account activation message', () => {
+  assert.match(
+    checkoutHtml,
+    /<p class="hosted-crypto-note">Your trading journey starts here! Complete your payment and get ready to unlock your funded trading opportunity\. Your account will be activated once your payment is successfully verified\.<\/p>/
+  );
+  assert.match(checkoutHtml, /\.hosted-crypto-panel \.hosted-crypto-note\{[^}]*border-left:4px solid #34c98b;[^}]*background:#10213b;[^}]*background:linear-gradient\(115deg,#123229,#142648\);[^}]*color:#f4f8ff/);
+  assert.match(checkoutHtml, /\.hosted-crypto-note strong\{display:block;[^}]*color:#67e6ab/);
+});
+
+test('secure checkout button displays one decorative lock icon', () => {
+  const paymentButton = checkoutHtml.match(/<button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn"[\s\S]*?<\/button>/)?.[0];
+  assert.ok(paymentButton, 'secure checkout button should exist');
+  assert.match(paymentButton, /<svg class="checkout-lock-icon"[^>]*aria-hidden="true"/);
+  assert.equal((paymentButton.match(/class="checkout-lock-icon"/g) || []).length, 1);
+  assert.match(paymentButton, /Continue to Secure Checkout →/);
+});
+
 test('checkout uses the requested responsive color palette and form dimensions', () => {
   assert.match(checkoutHtml, /family=IBM\+Plex\+Sans/);
   assert.match(checkoutHtml, /body\.checkout-open\{[\s\S]*--bg:#060A13;[\s\S]*--bg2:#0E1626;[\s\S]*--panel:#121B2E;[\s\S]*--panel-b:#25314A;/);
