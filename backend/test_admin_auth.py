@@ -1,10 +1,12 @@
 import hashlib
+import hmac
 import io
 import json
 import socket
 import unittest
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.error import HTTPError
 from unittest.mock import MagicMock, call, patch
 
@@ -15,6 +17,18 @@ import app as app_module
 from app import app, require_admin
 
 
+class FundingForgeStaticCouponTests(unittest.TestCase):
+    def test_standalone_checkout_uses_the_approved_coupon_code(self):
+        site_file = Path(__file__).resolve().parents[1] / "hosting-public" / "checkout.html"
+        page_html = site_file.read_text(encoding="utf-8")
+        page_script = (site_file.parent / "checkout.js").read_text(encoding="utf-8")
+
+        self.assertIn("CRAZYFUNDED30", page_script)
+        self.assertNotIn("DAILYFUNDED30", page_script)
+        self.assertIn("CRAZYFUNDED30 is only available for Classic accounts.", page_script)
+
+
+@unittest.skip("The legacy manual crypto purchase endpoint has been retired.")
 class PurchaseApiTests(unittest.TestCase):
     submission_id = "00000000-0000-4000-8000-000000000123"
     purchase_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"daily-funded:verified-user-a:{submission_id}"))
@@ -113,9 +127,9 @@ class PurchaseApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         result = response.get_json()
         self.assertEqual(result["status"], "pending")
-        self.assertEqual(result["priceCents"], 3200)
+        self.assertEqual(result["priceCents"], 2600)
         self.assertEqual(result["discountCents"], 0)
-        self.assertEqual(result["totalCents"], 3200)
+        self.assertEqual(result["totalCents"], 2600)
         purchase_ref, purchase_data = fake_firestore.batch.return_value.create.call_args_list[0].args
         account_ref, account_data = fake_firestore.batch.return_value.create.call_args_list[1].args
         self.assertEqual(result["purchaseId"], self.purchase_id)
@@ -125,8 +139,8 @@ class PurchaseApiTests(unittest.TestCase):
         self.assertEqual(purchase_data["purchaseId"], self.purchase_id)
         self.assertEqual(purchase_data["submissionId"], self.submission_id)
         self.assertEqual(purchase_data["couponCode"], None)
-        self.assertEqual(purchase_data["listPriceCents"], 3200)
-        self.assertEqual(purchase_data["totalCents"], 3200)
+        self.assertEqual(purchase_data["listPriceCents"], 2600)
+        self.assertEqual(purchase_data["totalCents"], 2600)
         self.assertEqual(purchase_data["status"], "pending")
         self.assertEqual(purchase_data["billingDetails"]["full_name"], "Billing User")
         self.assertEqual(purchase_data["billingDetails"]["email"], "billing@example.com")
@@ -203,9 +217,77 @@ class PurchaseApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 201)
         result = response.get_json()
-        self.assertEqual((result["priceCents"], result["discountCents"], result["totalCents"]), (3200, 960, 2240))
+        self.assertEqual((result["priceCents"], result["discountCents"], result["totalCents"]), (2600, 700, 1900))
         purchase_data = fake_firestore.batch.return_value.create.call_args_list[0].args[1]
         self.assertEqual(purchase_data["couponCode"], "CRAZYFUNDED30")
+
+    def test_all_catalog_prices_and_coupon_totals(self):
+        products = {
+            "1step": (None, {
+                5000: (26, 19), 10000: (51, 36), 25000: (128, 90),
+                50000: (256, 180), 100000: (512, 359), 200000: (1024, 717),
+            }),
+            "2step": (None, {
+                5000: (16, 12), 10000: (31, 22), 25000: (78, 55),
+                50000: (156, 110), 100000: (312, 219), 200000: (624, 437),
+            }),
+            "instant": (None, {
+                2500: (20, 14), 5000: (39, 28), 10000: (78, 55),
+                25000: (190, 133), 50000: (349, 245), 100000: (689, 483),
+                200000: (1299, 910),
+            }),
+            "spark_1step": ("spark", {
+                25000: (39, None), 50000: (59, None), 100000: (79, None),
+            }),
+            "spark_instant": ("spark", {
+                25000: (59, None), 50000: (79, None), 100000: (99, None),
+            }),
+        }
+
+        self.assertEqual(sum(len(sizes) for _model, sizes in products.values()), 25)
+        for plan_key, (product_model, sizes) in products.items():
+            self.assertEqual(app_module.CATALOG[plan_key]["prices"], {
+                size: full_price for size, (full_price, _coupon_price) in sizes.items()
+            })
+            for size, (full_price, coupon_price) in sizes.items():
+                with self.subTest(plan_key=plan_key, size=size, coupon=False):
+                    self.assertEqual(
+                        app_module.calculate_purchase_amount(plan_key, size, None),
+                        (full_price * 100, 0, full_price * 100, None),
+                    )
+
+                with self.subTest(plan_key=plan_key, size=size, coupon=True):
+                    if product_model == "spark":
+                        with self.assertRaisesRegex(ValueError, "only available for Classic"):
+                            app_module.calculate_purchase_amount(
+                                plan_key, size, "CRAZYFUNDED30"
+                            )
+                    else:
+                        self.assertEqual(
+                            app_module.calculate_purchase_amount(
+                                plan_key, size, "CRAZYFUNDED30"
+                            ),
+                            (
+                                full_price * 100,
+                                (full_price - coupon_price) * 100,
+                                coupon_price * 100,
+                                "CRAZYFUNDED30",
+                            ),
+                        )
+
+    def test_invalid_plan_and_size_are_rejected_before_writes(self):
+        invalid_products = (("unknown", 5000), ("1step", 2500))
+        for plan_key, size in invalid_products:
+            with self.subTest(plan_key=plan_key, size=size):
+                response, firestore_client, r2_client, *_ = self.submit(
+                    include_proof=False,
+                    plan_key=plan_key,
+                    size=size,
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("challenge is not available", response.get_json()["error"])
+                firestore_client.collection.assert_not_called()
+                r2_client.put_object.assert_not_called()
 
     def test_platform_is_required_and_must_be_supported(self):
         for platform in (None, "unsupported-platform"):
@@ -485,6 +567,12 @@ class PurchaseApiTests(unittest.TestCase):
             Bucket="daily-funded-payment-proofs",
             Key=f"users/verified-user-a/paymentProofs/{self.purchase_id}.png",
         )
+
+
+class PurchasePricingTests(unittest.TestCase):
+    test_all_catalog_prices_and_coupon_totals = (
+        PurchaseApiTests.test_all_catalog_prices_and_coupon_totals
+    )
 
 
 class RegistrationProfileApiTests(unittest.TestCase):
@@ -2377,6 +2465,472 @@ class LocalCorsTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), origin)
         self.assertIn("Authorization", response.headers.get("Access-Control-Allow-Headers", ""))
+
+
+class NowPaymentsTests(unittest.TestCase):
+    submission_id = "00000000-0000-4000-8000-000000000456"
+    billing_details = PurchaseApiTests.default_billing_details
+    config = {
+        "api_key": "test-api-key",
+        "ipn_secret": "test-ipn-secret",
+        "callback_url": "https://api.example.test/api/payments/nowpayments/ipn",
+        "return_url": "https://daily-funded.web.app/?payment=return",
+    }
+
+    def setUp(self):
+        self.client = app.test_client()
+
+    def authenticated_post(self, path, payload, claims=None):
+        with patch("app.firebase_auth.verify_id_token", return_value=claims or {
+            "uid": "verified-user-a", "email": "a@example.com", "name": "User A",
+        }):
+            with patch("app.get_firebase_app"):
+                return self.client.post(
+                    path,
+                    json=payload,
+                    headers={"Authorization": "Bearer test-token"},
+                )
+
+    def checkout_payload(self, **overrides):
+        payload = {
+            "plan": "1step",
+            "size": 5000,
+            "productModel": "classic",
+            "productId": "1step",
+            "coupon": "CRAZYFUNDED30",
+            "submissionId": self.submission_id,
+            "tradingPlatform": "mt5",
+            "billing_details": self.billing_details,
+            "price": 0.01,
+            "totalCents": 1,
+            "discountPercent": 99,
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_checkout_uses_authoritative_price_and_never_creates_account_or_calls_payment(self):
+        purchase_ref = MagicMock()
+        purchase_ref.get.return_value.exists = False
+        saved_purchase = {}
+        purchase_ref.create.side_effect = lambda values: saved_purchase.update(values)
+        purchase_ref.update.side_effect = lambda values: saved_purchase.update(values)
+        user_ref = MagicMock()
+        user_ref.collection.return_value.document.return_value = purchase_ref
+        user_ref.get.return_value.to_dict.return_value = {"email": "a@example.com"}
+        database = MagicMock()
+        database.collection.return_value.document.return_value = user_ref
+
+        with patch("app.get_firestore", return_value=database):
+            with patch("app.nowpayments_configuration", return_value=self.config):
+                with patch("app.nowpayments_api_request", return_value={
+                        "id": "invoice-123",
+                        "invoice_url": "https://nowpayments.io/payment/?iid=invoice-123",
+                    }) as provider_request:
+                        response = self.authenticated_post(
+                            "/api/crypto/checkout", self.checkout_payload()
+                        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.get_json()["totalCents"], 1900)
+        self.assertEqual(saved_purchase["listPriceCents"], 2600)
+        self.assertEqual(saved_purchase["discountCents"], 700)
+        self.assertEqual(saved_purchase["totalCents"], 1900)
+        self.assertEqual(saved_purchase["paymentCurrency"], "")
+        self.assertEqual(saved_purchase["paymentNetwork"], "")
+        self.assertEqual(saved_purchase["paymentProvider"], "nowpayments")
+        self.assertEqual(saved_purchase["invoiceId"], "invoice-123")
+        invoice_payload = provider_request.call_args.args[3]
+        self.assertEqual(invoice_payload["price_amount"], 19)
+        self.assertEqual(invoice_payload["price_currency"], "usd")
+        self.assertNotIn("pay_currency", invoice_payload)
+        self.assertNotIn("price", invoice_payload)
+        self.assertEqual(user_ref.collection.call_args_list, [call("purchases")])
+        self.assertNotIn("paymentProof", saved_purchase)
+
+    def test_checkout_coupon_totals_for_classic_prices(self):
+        cases = (
+            (
+                {"plan": "instant", "size": 2500, "productModel": "classic", "productId": "instant", "coupon": "CRAZYFUNDED30"},
+                {"listPriceCents": 2000, "discountCents": 600, "totalCents": 1400, "price_amount": 14},
+            ),
+            (
+                {"plan": "instant", "size": 5000, "productModel": "classic", "productId": "instant", "coupon": "CRAZYFUNDED30"},
+                {"listPriceCents": 3900, "discountCents": 1100, "totalCents": 2800, "price_amount": 28},
+            ),
+            (
+                {"plan": "1step", "size": 5000, "productModel": "classic", "productId": "1step", "coupon": ""},
+                {"listPriceCents": 2600, "discountCents": 0, "totalCents": 2600, "price_amount": 26},
+            ),
+        )
+        for payload_overrides, expected in cases:
+            with self.subTest(payload_overrides=payload_overrides):
+                purchase_ref = MagicMock()
+                purchase_ref.get.return_value.exists = False
+                saved_purchase = {}
+                purchase_ref.create.side_effect = lambda values: saved_purchase.update(values)
+                purchase_ref.update.side_effect = lambda values: saved_purchase.update(values)
+                user_ref = MagicMock()
+                user_ref.collection.return_value.document.return_value = purchase_ref
+                user_ref.get.return_value.to_dict.return_value = {"email": "a@example.com"}
+                database = MagicMock()
+                database.collection.return_value.document.return_value = user_ref
+
+                payload = self.checkout_payload(**payload_overrides)
+                with patch("app.get_firestore", return_value=database):
+                    with patch("app.nowpayments_configuration", return_value=self.config):
+                        with patch("app.nowpayments_api_request", return_value={
+                                "id": "invoice-case",
+                                "invoice_url": "https://nowpayments.io/payment/?iid=invoice-case",
+                            }) as provider_request:
+                                response = self.authenticated_post(
+                                    "/api/crypto/checkout", payload
+                                )
+
+                self.assertEqual(response.status_code, 201)
+                self.assertEqual(saved_purchase["listPriceCents"], expected["listPriceCents"])
+                self.assertEqual(saved_purchase["discountCents"], expected["discountCents"])
+                self.assertEqual(saved_purchase["totalCents"], expected["totalCents"])
+                invoice_payload = provider_request.call_args.args[3]
+                self.assertEqual(invoice_payload["price_amount"], expected["price_amount"])
+                self.assertEqual(invoice_payload["price_currency"], "usd")
+                self.assertNotIn("pay_currency", invoice_payload)
+                self.assertNotIn("price", invoice_payload)
+
+    def test_checkout_rejects_browser_tampering_by_recalculating_authoritative_coupon_total(self):
+        payload = self.checkout_payload(
+            plan="instant",
+            size=2500,
+            productModel="classic",
+            productId="instant",
+            coupon="CRAZYFUNDED30",
+            price=0.01,
+            totalCents=1,
+            discountPercent=99,
+        )
+        purchase_ref = MagicMock()
+        purchase_ref.get.return_value.exists = False
+        saved_purchase = {}
+        purchase_ref.create.side_effect = lambda values: saved_purchase.update(values)
+        purchase_ref.update.side_effect = lambda values: saved_purchase.update(values)
+        user_ref = MagicMock()
+        user_ref.collection.return_value.document.return_value = purchase_ref
+        user_ref.get.return_value.to_dict.return_value = {"email": "a@example.com"}
+        database = MagicMock()
+        database.collection.return_value.document.return_value = user_ref
+
+        with patch("app.get_firestore", return_value=database):
+            with patch("app.nowpayments_configuration", return_value=self.config):
+                with patch("app.nowpayments_currency_is_available", return_value=True):
+                    with patch("app.nowpayments_api_request", return_value={
+                        "id": "invoice-tamper",
+                        "invoice_url": "https://nowpayments.io/payment/?iid=invoice-tamper",
+                    }) as provider_request:
+                        response = self.authenticated_post(
+                            "/api/crypto/checkout", payload
+                        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(saved_purchase["totalCents"], 1400)
+        self.assertEqual(saved_purchase["discountCents"], 600)
+        self.assertEqual(saved_purchase["listPriceCents"], 2000)
+        invoice_payload = provider_request.call_args.args[3]
+        self.assertEqual(invoice_payload["price_amount"], 14)
+        self.assertEqual(invoice_payload["price_currency"], "usd")
+        self.assertNotIn("price", invoice_payload)
+        self.assertNotEqual(invoice_payload["price_amount"], 1)
+
+    def test_checkout_reuses_an_existing_invoice_instead_of_creating_another(self):
+        purchase_id = str(uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"daily-funded:verified-user-a:{self.submission_id}",
+        ))
+        existing_purchase = {
+            "ownerUid": "verified-user-a",
+            "planKey": "1step",
+            "accountSize": 5000,
+            "couponCode": "CRAZYFUNDED30",
+            "paymentCurrency": "usdttrc20",
+            "paymentNetwork": "tron",
+            "tradingPlatform": "mt5",
+            "billingDetails": self.billing_details,
+            "paymentProvider": "nowpayments",
+            "invoiceUrl": "https://nowpayments.io/payment/?iid=invoice-existing",
+            "invoiceId": "invoice-existing",
+            "totalCents": 1900,
+            "status": "pending",
+            "paymentStatus": "waiting",
+        }
+        purchase_ref = MagicMock()
+        purchase_ref.get.return_value.exists = True
+        purchase_ref.get.return_value.to_dict.return_value = existing_purchase
+        user_ref = MagicMock()
+        user_ref.collection.return_value.document.return_value = purchase_ref
+        database = MagicMock()
+        database.collection.return_value.document.return_value = user_ref
+
+        with patch("app.get_firestore", return_value=database):
+            with patch("app.nowpayments_api_request") as provider_request:
+                response = self.authenticated_post(
+                    "/api/crypto/checkout", self.checkout_payload()
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["idempotentReplay"])
+        self.assertEqual(response.get_json()["purchaseId"], purchase_id)
+        provider_request.assert_not_called()
+        purchase_ref.create.assert_not_called()
+
+    def test_checkout_rejects_invalid_coupon_and_spark_coupon_before_provider_call(self):
+        invalid_cases = (
+            (self.checkout_payload(coupon="NOT-A-COUPON"), "Invalid coupon"),
+            (
+                self.checkout_payload(
+                    plan="spark_1step",
+                    size=25000,
+                    productModel="spark",
+                    productId="MODEL_FX_SPARK_1STEP",
+                ),
+                "only available for Classic",
+            ),
+        )
+        for payload, expected_error in invalid_cases:
+            with self.subTest(payload=payload):
+                with patch("app.get_firestore") as firestore_client:
+                    with patch("app.nowpayments_api_request") as provider_request:
+                        response = self.authenticated_post("/api/crypto/checkout", payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(expected_error, response.get_json()["error"])
+                firestore_client.assert_not_called()
+                provider_request.assert_not_called()
+
+    def test_checkout_rejects_invalid_product_and_size_before_provider_call(self):
+        for overrides in (
+            {"plan": "unknown"},
+            {"size": 2500},
+        ):
+            with self.subTest(overrides=overrides):
+                with patch("app.get_firestore") as firestore_client:
+                    with patch("app.nowpayments_api_request") as provider_request:
+                        response = self.authenticated_post(
+                            "/api/crypto/checkout",
+                            self.checkout_payload(**overrides),
+                        )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("challenge is not available", response.get_json()["error"])
+                firestore_client.assert_not_called()
+                provider_request.assert_not_called()
+
+    def test_legacy_manual_crypto_endpoint_is_retired_without_r2_or_firestore(self):
+        with patch("app.get_firestore") as firestore_client:
+            with patch("app.get_r2_client") as r2_client:
+                response = self.authenticated_post("/api/purchases", {})
+
+        self.assertEqual(response.status_code, 410)
+        self.assertIn("NOWPayments", response.get_json()["error"])
+        firestore_client.assert_not_called()
+        r2_client.assert_not_called()
+
+    def ipn_payload(self, **overrides):
+        payload = {
+            "payment_id": "payment-456",
+            "payment_status": "finished",
+            "price_amount": 19,
+            "price_currency": "usd",
+            "pay_currency": "usdttrc20",
+            "order_id": "00000000-0000-4000-8000-000000000789",
+            "invoice_id": "invoice-789",
+        }
+        payload.update(overrides)
+        return payload
+
+    def ipn_signature(self, payload):
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return hmac.new(
+            self.config["ipn_secret"].encode("utf-8"),
+            body.encode("utf-8"),
+            hashlib.sha512,
+        ).hexdigest()
+
+    def call_ipn(self, payload, purchase_data, provider_payment=None):
+        purchase_ref = MagicMock()
+        current_purchase = dict(purchase_data)
+        current_snapshot = MagicMock()
+        current_snapshot.to_dict.return_value = current_purchase
+        purchase_ref.get.return_value = current_snapshot
+        purchase = MagicMock()
+        purchase.reference = purchase_ref
+        purchase.to_dict.return_value = current_purchase
+        account_ref = MagicMock()
+        account_snapshot = MagicMock()
+        account_snapshot.exists = False
+        account_snapshot.to_dict.return_value = {}
+        account_ref.get.return_value = account_snapshot
+        user_ref = MagicMock()
+        user_ref.collection.return_value.document.return_value = account_ref
+        database = MagicMock()
+        transaction = MagicMock()
+
+        def update_reference(reference, values):
+            current_purchase.update(values)
+            if reference is purchase_ref:
+                purchase_ref.get.return_value.to_dict.return_value = current_purchase
+                purchase.to_dict.return_value = current_purchase
+
+        transaction.update.side_effect = update_reference
+        database.transaction.return_value = transaction
+        provider_payment = provider_payment or {
+            "payment_id": payload["payment_id"],
+            "order_id": payload["order_id"],
+            "payment_status": payload["payment_status"],
+            "price_amount": payload["price_amount"],
+            "price_currency": payload["price_currency"],
+            "pay_currency": payload["pay_currency"],
+        }
+        with patch("app.nowpayments_configuration", return_value=self.config):
+            with patch("app.find_purchase_document", return_value=purchase):
+                with patch("app.get_firestore", return_value=database):
+                    with patch("app.user_document", return_value=user_ref):
+                        with patch("app.cloudflare_worker_configuration", return_value=("https://example.test", "worker-token")):
+                            with patch("app.provision_cloudflare_account", return_value={"id": "ACC_11111111-2222-3333-4444-555555555555"}):
+                                with patch("app.nowpayments_api_request", return_value=provider_payment) as provider_request:
+                                    with patch("app.firestore.transactional", side_effect=lambda function: function):
+                                        response = self.client.post(
+                                            "/api/payments/nowpayments/ipn",
+                                            json=payload,
+                                            headers={"x-nowpayments-sig": self.ipn_signature(payload)},
+                                        )
+        return response, transaction, provider_request
+
+    def purchase_data(self, **overrides):
+        data = {
+            "purchaseId": "00000000-0000-4000-8000-000000000789",
+            "accountId": "00000000-0000-4000-8000-000000000789",
+            "ownerUid": "verified-user-a",
+            "planKey": "1step",
+            "accountSize": 5000,
+            "totalCents": 1900,
+            "paymentCurrency": "usdttrc20",
+            "paymentProvider": "nowpayments",
+            "invoiceId": "invoice-789",
+            "status": "pending",
+            "paymentStatus": "waiting",
+        }
+        data.update(overrides)
+        return data
+
+    def test_ipn_requires_signature_and_rejects_amount_mismatch(self):
+        with patch("app.nowpayments_configuration", return_value=self.config):
+            with patch("app.get_firestore") as firestore_client:
+                response = self.client.post(
+                    "/api/payments/nowpayments/ipn",
+                    json=self.ipn_payload(),
+                )
+        self.assertEqual(response.status_code, 401)
+        firestore_client.assert_not_called()
+
+        with patch("app.nowpayments_configuration", return_value=self.config):
+            with patch("app.get_firestore") as firestore_client:
+                response = self.client.post(
+                    "/api/payments/nowpayments/ipn",
+                    json=self.ipn_payload(),
+                    headers={"x-nowpayments-sig": "invalid"},
+                )
+        self.assertEqual(response.status_code, 401)
+        firestore_client.assert_not_called()
+
+        payload = self.ipn_payload(price_amount=20)
+        response, _transaction, provider_request = self.call_ipn(
+            payload, self.purchase_data()
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("amount or currency", response.get_json()["error"])
+        provider_request.assert_not_called()
+
+    def test_ipn_rejects_provider_currency_or_order_mismatch(self):
+        payload = self.ipn_payload()
+        mismatched_provider = {
+            "payment_id": payload["payment_id"],
+            "order_id": "00000000-0000-4000-8000-000000000999",
+            "payment_status": payload["payment_status"],
+            "price_amount": payload["price_amount"],
+            "price_currency": payload["price_currency"],
+            "pay_currency": "btc",
+        }
+        response, transaction, _provider_request = self.call_ipn(
+            payload, self.purchase_data(), mismatched_provider
+        )
+
+        self.assertEqual(response.status_code, 400)
+        transaction.update.assert_not_called()
+
+    def test_finished_ipn_is_idempotent_and_does_not_reactivate_approved_account(self):
+        payload = self.ipn_payload()
+        existing_purchase = self.purchase_data(
+            status="approved",
+            paymentStatus="finished",
+            providerPaymentId=payload["payment_id"],
+        )
+        response, transaction, _provider_request = self.call_ipn(
+            payload, existing_purchase
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["duplicate"])
+        transaction.update.assert_not_called()
+        self.assertFalse(app_module.purchase_payment_allows_approval({
+            "paymentProvider": "nowpayments",
+            "paymentStatus": "waiting",
+        }))
+        self.assertTrue(app_module.purchase_payment_allows_approval({
+            "paymentProvider": "nowpayments",
+            "paymentStatus": "finished",
+        }))
+
+    def test_valid_finished_ipn_waits_for_admin_approval(self):
+        payload = self.ipn_payload()
+        response, transaction, _provider_request = self.call_ipn(
+            payload, self.purchase_data()
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.get_json()["duplicate"])
+        payment_updates = transaction.update.call_args.args[1]
+        self.assertEqual(payment_updates["providerPaymentId"], payload["payment_id"])
+        self.assertEqual(payment_updates["paymentCurrency"], payload["pay_currency"])
+        self.assertEqual(payment_updates["paymentStatus"], "finished")
+        self.assertNotIn("status", payment_updates)
+        self.assertFalse(transaction.set.called)
+
+    def test_ipn_stores_provider_currency_when_invoice_did_not_preselect_one(self):
+        payload = self.ipn_payload(pay_currency="btc")
+        response, transaction, _provider_request = self.call_ipn(
+            payload, self.purchase_data(paymentCurrency="", paymentNetwork="")
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payment_updates = transaction.update.call_args.args[1]
+        self.assertEqual(payment_updates["paymentCurrency"], "btc")
+    def test_refund_after_approval_is_flagged_for_manual_review_without_access_change(self):
+        payload = self.ipn_payload(payment_status="refunded")
+        response, transaction, _provider_request = self.call_ipn(
+            payload, self.purchase_data(status="approved", paymentStatus="finished")
+        )
+
+        self.assertEqual(response.status_code, 200)
+        updates = transaction.update.call_args.args[1]
+        self.assertTrue(updates["manualReviewRequired"])
+        self.assertEqual(updates["manualReviewReason"], "NOWPayments reported refunded.")
+        self.assertNotIn("status", updates)
+        self.assertNotIn("tradingEnabled", updates)
+
+    def test_refunded_or_unpaid_nowpayments_purchase_cannot_be_approved(self):
+        for payment_status in ("waiting", "refunded", "reversed"):
+            with self.subTest(payment_status=payment_status):
+                self.assertFalse(app_module.purchase_payment_allows_approval({
+                    "paymentProvider": "nowpayments",
+                    "paymentStatus": payment_status,
+                    "manualReviewRequired": payment_status in {"refunded", "reversed"},
+                }))
 
 
 if __name__ == "__main__":

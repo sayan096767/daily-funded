@@ -226,7 +226,7 @@ test('logged-out Get Started opens the registration sign-in UI', async () => {
   });
 
   vm.runInContext(
-    extractFunction('openCheckout', 'function renderCheckout'),
+    extractFunction('openCheckout', 'async function refreshDashboard'),
     context
   );
   await context.openCheckout(10000, '1-Step', 51, '80% profit split', '1step');
@@ -237,4 +237,49 @@ test('logged-out Get Started opens the registration sign-in UI', async () => {
     statusText,
     'Create an account or sign in to continue to checkout.'
   );
+});
+
+test('authenticated checkout keeps the saved selection and coupon in the integrated dialog', async () => {
+  const user = {uid: 'test-user'};
+  const selection = {
+    market: 'forex',
+    productModel: 'classic',
+    productId: 'instant',
+    planKey: 'instant',
+    size: 25000,
+    price: 190
+  };
+  let openedCheckout = null;
+  const context = vm.createContext({
+    firebaseAuthPersistenceReady: Promise.resolve(),
+    requireFirebaseAuth: () => ({currentUser: user}),
+    readPendingCheckout: () => selection,
+    pendingCheckoutResumeKey: '',
+    registrationSection: {classList: {contains: () => true}},
+    closeRegistration() {},
+    pendingPurchase: null,
+    pendingHomepageCoupon: 'CRAZYFUNDED30',
+    window: {
+      CrazyFundedIntegratedCheckoutReady: Promise.resolve(),
+      CrazyFundedIntegratedCheckout: {
+        async open(purchase, currentUser, coupon) {
+          openedCheckout = {purchase, currentUser, coupon};
+          return true;
+        }
+      }
+    }
+  });
+
+  vm.runInContext(
+    extractFunction('finishPendingCheckout', 'async function copyCheckoutCoupon'),
+    context
+  );
+  await context.finishPendingCheckout(user);
+
+  assert.deepEqual(openedCheckout, {
+    purchase: selection,
+    currentUser: user,
+    coupon: 'CRAZYFUNDED30'
+  });
+  assert.ok(context.pendingCheckoutResumeKey);
 });

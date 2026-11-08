@@ -31,6 +31,14 @@ services:
         value: daily-funded-payment-proofs
       - key: R2_ENDPOINT
         sync: false
+      - key: NOWPAYMENTS_API_KEY
+        sync: false
+      - key: NOWPAYMENTS_IPN_SECRET
+        sync: false
+      - key: NOWPAYMENTS_IPN_CALLBACK_URL
+        sync: false
+      - key: NOWPAYMENTS_RETURN_URL
+        sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY

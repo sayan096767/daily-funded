@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Checkout — Crazy Funded</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./checkout.css">
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="./checkout-countries.js"></script>
+  <script src="./checkout.js" defer></script>
+</head>
+<body>
+  <div id="checkoutLoading" class="checkout-loading" role="status">Verifying your sign-in and loading your selected challenge…</div>
+  <section id="checkoutError" class="checkout-error" role="alert" hidden>
+    <h1>Checkout unavailable</h1>
+    <p></p>
+    <a class="btn btn-primary" href="./FundingForge.html#pricing">Return to pricing</a>
+  </section>
+  <main id="checkout" class="crazy-checkout-page active" hidden>
+  <div class="wrap">
+    <button class="co-back" id="coBack">← Back to pricing</button>
+    <div class="eyebrow">Checkout</div>
+    <h2 style="margin-bottom:24px;">Complete your purchase</h2>
+    <div class="checkout-grid">
+      <div class="co-panel">
+        <fieldset class="platform-choice">
+          <legend>Choose Your Trading Platform</legend>
+          <div class="platform-card-grid">
+            <label class="platform-card" aria-label="Select MetaTrader 5">
+              <input type="radio" name="tradingPlatform" value="mt5">
+              <img src="./platform-mt5-mark.png" alt="">
+              <strong>MetaTrader 5</strong>
+            </label>
+            <label class="platform-card" aria-label="Select cTrader">
+              <input type="radio" name="tradingPlatform" value="ctrader">
+              <img src="./platform-ctrader-mark.png" alt="">
+              <strong>cTrader</strong>
+            </label>
+            <label class="platform-card" aria-label="Select Match-Trader">
+              <input type="radio" name="tradingPlatform" value="match_trader">
+              <img src="./platform-match-trader-mark.png" alt="">
+              <strong>Match-Trader</strong>
+            </label>
+            <label class="platform-card" aria-label="Select CF Terminal">
+              <input type="radio" name="tradingPlatform" value="cf" checked>
+              <img src="./crazy-funded-logo.png" alt="">
+              <strong>CF Terminal</strong>
+            </label>
+          </div>
+        </fieldset>
+        <form id="checkoutSubmissionForm" novalidate>
+          <section id="billingStep" class="billing-details" aria-labelledby="billingDetailsTitle">
+            <h4 id="billingDetailsTitle">Billing Details</h4>
+            <p class="billing-note" id="billingAccountInfoStatus" role="status" aria-live="polite">Account details are filled in when available. Complete any required fields that remain blank.</p>
+            <div class="billing-grid">
+              <div class="billing-field">
+                <label for="billingFullName">Full Name *</label>
+                <input id="billingFullName" name="full_name" type="text" autocomplete="name" maxlength="160" required aria-describedby="billingFullNameError">
+                <p class="billing-error" id="billingFullNameError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingEmail">Email Address *</label>
+                <input id="billingEmail" name="email" type="email" autocomplete="email" maxlength="254" required aria-describedby="billingEmailError">
+                <p class="billing-error" id="billingEmailError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingPhone">Phone Number *</label>
+                <input id="billingPhone" name="phone" type="tel" autocomplete="tel" maxlength="32" required aria-describedby="billingPhoneError">
+                <p class="billing-error" id="billingPhoneError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingCountry">Country *</label>
+                <select id="billingCountry" name="country" autocomplete="country" required aria-describedby="billingCountryError">
+                  <option value="">Select country</option>
+                </select>
+                <p class="billing-error" id="billingCountryError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingState">State / Province *</label>
+                <input id="billingState" name="state" type="text" autocomplete="address-level1" maxlength="100" required aria-describedby="billingStateError">
+                <p class="billing-error" id="billingStateError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingCity">City *</label>
+                <input id="billingCity" name="city" type="text" autocomplete="address-level2" maxlength="100" required aria-describedby="billingCityError">
+                <p class="billing-error" id="billingCityError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingPostalCode">ZIP / Postal Code *</label>
+                <input id="billingPostalCode" name="postal_code" type="text" autocomplete="postal-code" maxlength="32" required aria-describedby="billingPostalCodeError">
+                <p class="billing-error" id="billingPostalCodeError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field wide">
+                <label for="billingAddressLine1">Address Line 1 *</label>
+                <input id="billingAddressLine1" name="address_line_1" type="text" autocomplete="address-line1" maxlength="200" required aria-describedby="billingAddressLine1Error">
+                <p class="billing-error" id="billingAddressLine1Error" aria-live="polite"></p>
+              </div>
+              <div class="billing-field wide">
+                <label for="billingAddressLine2">Address Line 2</label>
+                <input id="billingAddressLine2" name="address_line_2" type="text" autocomplete="address-line2" maxlength="200" aria-describedby="billingAddressLine2Error">
+                <p class="billing-error" id="billingAddressLine2Error" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingCompanyName">Company Name</label>
+                <input id="billingCompanyName" name="company_name" type="text" autocomplete="organization" maxlength="160" aria-describedby="billingCompanyNameError">
+                <p class="billing-error" id="billingCompanyNameError" aria-live="polite"></p>
+              </div>
+              <div class="billing-field">
+                <label for="billingTaxId">GST / Tax ID</label>
+                <input id="billingTaxId" name="tax_id" type="text" autocomplete="off" maxlength="64" aria-describedby="billingTaxIdError">
+                <p class="billing-error" id="billingTaxIdError" aria-live="polite"></p>
+              </div>
+            </div>
+            <p class="billing-continue-status" id="billingContinueStatus" role="status" aria-live="polite"></p>
+            <button type="button" class="btn btn-primary checkout-submit" id="billingContinueBtn">Continue to payment</button>
+          </section>
+          <section id="paymentStep" class="payment-step" aria-labelledby="paymentStepTitle" hidden>
+            <button type="button" class="btn btn-outline" id="billingBackBtn">← Back to Billing</button>
+            <h4 id="paymentStepTitle">Choose Your Payment Method</h4>
+            <p class="lead payment-lead">Choose how you would like to pay.</p>
+            <div class="payment-method-options" role="group" aria-label="Payment methods">
+              <div class="payment-method-card payment-method-card-unavailable" aria-disabled="true">
+                <span class="payment-choice-indicator" aria-hidden="true"></span>
+                <div class="upi-wordmark" aria-label="UPI">UPI<span aria-hidden="true">▶</span></div>
+                <div class="payment-method-copy">
+                  <h5>UPI</h5>
+                  <p>Unavailable — UPI payments are not supported at this time.</p>
+                  <div class="upi-brands" aria-label="Google Pay, PhonePe, Paytm, and BHIM">
+                    <span class="upi-brand upi-brand-google"><b>G</b> Pay</span>
+                    <span class="upi-brand upi-brand-phonepe"><b>पे</b> PhonePe</span>
+                    <span class="upi-brand upi-brand-paytm">paytm</span>
+                    <span class="upi-brand upi-brand-bhim"><b>BHIM</b><span aria-hidden="true">▶</span></span>
+                  </div>
+                </div>
+                <span class="unavailable-badge">Unavailable</span>
+              </div>
+              <label class="payment-method-card payment-method-card-crypto">
+                <input type="radio" name="checkoutPaymentMethod" value="crypto" checked aria-label="Pay with cryptocurrency">
+                <span class="payment-choice-indicator" aria-hidden="true"></span>
+                <span class="crypto-wordmark" aria-hidden="true">₿</span>
+                <span class="payment-method-copy">
+                  <strong class="payment-method-title">Crypto</strong>
+                  <span class="payment-method-description">Pay with cryptocurrency</span>
+                </span>
+                <span class="crypto-currency-icons" aria-label="Bitcoin, Ethereum, Tether, USD Coin, and BNB">
+                  <span class="currency-icon currency-btc" aria-hidden="true">₿</span>
+                  <span class="currency-icon currency-eth" aria-hidden="true">♦</span>
+                  <span class="currency-icon currency-usdt" aria-hidden="true">₮</span>
+                  <span class="currency-icon currency-usdc" aria-hidden="true">$</span>
+                  <span class="currency-icon currency-bnb" aria-hidden="true">✦</span>
+                </span>
+              </label>
+            </div>
+            <div class="payment-method-card payment-method-card-details">
+              <p class="payment-provider-copy">Your selected challenge and order total will be passed to the secure checkout. Choose a cryptocurrency and network there to complete payment.</p>
+              <p class="payment-security-note">Payment is subject to provider verification and required admin approval. Returning to this site or seeing a success page does not itself confirm payment or grant account access.</p>
+              <button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn" aria-disabled="true" disabled>Continue to Secure Checkout →</button>
+            </div>
+          </section>
+        </form>
+      </div>
+      <div class="co-panel">
+        <h4>Order summary</h4>
+        <div class="co-summary-row"><span>Challenge</span><b id="coLabel">—</b></div>
+        <div class="co-summary-row"><span>Account size</span><b id="coSize">—</b></div>
+        <div class="co-summary-row"><span>Profit split</span><b id="coSplit">—</b></div>
+        <div class="co-summary-row"><span>Trading platform</span><b id="coPlatform">CF Terminal</b></div>
+        <div class="coupon-box">
+          <label for="couponCodeInput">Coupon code</label>
+          <div class="coupon-entry">
+            <input id="couponCodeInput" type="text" maxlength="32" autocomplete="off" placeholder="Enter coupon code">
+            <button type="button" class="btn btn-glossy" id="applyCouponBtn">Apply</button>
+          </div>
+          <p class="coupon-status" id="couponStatus" role="status" aria-live="polite"></p>
+        </div>
+        <div class="co-summary-row" id="coSubtotalRow" style="display:none;"><span>Subtotal</span><b id="coSubtotal">$0</b></div>
+        <div class="co-summary-row coupon-discount-row" id="coDiscountRow" style="display:none;"><span>CRAZYFUNDED30 · 30% off</span><b id="coDiscount">−$0</b></div>
+        <div class="co-total"><span>Total due</span><span id="coTotal">$0</span></div>
+        <div class="co-rules">
+          <h4>Challenge rules</h4>
+          <ul id="coRules"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

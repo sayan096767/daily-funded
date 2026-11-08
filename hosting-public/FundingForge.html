@@ -6,7 +6,7 @@
 <title>Crazy Funded — Trade our capital</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
@@ -41,7 +41,7 @@ async function firebaseApiHeaders(headers={}){
   return {...headers,Authorization:'Bearer ' + await user.getIdToken()};
 }
 const PRODUCTION_API_BASE = 'https://daily-funded-api.onrender.com';
-const LOCAL_API_BASE = PRODUCTION_API_BASE;
+const LOCAL_API_BASE = 'http://127.0.0.1:8080';
 const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   ? LOCAL_API_BASE
   : PRODUCTION_API_BASE;
@@ -674,12 +674,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   @media(max-width:1050px){#dashboard .account-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media(max-width:420px){#dashboard .account-stat b{font-size:clamp(16px,5vw,20px);}}
 
-  #checkout{display:none;}
-  #checkout.active{display:block;}
-  body.checkout-open{min-height:100vh;}
-  body.checkout-open>:not(#checkout):not(script):not(style):not(.popup-overlay):not(.qr-modal):not(.upi-status-box){display:none!important;}
-  body.checkout-open #checkout{min-height:100vh; padding-top:24px;}
-  body.registration-open>:not(#registration):not(.df-support-widget):not(script):not(style):not(.popup-overlay):not(.qr-modal):not(.upi-status-box){display:none!important;}
+  body.registration-open>:not(#registration):not(.df-support-widget):not(script):not(style):not(.popup-overlay):not(.qr-modal){display:none!important;}
   #registration{display:none;}
   #registration.active{position:relative; isolation:isolate; display:grid; grid-template-columns:minmax(0,1fr) minmax(340px,440px); align-items:center; gap:clamp(48px,8vw,112px); width:min(100%,1120px); min-height:100vh; margin:0 auto; padding:54px 32px;}
   #registration.active::before{content:''; position:absolute; inset:0; z-index:-1; background-image:linear-gradient(rgba(62,207,126,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(62,207,126,.035) 1px,transparent 1px); background-size:42px 42px; mask-image:linear-gradient(90deg,#000,transparent 76%); pointer-events:none;}
@@ -745,77 +740,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .registration-back:hover{color:var(--text);}
   @media(max-width:820px){#registration.active{grid-template-columns:minmax(0,1fr) minmax(310px,390px); gap:34px; padding:38px 22px;}.registration-kicker{margin-top:54px;}.registration-story h1{font-size:39px;}.registration-chart{margin-top:28px;}}
   @media(max-width:680px){#registration.active{grid-template-columns:minmax(0,1fr); gap:26px; max-width:500px; padding:28px 18px 40px;}.registration-story{padding:0;}.registration-kicker{margin-top:34px;}.registration-story h1{font-size:34px;}.registration-story-copy{margin-top:12px; font-size:13px;}.registration-chart{margin-top:22px;}.registration-chart svg{height:88px;}.registration-promises{gap:12px 18px; margin-top:15px;}.registration-panel{padding:23px 20px;}}
-  @media(max-width:420px){.registration-field-row{grid-template-columns:1fr;}.registration-phone{grid-template-columns:104px minmax(0,1fr);}}
-  .checkout-grid{display:grid; grid-template-columns:1.3fr 1fr; gap:22px; align-items:start;}
-  @media(max-width:820px){.checkout-grid{grid-template-columns:1fr;}}
-  .co-panel{border:1px solid var(--panel-b); border-radius:var(--radius); padding:24px; background:var(--panel);}
-  .platform-choice{min-width:0; margin:0 0 20px; padding:15px; border:1px solid var(--panel-b); border-radius:10px; background:linear-gradient(145deg,rgba(22,31,25,.82),rgba(14,19,16,.94));}
-  .platform-choice legend{padding:0 7px; color:var(--text); font-size:13px; font-weight:700;}
-  .platform-card-grid{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px;}
-  .platform-card{position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-width:0; min-height:70px; padding:7px 4px 5px; border:1px solid var(--panel-b); border-radius:8px; background:rgba(9,14,11,.68); cursor:pointer; transition:border-color .16s ease,background .16s ease,box-shadow .16s ease;}
-  .platform-card:hover{border-color:var(--green-dim); background:rgba(62,207,126,.055);}
-  .platform-card:has(input:checked){border-color:var(--green); background:rgba(62,207,126,.1); box-shadow:inset 0 0 0 1px rgba(62,207,126,.2),0 0 12px rgba(62,207,126,.08);}
-  .platform-card:has(input:focus-visible){outline:2px solid var(--green); outline-offset:2px;}
-  .platform-card input{position:absolute; top:5px; left:5px; width:12px; height:12px; margin:0; accent-color:var(--green); cursor:pointer;}
-  .platform-card img{display:block; width:100%; height:38px; object-fit:contain;}
-  .platform-card strong{display:block; color:var(--text); font-size:9px; font-weight:600; line-height:1.2; text-align:center; white-space:nowrap;}
-  #paymentInterface[hidden]{display:none!important;}
-  @media(max-width:520px){.platform-card-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
-  @media(max-width:480px){.platform-choice{padding:12px;margin-bottom:16px;}.platform-card-grid{gap:5px;}.platform-card{min-height:66px;padding:5px 3px 4px;}.platform-card img{height:34px;}.platform-card strong{font-size:8px;}}
-  .co-panel h4{font-size:15px; margin-bottom:18px;}
-  .upi-payment-row{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px;}
-  .upi-method{display:flex; align-items:center; gap:10px; flex:0 0 auto; width:auto; padding:10px 12px; border:1px solid #445768; border-radius:8px; background:linear-gradient(115deg,#1b2934,#121b20 62%,#19251f); color:var(--text); text-align:left; cursor:pointer; box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 5px 14px rgba(0,0,0,.2); transition:border-color .18s ease,transform .18s ease,background .18s ease;}
-  .upi-method:hover{transform:translateY(-1px); border-color:#8eb5c9; background:linear-gradient(115deg,#223543,#15211f 68%,#202b20);}
-  .upi-method:focus-visible{outline:2px solid #a5cadb; outline-offset:3px;}
-  .upi-method-mark{display:grid; place-items:center; width:42px; height:42px; flex:0 0 42px; border:1px solid rgba(154,198,214,.42); border-radius:10px; background:linear-gradient(145deg,#253b48,#101d24); box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 3px 8px rgba(0,0,0,.22);}
-  .upi-method-mark svg{display:block; width:27px; height:27px; filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));}
-  .upi-method-copy{display:flex; flex-direction:column; gap:4px;}
-  .upi-method-copy b{font-size:13px;}
-  .upi-method-copy small{color:#c2ad73; font-size:10px;}
-  .upi-method-arrow{color:#b8d2de; font-size:18px;}
-  .upi-app-list{display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:0 0 18px;}
-  .upi-app{display:inline-flex; align-items:center; gap:6px; min-height:30px; padding:5px 8px; border:1px solid rgba(203,226,237,.13); border-radius:6px; background:rgba(7,13,14,.35); color:#dce4e3; font-size:9px; font-weight:600; white-space:nowrap;}
-  .upi-app-logo{display:block; width:17px; height:17px; flex:0 0 17px; object-fit:contain;}
-  .upi-app-glyph{display:inline-grid; place-items:center; width:17px; height:17px; flex:0 0 17px; border-radius:5px; font-size:9px; font-weight:900; line-height:1;}
-  .upi-app-glyph.bhim{color:#fff; background:linear-gradient(135deg,#f0a544 0 45%,#317c55 45% 100%);}
-  .upi-app-glyph.amazon{color:#18242a; background:linear-gradient(145deg,#ffd18c,#f2a847);}
-  .upi-app-list-inline{flex:0 1 auto; justify-content:flex-end; gap:6px; margin:0;}
-  .upi-app-list-inline .upi-app{min-height:26px; padding:4px 6px; font-size:8px;}
-  .upi-app-list-inline .upi-app-logo{width:15px; height:15px; flex-basis:15px;}
-  .payment-method-divider{display:flex; align-items:center; gap:10px; margin:2px 0 17px; color:var(--sub-dim); font-size:9px; font-weight:700; letter-spacing:.08em;}
-  .payment-method-divider::before,.payment-method-divider::after{content:''; height:1px; flex:1; background:var(--panel-b);}
-  @media(max-width:480px){.upi-payment-row{align-items:stretch; flex-direction:column;}.upi-method{width:100%; justify-content:flex-start;}.upi-app-list-inline{justify-content:center;}}
-  .co-field{margin-bottom:14px;}
-  .co-field label{display:block; font-size:12.5px; color:var(--sub); margin-bottom:6px;}
-  .co-field input{width:100%; background:var(--bg2); border:1px solid var(--panel-b); border-radius:7px; padding:10px 12px; color:var(--text); font-family:inherit; font-size:13.5px;}
-  .co-field input:focus{outline:none; border-color:var(--green-dim);}
-  .co-row2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
-  .billing-details{padding-top:18px; margin-top:18px; border-top:1px solid var(--panel-b);}
-  .billing-details h4{margin:0 0 6px;}
-  .billing-note{margin:0 0 16px; color:var(--sub-dim); font-size:11.5px; line-height:1.5;}
-  .billing-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 12px;}
-  .billing-field{min-width:0; margin-bottom:12px;}
-  .billing-field.wide{grid-column:1/-1;}
-  .billing-field label{display:block; margin-bottom:5px; color:var(--sub); font-size:12px;}
-  .billing-field input,.billing-field select{width:100%; min-width:0; padding:10px 11px; border:1px solid var(--panel-b); border-radius:7px; background:var(--bg2); color:var(--text); font-family:inherit; font-size:13px;}
-  .billing-field input:focus,.billing-field select:focus{outline:none; border-color:var(--green-dim);}
-  .billing-field input,.billing-field select{scroll-margin-top:100px;}
-  .billing-error{min-height:0; margin:4px 0 0; color:#ef8c7d; font-size:11px; line-height:1.4;}
-  .billing-error:empty{display:none;}
-  .billing-continue-status{min-height:0; margin:0 0 10px; color:#ef8c7d; font-size:11px; line-height:1.5;}
-  .billing-continue-status:empty{display:none;}
-  .checkout-submit{width:100%; justify-content:center; font:inherit; cursor:pointer;}
-  .checkout-submit:disabled{opacity:.55; cursor:not-allowed;}
-  @media(max-width:520px){.billing-grid{grid-template-columns:minmax(0,1fr);}.billing-field.wide{grid-column:auto;}}
-  .payment-step{padding-top:18px; margin-top:20px; border-top:1px solid var(--panel-b);}
-  .billing-details,.payment-step{scroll-margin-top:100px;}
-  .payment-step[hidden]{display:none!important;}
-  #billingBackBtn{margin-bottom:16px; border-color:var(--green-dim); background:var(--panel); color:var(--green);}
-  .payment-subheading{margin:18px 0 8px; color:var(--sub); font-size:12px;}
-  .addr-row span{min-width:0; overflow-wrap:anywhere;}
-  @media(max-width:480px){.addr-row{align-items:flex-start;}.copy-btn{min-height:36px;}}
-  .co-note{font-size:11.5px; color:var(--sub-dim); margin-top:14px; line-height:1.5;}
-  .withdraw-modal{width:min(100%,470px); max-height:calc(100dvh - 40px); overflow:auto; padding:26px; border:1px solid #375047; border-radius:10px; background:linear-gradient(145deg,#17231b,#0d1210 72%,#161b13); box-shadow:0 24px 70px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.1);}
+  @media(max-width:420px){.registration-field-row{grid-template-columns:1fr;}.registration-phone{grid-template-columns:104px minmax(0,1fr);}}.withdraw-modal{width:min(100%,470px); max-height:calc(100dvh - 40px); overflow:auto; padding:26px; border:1px solid #375047; border-radius:10px; background:linear-gradient(145deg,#17231b,#0d1210 72%,#161b13); box-shadow:0 24px 70px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.1);}
   .withdraw-modal-head{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:18px;}
   .withdraw-modal-head h3{font-size:19px; margin:4px 0 6px;}
   .withdraw-modal-head p{font-size:12px; color:var(--sub); line-height:1.5;}
@@ -863,29 +788,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .withdraw-status{min-height:18px; margin-top:12px; color:var(--sub); font-size:11px; line-height:1.5;}
   .withdraw-status.error{color:#e6a096;}
   .withdraw-status.success{color:var(--green);}
-  @media(max-width:480px){.withdraw-modal{padding:16px;}.withdraw-modal-head{margin-bottom:12px;}.withdraw-available{padding:11px; margin-bottom:12px;}.withdraw-field{margin-bottom:10px;}}
-  .co-summary-row{display:flex; justify-content:space-between; font-size:13.5px; color:var(--sub); padding:8px 0; border-top:1px solid var(--panel-b);}
-  .co-summary-row:first-child{border-top:none;}
-  .co-summary-row b{color:var(--text);}
-  .coupon-box{margin-top:16px; padding-top:14px; border-top:1px solid var(--panel-b);}
-  .coupon-box label{display:block; margin-bottom:7px; color:var(--sub); font-size:12px;}
-  .coupon-entry{display:flex; gap:8px;}
-  .coupon-entry input{width:100%; min-width:0; padding:10px 11px; border:1px solid var(--panel-b); border-radius:6px; background:var(--bg2); color:var(--text); font:12px 'JetBrains Mono',monospace; text-transform:uppercase;}
-  .coupon-entry input:focus{outline:2px solid rgba(62,207,126,.25); border-color:var(--green-dim);}
-  .coupon-entry .btn{flex:0 0 auto; padding:8px 13px; font-size:12px;}
-  .coupon-status{min-height:15px; margin-top:6px; color:var(--sub-dim); font-size:10px;}
-  .coupon-status.success{color:var(--green);}
-  .coupon-status.error{color:#ef8c7d;}
-  .coupon-discount-row b{color:var(--green)!important;}
-  .co-total{display:flex; justify-content:space-between; font-size:16px; font-weight:800; padding-top:14px; margin-top:6px; border-top:1px solid var(--panel-b);}
-  .co-rules{padding-top:15px; margin-top:15px; border-top:1px solid var(--panel-b);}
-  .co-rules h4{font-size:13px; margin-bottom:10px;}
-  .co-rules ul{display:grid; gap:8px; list-style:none;}
-  .co-rules li{display:flex; align-items:flex-start; gap:8px; color:var(--sub); font-size:11.5px; line-height:1.4;}
-  .co-rules li::before{content:'✓'; color:var(--green); font-weight:800;}
-  .co-back{font-size:13px; color:var(--sub); cursor:pointer; background:none; border:none; font-family:inherit; margin-bottom:18px; display:inline-flex; align-items:center; gap:5px;}
-  .co-back:hover{color:var(--text);}
-  .net-tabs{display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;}
+  @media(max-width:480px){.withdraw-modal{padding:16px;}.withdraw-modal-head{margin-bottom:12px;}.withdraw-available{padding:11px; margin-bottom:12px;}.withdraw-field{margin-bottom:10px;}}.net-tabs{display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;}
   .net-tab{padding:8px 14px; border-radius:8px; font-size:12.5px; font-weight:600; border:1px solid var(--panel-b); background:var(--bg2); color:var(--sub); cursor:pointer; font-family:inherit;}
   .net-tab.active{background:rgba(62,207,126,.12); border-color:var(--green-dim); color:var(--green);}
   #curTabs .net-tab{font-size:13px; padding:9px 18px;}
@@ -952,11 +855,6 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
   .popup-box .picon-warn{width:44px; height:44px; border-radius:50%; background:rgba(230,163,77,.14); color:#e6a34d; display:flex; align-items:center; justify-content:center; font-size:20px; margin:0 auto 14px;}
   .popup-box h4{font-size:16px; margin-bottom:8px;}
   .popup-box p{font-size:13.5px; color:var(--sub); line-height:1.6; margin-bottom:18px;}
-  .upi-status-box{max-width:390px; padding:27px; text-align:left; background:linear-gradient(145deg,#1b2934,#111816 75%); border-color:#465c68;}
-  .upi-status-mark{display:grid; place-items:center; width:42px; height:42px; margin-bottom:17px; border:1px solid rgba(203,226,237,.35); border-radius:10px; color:#d7e9f0; background:linear-gradient(145deg,#375364,#1a2b34); font-size:12px; font-weight:800;}
-  .upi-status-label{display:block; margin-bottom:7px; color:#d6bd75; font-size:9px; font-weight:700; letter-spacing:.09em;}
-  .upi-status-box h3{margin-bottom:9px; color:var(--text); font-size:20px; line-height:1.25;}
-  .upi-status-box p{margin-bottom:20px; color:var(--sub); font-size:13px; line-height:1.6;}
   .eyebrow{color:var(--green); font-size:13px; font-weight:600; margin-bottom:10px;}
   .dashboard-main .dashboard-greeting-name{color:var(--gold);}
   h2{font-size:clamp(24px,3vw,32px); font-weight:800; letter-spacing:-.01em;}
@@ -1833,182 +1731,6 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
   </div>
 </section>
 
-<section id="checkout">
-  <div class="wrap">
-    <button class="co-back" id="coBack">← Back to pricing</button>
-    <div class="eyebrow">Checkout</div>
-    <h2 style="margin-bottom:24px;">Complete your purchase</h2>
-    <div class="checkout-grid">
-      <div class="co-panel">
-        <fieldset class="platform-choice">
-          <legend>Choose Your Trading Platform</legend>
-          <div class="platform-card-grid">
-            <label class="platform-card" aria-label="Select MetaTrader 5">
-              <input type="radio" name="tradingPlatform" value="mt5">
-              <img src="./platform-mt5-mark.png" alt="">
-              <strong>MetaTrader 5</strong>
-            </label>
-            <label class="platform-card" aria-label="Select cTrader">
-              <input type="radio" name="tradingPlatform" value="ctrader">
-              <img src="./platform-ctrader-mark.png" alt="">
-              <strong>cTrader</strong>
-            </label>
-            <label class="platform-card" aria-label="Select Match-Trader">
-              <input type="radio" name="tradingPlatform" value="match_trader">
-              <img src="./platform-match-trader-mark.png" alt="">
-              <strong>Match-Trader</strong>
-            </label>
-            <label class="platform-card" aria-label="Select CF Terminal">
-              <input type="radio" name="tradingPlatform" value="cf" checked>
-              <img src="./crazy-funded-logo.png" alt="">
-              <strong>CF Terminal</strong>
-            </label>
-          </div>
-        </fieldset>
-        <form id="checkoutSubmissionForm" novalidate>
-          <section id="billingStep" class="billing-details" aria-labelledby="billingDetailsTitle">
-            <h4 id="billingDetailsTitle">Billing Details</h4>
-            <p class="billing-note" id="billingAccountInfoStatus" role="status" aria-live="polite">Account details are filled in when available. Complete any required fields that remain blank.</p>
-            <div class="billing-grid">
-              <div class="billing-field">
-                <label for="billingFullName">Full Name *</label>
-                <input id="billingFullName" name="full_name" type="text" autocomplete="name" maxlength="160" required aria-describedby="billingFullNameError">
-                <p class="billing-error" id="billingFullNameError" aria-live="polite"></p>
-              </div>
-              <div class="billing-field">
-                <label for="billingEmail">Email Address *</label>
-                <input id="billingEmail" name="email" type="email" autocomplete="email" maxlength="254" required aria-describedby="billingEmailError">
-                <p class="billing-error" id="billingEmailError" aria-live="polite"></p>
-              </div>
-              <div class="billing-field">
-                <label for="billingPhone">Phone Number *</label>
-                <input id="billingPhone" name="phone" type="tel" autocomplete="tel" maxlength="32" required aria-describedby="billingPhoneError">
-                <p class="billing-error" id="billingPhoneError" aria-live="polite"></p>
-              </div>
-              <div class="billing-field">
-                <label for="billingCountry">Country *</label>
-                <select id="billingCountry" name="country" autocomplete="country" required aria-describedby="billingCountryError">
-                  <option value="">Select country</option>
-                </select>
-                <p class="billing-error" id="billingCountryError" aria-live="polite"></p>
-              </div>
-              <div class="billing-field">
-                <label for="billingState">State / Province *</label>
-                <input id="billingState" name="state" type="text" autocomplete="address-level1" maxlength="100" required aria-describedby="billingStateError">
-                <p class="billing-error" id="billingStateError" aria-live="polite"></p>
-              </div>
-              <div class="billing-field">
-                <label for="billingCity">City *</label>
-                <input id="billingCity" name="city" type="text" autocomplete="address-level2" maxlength="100" required aria-describedby="billingCityError">
-                <p class="billing-error" id="billingCityError" aria-live="polite"></p>
-              </div>
-              <div class="billing-field">
-                <label for="billingPostalCode">ZIP / Postal Code *</label>
-                <input id="billingPostalCode" name="postal_code" type="text" autocomplete="postal-code" maxlength="32" required aria-describedby="billingPostalCodeError">
-                <p class="billing-error" id="billingPostalCodeError" aria-live="polite"></p>
-              </div>
-              <div class="billing-field wide">
-                <label for="billingAddressLine1">Address Line 1 *</label>
-                <input id="billingAddressLine1" name="address_line_1" type="text" autocomplete="address-line1" maxlength="200" required aria-describedby="billingAddressLine1Error">
-                <p class="billing-error" id="billingAddressLine1Error" aria-live="polite"></p>
-              </div>
-              <div class="billing-field wide">
-                <label for="billingAddressLine2">Address Line 2</label>
-                <input id="billingAddressLine2" name="address_line_2" type="text" autocomplete="address-line2" maxlength="200" aria-describedby="billingAddressLine2Error">
-                <p class="billing-error" id="billingAddressLine2Error" aria-live="polite"></p>
-              </div>
-              <div class="billing-field">
-                <label for="billingCompanyName">Company Name</label>
-                <input id="billingCompanyName" name="company_name" type="text" autocomplete="organization" maxlength="160" aria-describedby="billingCompanyNameError">
-                <p class="billing-error" id="billingCompanyNameError" aria-live="polite"></p>
-              </div>
-              <div class="billing-field">
-                <label for="billingTaxId">GST / Tax ID</label>
-                <input id="billingTaxId" name="tax_id" type="text" autocomplete="off" maxlength="64" aria-describedby="billingTaxIdError">
-                <p class="billing-error" id="billingTaxIdError" aria-live="polite"></p>
-              </div>
-            </div>
-            <p class="billing-continue-status" id="billingContinueStatus" role="status" aria-live="polite"></p>
-            <button type="button" class="btn btn-primary checkout-submit" id="billingContinueBtn">Continue to payment</button>
-          </section>
-          <section id="paymentStep" class="payment-step" aria-labelledby="paymentStepTitle" hidden>
-            <button type="button" class="btn btn-outline" id="billingBackBtn">← Back to Billing</button>
-            <h4 id="paymentStepTitle">Payment</h4>
-        <div class="upi-payment-row">
-          <button type="button" class="upi-method" id="upiOpenBtn" aria-haspopup="dialog" aria-expanded="false">
-            <span class="upi-method-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 10h18l-4-4M26 10l-4 4" stroke="#FFB45C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M26 22H8l4 4M6 22l4-4" stroke="#62D99A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 16h16" stroke="#E6F0F1" stroke-opacity=".68" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 3"/></svg></span>
-            <span class="upi-method-copy"><b>Pay using UPI</b><small>Temporarily unavailable · View status</small></span>
-            <span class="upi-method-arrow" aria-hidden="true">→</span>
-          </button>
-          <div class="upi-app-list upi-app-list-inline" aria-label="UPI payment apps">
-            <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/googlepay/5F6368">Google Pay</span>
-            <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/phonepe/5F259F">PhonePe</span>
-            <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/paytm/00BAF2">Paytm</span>
-            <span class="upi-app"><span class="upi-app-glyph bhim" aria-hidden="true">B</span>BHIM</span>
-            <span class="upi-app"><span class="upi-app-glyph amazon" aria-hidden="true">a</span>Amazon Pay</span>
-            <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/whatsapp/25D366">WhatsApp Pay</span>
-          </div>
-        </div>
-        <div class="payment-method-divider">OR PAY WITH CRYPTO</div>
-        <h4>Pay with crypto</h4>
-        <div class="net-tabs" id="curTabs">
-          <button type="button" class="net-tab active" data-cur="usdt">USDT</button>
-          <button type="button" class="net-tab" data-cur="btc">BTC</button>
-          <button type="button" class="net-tab" data-cur="eth">ETH</button>
-        </div>
-        <div class="net-tabs" id="netTabs" style="margin-top:-6px;"></div>
-        <div id="paymentInterface">
-          <h5 class="payment-subheading">Crypto Address</h5>
-          <div class="addr-row">
-            <span id="addrText"></span>
-            <button type="button" class="copy-btn" id="copyBtn" disabled>Copy Address</button>
-          </div>
-          <div class="qr-open-row">
-            <p>Want to scan the selected wallet address instead?</p>
-            <button type="button" class="btn btn-outline qr-open-btn" id="qrOpenBtn" disabled>Show QR code</button>
-          </div>
-          <p class="pay-amount-note">Send exactly <b id="coPayAmt2">$0</b> in <b id="curLabel">USDT</b> on the <b id="netLabel">TRC20</b> network to the address above.</p>
-        </div>
-          <div class="attach-row">
-            <input type="file" id="proofInput" accept="image/*" style="display:none;" aria-label="Attach payment screenshot">
-            <button type="button" class="attach-btn" id="attachBtn" disabled>📎 Attach payment screenshot</button>
-            <div class="attach-preview" id="attachPreview" style="display:none;">
-              <img id="attachImg" alt="Payment screenshot">
-              <span class="aname" id="attachName"></span>
-              <button type="button" class="attach-remove" id="attachRemove">Remove</button>
-            </div>
-          </div>
-          <button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn" aria-disabled="true" disabled>I've sent the payment →</button>
-          <p class="co-note">Double-check the network and address before sending any real funds — crypto transfers can't be reversed.</p>
-          </section>
-        </form>
-      </div>
-      <div class="co-panel">
-        <h4>Order summary</h4>
-        <div class="co-summary-row"><span>Challenge</span><b id="coLabel">—</b></div>
-        <div class="co-summary-row"><span>Account size</span><b id="coSize">—</b></div>
-        <div class="co-summary-row"><span>Profit split</span><b id="coSplit">—</b></div>
-        <div class="co-summary-row"><span>Trading platform</span><b id="coPlatform">CF Terminal</b></div>
-        <div class="coupon-box">
-          <label for="couponCodeInput">Coupon code</label>
-          <div class="coupon-entry">
-            <input id="couponCodeInput" type="text" maxlength="32" autocomplete="off" placeholder="Enter coupon code">
-            <button type="button" class="btn btn-glossy" id="applyCouponBtn">Apply</button>
-          </div>
-          <p class="coupon-status" id="couponStatus" role="status" aria-live="polite"></p>
-        </div>
-        <div class="co-summary-row" id="coSubtotalRow" style="display:none;"><span>Subtotal</span><b id="coSubtotal">$0</b></div>
-        <div class="co-summary-row coupon-discount-row" id="coDiscountRow" style="display:none;"><span>CRAZYFUNDED30 · 30% off</span><b id="coDiscount">−$0</b></div>
-        <div class="co-total"><span>Total due</span><span id="coTotal">$0</span></div>
-        <div class="co-rules">
-          <h4>Challenge rules</h4>
-          <ul id="coRules"></ul>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section id="registration" aria-labelledby="registrationTitle">
   <div class="registration-story">
     <div class="registration-brand" aria-label="Crazy Funded">
@@ -2627,49 +2349,6 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
   </section>
 </div>
 
-<div class="popup-overlay" id="attachPopup">
-  <div class="popup-box">
-    <div class="picon-warn">!</div>
-    <h4>Attach a payment screenshot</h4>
-    <p>Please attach a screenshot of your payment before confirming — we need it to verify your transfer.</p>
-    <button type="button" class="btn btn-primary" id="attachPopupOk" style="width:100%; justify-content:center;">Got it</button>
-  </div>
-</div>
-
-<div class="popup-overlay" id="qrPopup">
-  <section class="qr-modal" role="dialog" aria-modal="true" aria-labelledby="qrModalTitle">
-    <div class="qr-modal-head">
-      <div>
-        <h3 id="qrModalTitle">Scan to pay</h3>
-        <p>Use your wallet app to scan this address on the selected network.</p>
-      </div>
-      <button type="button" class="qr-modal-close" id="qrCloseBtn" aria-label="Close QR code">×</button>
-    </div>
-    <div class="qr-box"><div id="qrCode"></div><div class="qr-unavailable" id="qrUnavailable">QR code unavailable</div></div>
-    <p class="qr-modal-amount">Send exactly <strong id="qrModalAmount">$0</strong> <strong id="qrModalCurrency">USDT</strong> on <strong id="qrModalNetwork">TRC20</strong></p>
-    <div class="qr-modal-address" id="qrModalAddress"></div>
-  </section>
-</div>
-
-<div class="popup-overlay" id="upiPopup">
-  <section class="popup-box upi-status-box" role="dialog" aria-modal="true" aria-labelledby="upiStatusTitle">
-    <div class="upi-status-mark" aria-hidden="true">UPI</div>
-    <span class="upi-status-label">PAYMENT METHOD TEMPORARILY PAUSED</span>
-    <h3 id="upiStatusTitle">UPI payments are temporarily unavailable</h3>
-    <p>We’re resolving an issue with UPI payments, so this option is temporarily closed. We’ll announce on this page as soon as it’s available again.</p>
-    <div class="upi-apps-label">Popular UPI apps when payments resume</div>
-    <div class="upi-app-list" aria-label="Popular UPI payment apps">
-      <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/googlepay/5F6368">Google Pay</span>
-      <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/phonepe/5F259F">PhonePe</span>
-      <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/paytm/00BAF2">Paytm</span>
-      <span class="upi-app"><span class="upi-app-glyph bhim" aria-hidden="true">B</span>BHIM</span>
-      <span class="upi-app"><span class="upi-app-glyph amazon" aria-hidden="true">a</span>Amazon Pay</span>
-      <span class="upi-app"><img class="upi-app-logo" alt="" loading="lazy" src="https://cdn.simpleicons.org/whatsapp/25D366">WhatsApp Pay</span>
-    </div>
-    <button type="button" class="btn btn-primary" id="upiPopupClose" style="width:100%; justify-content:center;">Got it</button>
-  </section>
-</div>
-
 <div class="popup-overlay" id="payoutRequestPopup">
   <section class="withdraw-modal" role="dialog" aria-modal="true" aria-labelledby="withdrawTitle">
     <div class="withdraw-modal-head">
@@ -2987,7 +2666,7 @@ const faqs = [
   {q:'Do I get my challenge fee back?', a:'The project has not verified an automatic challenge-fee refund policy. Do not assume a fee will be refunded with a payout.'},
   {q:'What is the difference between the challenge types?', a:'The <strong class="challenge-step-number">1</strong>-Step challenge has a <strong>10%</strong> profit target. The <strong class="challenge-step-number challenge-step-two">2</strong>-Step challenge has targets of <strong>6%</strong> in Phase <strong class="challenge-step-number">1</strong> and <strong>6%</strong> in Phase <strong class="challenge-step-number challenge-step-two">2</strong>. Instant Funding has no profit target. Daily and overall drawdown limits are shown with each plan.'},
   {q:'What account sizes are available?', a:'Evaluation accounts range from <strong>$5,000</strong> to <strong>$200,000</strong>. Instant Funding starts at <strong>$2,500</strong>. Prices are listed under each challenge type.'},
-  {q:'Which payment methods can I use?', a:'Crypto checkout supports <span class="faq-token usdt">USDT</span>, <span class="faq-token btc">BTC</span>, and <span class="faq-token eth">ETH</span> on the networks listed at checkout. Attach a payment screenshot with your confirmation. <span class="faq-token upi">UPI</span> is temporarily unavailable; the checkout will show a notice when you select it.'},
+  {q:'Which payment methods can I use?', a:'Crypto checkout is completed securely through NOWPayments using the cryptocurrency and network selected at checkout. <span class="faq-token upi">UPI</span> is temporarily unavailable; the checkout will show a notice when you select it.'},
   {q:'What is Spark 1-Step?', model:'spark_1step', a:'Spark 1-Step is a Forex challenge with a <strong>6% profit target</strong>, <strong>3% daily drawdown</strong>, <strong>7% trailing maximum drawdown</strong>, and <strong>5 minimum trading days</strong>. The profit split is <strong>70%</strong>, the consistency rule is <strong>30%</strong>, and rewards may be requested on demand according to the applicable program terms.'},
   {q:'What is Spark Instant Funding?', model:'spark_instant', a:'Spark Instant Funding is a Forex account with <strong>no profit target</strong>. It has <strong>3% daily drawdown</strong>, <strong>7% trailing maximum drawdown</strong>, and <strong>5 minimum trading days</strong>. The profit split is <strong>70%</strong>, the consistency rule is <strong>30%</strong>, and rewards may be requested on demand according to the applicable program terms.'},
   {q:'What is the difference between Spark 1-Step and Spark Instant Funding?', model:'spark', a:'Spark 1-Step has a <strong>6% profit target</strong>; Spark Instant Funding has <strong>no profit target</strong>. Both have 3% daily drawdown, 7% trailing maximum drawdown, 5 minimum trading days, a 70% profit split, a 30% consistency rule, and on-demand rewards according to the applicable program terms. Spark 1-Step costs $39 / $59 / $79 for $25,000 / $50,000 / $100,000. Spark Instant Funding costs $59 / $79 / $99 for those sizes.'},
@@ -2995,7 +2674,7 @@ const faqs = [
   {q:'How much does each Spark account cost?', model:'spark', keywords:['spark price','spark prices','spark cost','spark 25k price','spark 50k price','spark 100k price','spark 25,000 price','spark 50,000 price','spark 100,000 price'], a:'Spark 1-Step: <strong>$25,000 — $39</strong>, <strong>$50,000 — $59</strong>, and <strong>$100,000 — $79</strong>. Spark Instant Funding: <strong>$25,000 — $59</strong>, <strong>$50,000 — $79</strong>, and <strong>$100,000 — $99</strong>.'},
   {q:'How do I select a Spark challenge?', model:'spark', a:'In Pricing, select <strong>Forex Accounts</strong>, then <strong>Spark</strong>, then choose <strong>1-Step Challenge</strong> or <strong>Instant Funding</strong>. Select an available account size from the pricing cards. Spark does not offer a 2-Step challenge.'},
   {q:'Can I purchase Spark without logging in?', model:'spark', a:'No. You need to sign in or create an account before checkout. After authentication, continue to checkout for the Spark account you selected.'},
-  {q:'How do I access checkout after signing in?', model:'spark', a:'Choose a Spark account and select Get Started. Sign in or create an account when prompted; the selected account is carried through authentication and checkout resumes for that selection. Checkout and payment proof submission are still required.'},
+  {q:'How do I access checkout after signing in?', model:'spark', a:'Choose a Spark account and select Get Started. Sign in or create an account when prompted; the selected account is carried through authentication and checkout resumes for that selection. Complete payment through NOWPayments and wait for confirmation and approval.'},
   {q:'What is the Spark 1-Step profit target?', model:'spark_1step', a:'Spark 1-Step has a <strong>6% profit target</strong>.'},
   {q:'What is the Spark 1-Step daily drawdown?', model:'spark_1step', a:'Spark 1-Step has a <strong>3% daily drawdown</strong>.'},
   {q:'What is the Spark 1-Step maximum drawdown?', model:'spark_1step', a:'Spark 1-Step has a <strong>7% trailing maximum drawdown</strong>.'},
@@ -3009,8 +2688,8 @@ const faqs = [
   {q:'What is the Spark Instant Funding profit split?', model:'spark_instant', a:'The Spark Instant Funding profit split is <strong>70%</strong>.'},
   {q:'Does Spark Instant Funding have a consistency rule?', model:'spark_instant', a:'Yes. Spark Instant Funding has a <strong>30% consistency rule</strong>.'},
   {q:'When can I request Spark Instant Funding rewards?', model:'spark_instant', a:'Spark Instant Funding rewards may be requested <strong>on demand</strong>, according to the applicable program terms.'},
-  {q:'How do I buy a Spark account?', model:'spark', a:'Select Forex Accounts, Spark, a challenge type, and an account size. Choose Get Started, sign in or create an account, then complete checkout and submit the required payment proof. The purchase is subject to review and approval.'},
-  {q:'What happens after I submit payment proof for a Spark account?', model:'spark', a:'Your payment proof and purchase submission may require review. Submission is not payment approval, and Spark account details are not available until the purchase is approved. Check your signed-in dashboard for the purchase status.'},
+  {q:'How do I buy a Spark account?', model:'spark', a:'Select Forex Accounts, Spark, a challenge type, and an account size. Choose Get Started, sign in or create an account, then complete payment through NOWPayments. The purchase is subject to payment confirmation and approval.'},
+  {q:'What happens after I pay for a Spark account?', model:'spark', a:'NOWPayments confirms the payment directly to the server. Spark account details are not available until the payment is confirmed and the purchase is approved. Check your signed-in dashboard for the purchase status.'},
   {q:'When will my Spark account details be available?', model:'spark', a:'Spark account details are made available after the purchase is approved. Payment proof may require review; no approval time is guaranteed. Sign in and check your dashboard for the purchase status.'},
   {q:'Where can I see my purchase or account status?', model:'spark', a:'Sign in to your account and check your dashboard for purchase and account status. This FAQ assistant cannot view individual records.'},
   {q:'What should I do if my Spark payment is pending or rejected?', model:'spark', a:'Sign in and check your dashboard for the current purchase status and any instructions shown there. A pending submission may still require review; this FAQ assistant cannot determine or change an individual payment decision.'},
@@ -3365,7 +3044,6 @@ document.addEventListener('click', e=>{
 
 /* Dashboard: real account gating. No accounts exist until a challenge is purchased. */
 const dashboard = document.getElementById('dashboard');
-const checkout = document.getElementById('checkout');
 const registrationSection = document.getElementById('registration');
 const mainSections = ['.hero','.ticker-wrap','#how','#dfWorkspacePreview','#challenges','.payout-mission-banner','#pricing','#faq','#dfWhyChoose','#dfRulesStrip','.df-human-support'];
 const traderDeskView = document.getElementById('traderDeskView');
@@ -3905,13 +3583,6 @@ if(firebaseAuth){
         if(user && hasPendingCheckout()){
           routeAuthenticatedCheckout(user).catch(error=>showCheckoutAuthError(error));
           return;
-        }
-        if(!user && checkout.classList.contains('active')){
-          if(pendingPurchase) savePendingCheckout(pendingPurchase);
-          closeCheckout(true);
-          openRegistration();
-          showLoginForm();
-          loginStatus.textContent = 'Your sign-in session ended. Sign in again to return to checkout.';
         }
         return;
       }
@@ -4570,238 +4241,14 @@ async function loadDashboardAccounts(){
   if(!Array.isArray(accounts)) throw new Error('Invalid account response');
   dashboardAccounts = accounts;
 }
-let billingValidationAttempted = false;
-const billingFields = {
-  full_name:'billingFullName',
-  email:'billingEmail',
-  phone:'billingPhone',
-  country:'billingCountry',
-  state:'billingState',
-  city:'billingCity',
-  postal_code:'billingPostalCode',
-  address_line_1:'billingAddressLine1',
-  address_line_2:'billingAddressLine2',
-  company_name:'billingCompanyName',
-  tax_id:'billingTaxId'
-};
-function validateBillingDetails(focusFirstInvalid=false){
-  const details = {};
-  const errors = {};
-  Object.entries(billingFields).forEach(([key,id])=>{
-    const field = document.getElementById(id);
-    details[key] = field ? field.value.trim() : '';
-  });
-  if(!details.full_name) errors.full_name = 'Enter your full name.';
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.email) || details.email.length > 254){
-    errors.email = 'Enter a valid email address.';
-  }
-  const phoneDigits = details.phone.replace(/\D/g,'');
-  if(!/^\+?[\d\s().-]+$/.test(details.phone) || phoneDigits.length < 7 || phoneDigits.length > 15){
-    errors.phone = 'Enter a valid phone number with 7 to 15 digits.';
-  }
-  if(!countryData.some(country=>country.code === details.country)){
-    errors.country = 'Select a country.';
-  }
-  if(!details.state) errors.state = 'Enter your state or province.';
-  if(!details.city) errors.city = 'Enter your city.';
-  if(!details.postal_code) errors.postal_code = 'Enter your ZIP or postal code.';
-  if(!details.address_line_1) errors.address_line_1 = 'Enter your address line 1.';
-  const firstInvalid = Object.keys(billingFields).find(key=>errors[key]);
-  Object.entries(billingFields).forEach(([key,id])=>{
-    const field = document.getElementById(id);
-    const message = document.getElementById(id + 'Error');
-    if(message) message.textContent = errors[key] || '';
-    if(field){
-      if(errors[key]) field.setAttribute('aria-invalid','true');
-      else field.removeAttribute('aria-invalid');
-    }
-  });
-  if(focusFirstInvalid && firstInvalid){
-    const firstInvalidField = document.getElementById(billingFields[firstInvalid]);
-    firstInvalidField?.scrollIntoView({behavior:'smooth',block:'center'});
-    firstInvalidField?.focus({preventScroll:true});
-  }
-  return {valid:Object.keys(errors).length === 0,details,firstInvalid};
-}
-function continueToPayment(){
-  billingValidationAttempted = true;
-  const status = document.getElementById('billingContinueStatus');
-  const billing = validateBillingDetails(true);
-  if(!billing.valid){
-    billingPaymentUnlocked = false;
-    status.textContent = 'Complete the highlighted billing details before continuing to payment.';
-    setPaymentAccess();
-    return false;
-  }
-  if(!pendingPurchase || !normalizeCheckoutSelection(
-    pendingPurchase.productModel,pendingPurchase.size,pendingPurchase.planKey,pendingPurchase.productId,pendingPurchase.price
-  )){
-    status.textContent = 'Select a valid challenge before continuing to payment.';
-    return false;
-  }
-  if(!hasSelectedTradingPlatform()){
-    status.textContent = 'Choose a trading platform before continuing to payment.';
-    return false;
-  }
-  billingPaymentUnlocked = true;
-  status.textContent = '';
-  setPaymentAccess();
-  document.getElementById('paymentStep')?.scrollIntoView({behavior:'smooth',block:'start'});
-  return true;
-}
-function returnToBilling(){
-  billingPaymentUnlocked = false;
-  setPaymentAccess();
-  document.getElementById('billingStep')?.scrollIntoView({behavior:'smooth',block:'start'});
-}
-async function createPurchase(purchase){
-  if(!billingPaymentUnlocked) throw new Error('Complete billing details before submitting payment.');
-  if(!normalizeCheckoutSelection(purchase.productModel,purchase.size,purchase.planKey,purchase.productId,purchase.price)){
-    throw new Error('Select a valid challenge before submitting payment.');
-  }
-  if(!isValidTradingPlatform(selectedTradingPlatform)){
-    throw new Error('Choose a trading platform before submitting payment.');
-  }
-  const billing = validateBillingDetails();
-  if(!billing.valid) throw new Error('Complete the highlighted billing details before submitting payment.');
-  const proofInput = document.getElementById('proofInput');
-  const proof = proofInput && proofInput.files[0];
-  if(!proof) throw new Error('Attach a payment screenshot before submitting.');
-  const form = new FormData();
-  form.set('productModel',purchase.productModel);
-  form.set('productId',purchase.productId);
-  form.set('plan',purchase.planKey);
-  form.set('size',String(purchase.size));
-  form.set('coupon',document.getElementById('couponCodeInput').value.trim());
-  form.set('submissionId',pendingSubmissionId);
-  form.set('currency',currentCurrency);
-  form.set('network',document.querySelector('#netTabs .net-tab.active')?.dataset.net || '');
-  form.set('tradingPlatform',selectedTradingPlatform);
-  form.set('billing_details',JSON.stringify(billing.details));
-  form.set('proof',proof);
-  let headers;
-  try{ headers = await firebaseApiHeaders({Accept:'application/json'}); }
-  catch(error){ throw new Error('Payment sign-in required. ' + error.message); }
-  let response;
-  try{
-    response = await fetch(API_BASE + '/api/purchases',{method:'POST',credentials:'same-origin',headers,body:form});
-  }catch(error){
-    throw new Error('Could not connect to payment API at ' + API_BASE + ' from ' + window.location.origin + '. Check the backend and CORS. ' + error.message);
-  }
-  const responseText = await response.text();
-  let result = {};
-  try{ result = responseText ? JSON.parse(responseText) : {}; }
-  catch(error){ result.error = 'Payment API returned HTTP ' + response.status + ' with a non-JSON response.'; }
-  if(!response.ok){
-    if(response.status === 409){
-      clearPendingSubmissionId();
-      pendingSubmissionId = getPendingSubmissionId(pendingPurchase);
-    }
-    throw new Error(result.error || 'Purchase could not be submitted (HTTP ' + response.status + ').');
-  }
-  return result;
-}
-
-function getPendingSubmissionId(purchase){
-  const key = 'dailyFundedPendingPurchase';
-  try{
-    const saved = JSON.parse(sessionStorage.getItem(key) || 'null');
-    if(saved && saved.planKey === purchase.planKey && Number(saved.size) === purchase.size && saved.id) return saved.id;
-  }catch(error){}
-  const id = crypto.randomUUID();
-  try{ sessionStorage.setItem(key,JSON.stringify({id,planKey:purchase.planKey,size:purchase.size})); }catch(error){}
-  return id;
-}
-
-function clearPendingSubmissionId(){
-  try{
-    const saved = JSON.parse(sessionStorage.getItem('dailyFundedPendingPurchase') || 'null');
-    if(saved && saved.id === pendingSubmissionId) sessionStorage.removeItem('dailyFundedPendingPurchase');
-  }catch(error){}
-  pendingSubmissionId = '';
-}
-
-function purchaseAccount(accountId){
-  openDashboard(accountId);
-}
-
-/* Checkout: shows the selected challenge + size, and a crypto payment UI grouped by currency. */
-const cryptoGroups = {
-  usdt: { label:'USDT', networks:[
-    { key:'trc20', label:'TRC20', addr:'TFAbUMgMjGdb7GwiTEGjwc5V5bMRvNPGf7' },
-    { key:'erc20', label:'ERC20', addr:'0xea0688a7355504f62b1e7fbfc2045b8e6ebe07c0' },
-    { key:'bep20', label:'BEP20', addr:'0xea0688a7355504f62b1e7fbfc2045b8e6ebe07c0' }
-  ]},
-  btc: { label:'BTC', networks:[
-    { key:'btc_native', label:'Bitcoin', addr:'15a6EQNsWf8g2rxdkA74Rfw22uAY6dpj7K' },
-    { key:'btc_bep20', label:'BEP20', addr:'0xea0688a7355504f62b1e7fbfc2045b8e6ebe07c0' }
-  ]},
-  eth: { label:'ETH', networks:[
-    { key:'eth_erc20', label:'ERC20', addr:'0xea0688a7355504f62b1e7fbfc2045b8e6ebe07c0' },
-    { key:'eth_bep20', label:'BEP20', addr:'0xea0688a7355504f62b1e7fbfc2045b8e6ebe07c0' }
-  ]}
-};
-let currentCurrency = 'usdt';
 let pendingPurchase = null;
-let pendingSubmissionId = '';
-let qrInstance = null;
-let billingPaymentUnlocked = false;
 const activeCouponCode = 'CRAZYFUNDED30';
-let checkoutBasePrice = 0;
-let couponApplied = false;
 let pendingHomepageCoupon = '';
 const pendingCheckoutStorageKey = 'dailyFundedPendingCheckout';
 let pendingCheckoutResumeKey = '';
-const tradingPlatforms = new Set(['mt5','ctrader','match_trader','cf']);
-let selectedTradingPlatform = '';
-let checkoutOwnerUid = '';
 
-function isValidTradingPlatform(platform){
-  return tradingPlatforms.has(platform);
-}
-
-function hasSelectedTradingPlatform(){
-  return isValidTradingPlatform(selectedTradingPlatform);
-}
-
-function setPaymentAccess(){
-  const enabled = Boolean(billingPaymentUnlocked && hasSelectedTradingPlatform());
-  const billingStep = document.getElementById('billingStep');
-  const paymentStep = document.getElementById('paymentStep');
-  if(billingStep) billingStep.hidden = enabled;
-  if(paymentStep) paymentStep.hidden = !enabled;
-  ['upiOpenBtn','copyBtn','qrOpenBtn','attachBtn','proofInput'].forEach(id=>{
-    const control = document.getElementById(id);
-    if(control) control.disabled = !enabled;
-  });
-  const paymentButton = document.getElementById('coPayBtn');
-  if(paymentButton){
-    paymentButton.setAttribute('aria-disabled',String(!enabled));
-    paymentButton.disabled = !enabled;
-  }
-  if(!enabled){
-    if(typeof closeQrPopup === 'function') closeQrPopup(false);
-  }
-}
-
-function setTradingPlatform(platform){
-  const wasUnlocked = hasSelectedTradingPlatform();
-  selectedTradingPlatform = isValidTradingPlatform(platform) ? platform : '';
-  const platformLabels = {
-    mt5: 'MetaTrader 5',
-    ctrader: 'cTrader',
-    match_trader: 'Match-Trader',
-    cf: 'CF Terminal'
-  };
-  const platformSummary = document.getElementById('coPlatform');
-  if(platformSummary) platformSummary.textContent = platformLabels[selectedTradingPlatform] || '—';
-  document.querySelectorAll('input[name="tradingPlatform"]').forEach(input=>{
-    input.checked = input.value === selectedTradingPlatform;
-    const card = input.closest('.platform-card');
-    if(card) card.classList.toggle('selected',input.checked);
-  });
-  setPaymentAccess();
-  if(selectedTradingPlatform && !wasUnlocked) setCurrency('usdt');
+function purchaseAccount(accountId){
+  openDashboard(accountId);
 }
 
 function normalizeCheckoutSelection(model, size, planKey, productId, submittedPrice){
@@ -4891,7 +4338,6 @@ function readPendingCheckout(){
 function showPendingCheckoutError(message){
   clearPendingCheckout();
   pendingPurchase = null;
-  if(checkout.classList.contains('active')) closeCheckout();
   if(registrationSection.classList.contains('active')) closeRegistration();
   const notice = document.getElementById('checkoutSelectionNotice');
   notice.textContent = message;
@@ -4925,8 +4371,6 @@ async function finishPendingCheckout(user){
     return;
   }
   if(user && user.uid !== currentUser.uid) throw new Error('Your sign-in session changed. Please try again.');
-  if(checkoutOwnerUid && checkoutOwnerUid !== currentUser.uid) setTradingPlatform('');
-  checkoutOwnerUid = currentUser.uid;
   const selection = readPendingCheckout();
   if(!selection){
     showPendingCheckoutError('The selected account is no longer available. Please choose another account.');
@@ -4938,93 +4382,18 @@ async function finishPendingCheckout(user){
   if(registrationSection.classList.contains('active')) closeRegistration();
   pendingPurchase = selection;
   try{
-    const accountDetails = await loadCheckoutAccountDetails(currentUser);
-    renderCheckout(selection,accountDetails);
+    await window.CrazyFundedIntegratedCheckoutReady;
+    const opened = await window.CrazyFundedIntegratedCheckout.open(
+      selection,currentUser,pendingHomepageCoupon
+    );
+    pendingHomepageCoupon = '';
+    if(!opened) pendingCheckoutResumeKey = '';
   }catch(error){
-    if(pendingCheckoutResumeKey === resumeKey) pendingCheckoutResumeKey = '';
+    pendingCheckoutResumeKey = '';
     throw error;
   }
 }
 
-function mapAccountToBillingDetails(profile,user){
-  const firstName = typeof profile.firstName === 'string' ? profile.firstName.trim() : '';
-  const lastName = typeof profile.lastName === 'string' ? profile.lastName.trim() : '';
-  const profileName = [firstName,lastName].filter(Boolean).join(' ');
-  const displayName = typeof user.displayName === 'string' ? user.displayName.trim() : '';
-  return {
-    full_name: profileName || displayName,
-    email: typeof profile.email === 'string' ? profile.email.trim() : '',
-    phone: typeof profile.phone === 'string' ? profile.phone.trim() : '',
-    country: typeof profile.country === 'string' ? profile.country.trim().toUpperCase() : ''
-  };
-}
-
-async function loadCheckoutAccountDetails(user){
-  let profile = {};
-  let profileEmail = '';
-  let message = 'Account details are filled in when available. Complete any required fields that remain blank.';
-  try{
-    const response = await fetch(API_BASE + '/api/auth/me',{
-      credentials:'same-origin',
-      headers:await firebaseApiHeaders({Accept:'application/json'})
-    });
-    if(!response.ok) throw new Error('Profile service returned HTTP ' + response.status + '.');
-    const result = await response.json();
-    if(!result || result.uid !== user.uid || !result.profile || typeof result.profile !== 'object' || Array.isArray(result.profile)){
-      throw new Error('Profile service returned an invalid profile.');
-    }
-    profile = result.profile;
-    profileEmail = typeof result.email === 'string' ? result.email.trim() : '';
-  }catch(error){
-    console.error('Could not load account details for checkout:',error);
-    message = 'We could not load your saved account details. Please complete the required billing fields below.';
-  }
-  const billing = mapAccountToBillingDetails(profile,user);
-  if(!billing.email) billing.email = profileEmail || (typeof user.email === 'string' ? user.email.trim() : '');
-  return {billing,message};
-}
-
-function formatCheckoutAmount(amount){
-  const rounded = Math.round(amount * 100) / 100;
-  return '$' + new Intl.NumberFormat('en-US',{minimumFractionDigits:Number.isInteger(rounded) ? 0 : 2,maximumFractionDigits:2}).format(rounded);
-}
-
-function updateCheckoutPrice(){
-  const discount = couponApplied ? Math.round(checkoutBasePrice * .3 * 100) / 100 : 0;
-  const total = Math.max(0,checkoutBasePrice - discount);
-  document.getElementById('coSubtotal').textContent = formatCheckoutAmount(checkoutBasePrice);
-  document.getElementById('coDiscount').textContent = '−' + formatCheckoutAmount(discount);
-  document.getElementById('coSubtotalRow').style.display = couponApplied ? '' : 'none';
-  document.getElementById('coDiscountRow').style.display = couponApplied ? '' : 'none';
-  document.getElementById('coTotal').textContent = formatCheckoutAmount(total);
-  document.getElementById('coPayAmt2').textContent = formatCheckoutAmount(total);
-  document.getElementById('qrModalAmount').textContent = formatCheckoutAmount(total);
-}
-
-function applyCheckoutCoupon(){
-  const input = document.getElementById('couponCodeInput');
-  const status = document.getElementById('couponStatus');
-  if(pendingPurchase && pendingPurchase.productModel !== 'classic'){
-    couponApplied = false;
-    input.value = '';
-    status.className = 'coupon-status error';
-    status.textContent = 'CRAZYFUNDED30 is only available for Classic accounts.';
-    updateCheckoutPrice();
-    return;
-  }
-  couponApplied = input.value.trim().toUpperCase() === activeCouponCode;
-  status.className = 'coupon-status ' + (couponApplied ? 'success' : 'error');
-  status.textContent = couponApplied ? 'Coupon applied: 30% off.' : 'Invalid coupon code.';
-  updateCheckoutPrice();
-}
-
-document.getElementById('applyCouponBtn').addEventListener('click',applyCheckoutCoupon);
-document.getElementById('couponCodeInput').addEventListener('keydown',event=>{
-  if(event.key === 'Enter'){
-    event.preventDefault();
-    applyCheckoutCoupon();
-  }
-});
 async function copyCheckoutCoupon(){
   try{
     await navigator.clipboard.writeText(activeCouponCode);
@@ -5069,383 +4438,6 @@ async function openCheckout(size, label, price, split, planKey, productId=planKe
   }catch(error){
     showCheckoutAuthError(error);
   }
-}
-
-function renderCheckout(selection,accountDetails={billing:{},message:''}){
-  pendingPurchase = selection;
-  const submissionForm = document.getElementById('checkoutSubmissionForm');
-  if(submissionForm) submissionForm.reset();
-  const billing = accountDetails.billing || {};
-  for(const [key,id] of Object.entries({
-    full_name:'billingFullName',
-    email:'billingEmail',
-    phone:'billingPhone',
-    country:'billingCountry'
-  })){
-    const field = document.getElementById(id);
-    const value = typeof billing[key] === 'string' ? billing[key].trim() : '';
-    if(field && value) field.value = value;
-  }
-  document.getElementById('billingAccountInfoStatus').textContent = accountDetails.message
-    || 'Account details are filled in when available. Complete any required fields that remain blank.';
-  billingValidationAttempted = false;
-  billingPaymentUnlocked = false;
-  document.getElementById('billingContinueStatus').textContent = '';
-  Object.values(billingFields).forEach(id=>{
-    const field = document.getElementById(id);
-    const message = document.getElementById(id + 'Error');
-    if(field) field.removeAttribute('aria-invalid');
-    if(message) message.textContent = '';
-  });
-  setTradingPlatform('cf');
-  currentCurrency = 'usdt';
-  pendingSubmissionId = getPendingSubmissionId(pendingPurchase);
-  checkoutBasePrice = selection.price;
-  const classicCouponEligible = selection.productModel === 'classic';
-  const couponForCheckout = classicCouponEligible ? pendingHomepageCoupon : '';
-  pendingHomepageCoupon = '';
-  couponApplied = false;
-  const couponBox = document.querySelector('.coupon-box');
-  const couponInput = document.getElementById('couponCodeInput');
-  const applyCouponButton = document.getElementById('applyCouponBtn');
-  couponBox.hidden = !classicCouponEligible;
-  couponInput.disabled = !classicCouponEligible;
-  applyCouponButton.disabled = !classicCouponEligible;
-  couponInput.value = couponForCheckout;
-  document.getElementById('couponStatus').textContent = classicCouponEligible ? '' : 'CRAZYFUNDED30 is only available for Classic accounts.';
-  document.getElementById('couponStatus').className = 'coupon-status';
-  mainSections.forEach(sel=>{ const el = document.querySelector(sel); if(el) el.style.display = 'none'; });
-  document.querySelector('footer').style.display = 'none';
-  checkout.classList.add('active');
-  document.body.classList.add('checkout-open');
-  window.scrollTo({top:0, behavior:'instant'});
-
-  document.getElementById('coLabel').textContent = selection.planKey === 'instant' || selection.planKey === 'spark_instant' ? 'Instant Funding' : selection.label + ' Challenge';
-  document.getElementById('coSize').textContent = '$' + selection.size.toLocaleString();
-  document.getElementById('coSplit').textContent = selection.split || '—';
-  updateCheckoutPrice();
-  if(couponForCheckout) applyCheckoutCoupon();
-  const rules = document.getElementById('coRules');
-  rules.replaceChildren();
-  const plan = pricing[selection.planKey];
-  if(plan){
-    [...(plan.target ? [plan.target] : []),...plan.extra.filter(rule=>!rule.toLowerCase().includes('profit split'))].forEach(rule=>{
-      const item = document.createElement('li');
-      item.textContent = rule;
-      rules.appendChild(item);
-    });
-  }
-
-  const attachBtn = document.getElementById('attachBtn');
-  const attachPreview = document.getElementById('attachPreview');
-  const proofInput = document.getElementById('proofInput');
-  if(proofInput) proofInput.value = '';
-  if(attachPreview) attachPreview.style.display = 'none';
-  if(attachBtn){ attachBtn.classList.remove('has-file'); attachBtn.textContent = '📎 Attach payment screenshot'; }
-
-}
-function closeCheckout(preservePending=false){
-  pendingCheckoutResumeKey = '';
-  checkoutOwnerUid = '';
-  setTradingPlatform('');
-  closeQrPopup(false);
-  closeUpiPopup(false);
-  if(!preservePending){
-    clearPendingCheckout();
-    pendingPurchase = null;
-  }
-  mainSections.forEach(sel=>{ const el = document.querySelector(sel); if(el) el.style.display = ''; });
-  document.querySelector('footer').style.display = '';
-  checkout.classList.remove('active');
-  document.body.classList.remove('checkout-open');
-}
-function setCurrency(cur){
-  if(!hasSelectedTradingPlatform()) return;
-  currentCurrency = cur;
-  document.querySelectorAll('#curTabs .net-tab').forEach(t=> t.classList.toggle('active', t.dataset.cur===cur));
-  const netTabsEl = document.getElementById('netTabs');
-  const nets = cryptoGroups[cur].networks;
-  netTabsEl.innerHTML = nets.map((n,i)=>`<button type="button" class="net-tab${i===0?' active':''}" data-net="${n.key}">${n.label}</button>`).join('');
-  setNetwork(nets[0].key);
-}
-function findNetwork(key){
-  for(const cur in cryptoGroups){ const n = cryptoGroups[cur].networks.find(x=>x.key===key); if(n) return n; }
-  return null;
-}
-function setNetwork(netKey){
-  if(!hasSelectedTradingPlatform()) return;
-  document.querySelectorAll('#netTabs .net-tab').forEach(t=> t.classList.toggle('active', t.dataset.net===netKey));
-  const net = findNetwork(netKey);
-  if(!net) return;
-  document.getElementById('addrText').textContent = net.addr;
-  document.getElementById('netLabel').textContent = net.label;
-  document.getElementById('curLabel').textContent = cryptoGroups[currentCurrency].label;
-  document.getElementById('qrModalNetwork').textContent = net.label;
-  document.getElementById('qrModalCurrency').textContent = cryptoGroups[currentCurrency].label;
-  document.getElementById('qrModalAddress').textContent = net.addr;
-  const qrEl = document.getElementById('qrCode');
-  const qrUnavailableEl = document.getElementById('qrUnavailable');
-  qrEl.replaceChildren();
-  if(typeof QRCode !== 'undefined'){
-    qrInstance = new QRCode(qrEl, { text: net.addr, width:160, height:160, colorDark:'#0a0d0c', colorLight:'#ffffff' });
-    qrUnavailableEl.style.display = 'none';
-  }else{
-    qrUnavailableEl.style.display = 'grid';
-  }
-}
-const qrPopupEl = document.getElementById('qrPopup');
-const qrOpenBtnEl = document.getElementById('qrOpenBtn');
-const qrCloseBtnEl = document.getElementById('qrCloseBtn');
-function closeQrPopup(restoreFocus=true){
-  if(!qrPopupEl) return;
-  const wasOpen = qrPopupEl.classList.contains('show');
-  qrPopupEl.classList.remove('show');
-  if(qrOpenBtnEl) qrOpenBtnEl.setAttribute('aria-expanded','false');
-  if(restoreFocus && wasOpen && qrOpenBtnEl) qrOpenBtnEl.focus();
-}
-if(qrOpenBtnEl && qrPopupEl){
-  qrOpenBtnEl.setAttribute('aria-haspopup','dialog');
-  qrOpenBtnEl.setAttribute('aria-expanded','false');
-  qrOpenBtnEl.addEventListener('click',()=>{
-    if(!hasSelectedTradingPlatform()) return;
-    qrPopupEl.classList.add('show');
-    qrOpenBtnEl.setAttribute('aria-expanded','true');
-    qrCloseBtnEl.focus();
-  });
-}
-if(qrCloseBtnEl) qrCloseBtnEl.addEventListener('click',()=>closeQrPopup());
-if(qrPopupEl){
-  qrPopupEl.addEventListener('click',event=>{
-    if(event.target === qrPopupEl) closeQrPopup();
-  });
-  document.addEventListener('keydown',event=>{
-    if(event.key === 'Escape' && qrPopupEl.classList.contains('show')) closeQrPopup();
-  });
-}
-const upiPopupEl = document.getElementById('upiPopup');
-const upiOpenBtnEl = document.getElementById('upiOpenBtn');
-const upiCloseBtnEl = document.getElementById('upiPopupClose');
-function closeUpiPopup(restoreFocus=true){
-  if(!upiPopupEl) return;
-  const wasOpen = upiPopupEl.classList.contains('show');
-  upiPopupEl.classList.remove('show');
-  if(upiOpenBtnEl) upiOpenBtnEl.setAttribute('aria-expanded','false');
-  if(restoreFocus && wasOpen && upiOpenBtnEl) upiOpenBtnEl.focus();
-}
-if(upiOpenBtnEl && upiPopupEl){
-  upiOpenBtnEl.setAttribute('aria-haspopup','dialog');
-  upiOpenBtnEl.setAttribute('aria-expanded','false');
-  upiOpenBtnEl.addEventListener('click',()=>{
-    if(!hasSelectedTradingPlatform()) return;
-    upiPopupEl.classList.add('show');
-    upiOpenBtnEl.setAttribute('aria-expanded','true');
-    upiCloseBtnEl.focus();
-  });
-}
-if(upiCloseBtnEl) upiCloseBtnEl.addEventListener('click',()=>closeUpiPopup());
-if(upiPopupEl){
-  upiPopupEl.addEventListener('click',event=>{
-    if(event.target === upiPopupEl) closeUpiPopup();
-  });
-  document.addEventListener('keydown',event=>{
-    if(event.key === 'Escape' && upiPopupEl.classList.contains('show')) closeUpiPopup();
-  });
-}
-const curTabsEl = document.getElementById('curTabs');
-if(curTabsEl){
-  curTabsEl.addEventListener('click', e=>{
-    if(!hasSelectedTradingPlatform()) return;
-    const btn = e.target.closest('.net-tab');
-    if(btn) setCurrency(btn.dataset.cur);
-  });
-}
-const netTabsEl = document.getElementById('netTabs');
-if(netTabsEl){
-  netTabsEl.addEventListener('click', e=>{
-    if(!hasSelectedTradingPlatform()) return;
-    const btn = e.target.closest('.net-tab');
-    if(btn) setNetwork(btn.dataset.net);
-  });
-}
-document.querySelectorAll('input[name="tradingPlatform"]').forEach(input=>{
-  input.addEventListener('change',()=>{
-    if(input.checked) setTradingPlatform(input.value);
-  });
-});
-const copyBtnEl = document.getElementById('copyBtn');
-if(copyBtnEl){
-  let copyButtonResetTimer = null;
-  const showCopyStatus = (copied,message)=>{
-    clearTimeout(copyButtonResetTimer);
-    copyBtnEl.textContent = message;
-    copyBtnEl.classList.toggle('copied',copied);
-    copyButtonResetTimer = setTimeout(()=>{
-      copyBtnEl.textContent = 'Copy Address';
-      copyBtnEl.classList.remove('copied');
-    },1600);
-  };
-  copyBtnEl.addEventListener('click',async ()=>{
-    if(!billingPaymentUnlocked || !hasSelectedTradingPlatform()) return;
-    const addressEl = document.getElementById('addrText');
-    const address = addressEl.textContent;
-    if(!address) return;
-    if(navigator.clipboard && window.isSecureContext){
-      try{
-        await navigator.clipboard.writeText(address);
-        showCopyStatus(true,'Copied ✓');
-        return;
-      }catch(error){}
-    }
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(addressEl);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    let copied = false;
-    try{ copied = document.execCommand('copy'); }
-    catch(error){}
-    if(copied){
-      selection.removeAllRanges();
-      showCopyStatus(true,'Copied ✓');
-    }else{
-      showCopyStatus(false,'Address selected — press Ctrl+C');
-    }
-  });
-}
-const attachBtnEl = document.getElementById('attachBtn');
-const proofInputEl = document.getElementById('proofInput');
-const attachPreviewEl = document.getElementById('attachPreview');
-if(attachBtnEl && proofInputEl){
-  attachBtnEl.addEventListener('click', ()=>{
-    if(!hasSelectedTradingPlatform()) return;
-    proofInputEl.click();
-  });
-  proofInputEl.addEventListener('change', ()=>{
-    if(!hasSelectedTradingPlatform()){
-      proofInputEl.value = '';
-      return;
-    }
-    const file = proofInputEl.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = e=>{
-      document.getElementById('attachImg').src = e.target.result;
-      document.getElementById('attachName').textContent = file.name;
-      attachPreviewEl.style.display = 'flex';
-      attachBtnEl.classList.add('has-file');
-      attachBtnEl.textContent = '✅ Screenshot attached';
-    };
-    reader.readAsDataURL(file);
-  });
-  const attachRemoveEl = document.getElementById('attachRemove');
-  if(attachRemoveEl){
-    attachRemoveEl.addEventListener('click', ()=>{
-      proofInputEl.value = '';
-      attachPreviewEl.style.display = 'none';
-      attachBtnEl.classList.remove('has-file');
-      attachBtnEl.textContent = '📎 Attach payment screenshot';
-    });
-  }
-}
-const coBackEl = document.getElementById('coBack');
-if(coBackEl) coBackEl.addEventListener('click', ()=>{ closeCheckout(); document.querySelector('#pricing').scrollIntoView({behavior:'smooth'}); });
-const coPayBtnEl = document.getElementById('coPayBtn');
-const checkoutSubmissionFormEl = document.getElementById('checkoutSubmissionForm');
-const billingContinueBtnEl = document.getElementById('billingContinueBtn');
-if(billingContinueBtnEl) billingContinueBtnEl.addEventListener('click',continueToPayment);
-const billingBackBtnEl = document.getElementById('billingBackBtn');
-if(billingBackBtnEl) billingBackBtnEl.addEventListener('click',returnToBilling);
-if(checkoutSubmissionFormEl && coPayBtnEl){
-  const refreshBillingValidation = ()=>{
-    if(!billingValidationAttempted) return;
-    const billing = validateBillingDetails();
-    const status = document.getElementById('billingContinueStatus');
-    if(!billing.valid){
-      if(billingPaymentUnlocked){
-        billingPaymentUnlocked = false;
-        setPaymentAccess();
-      }
-      status.textContent = 'Complete the highlighted billing details before continuing to payment.';
-    }else{
-      status.textContent = '';
-    }
-  };
-  checkoutSubmissionFormEl.addEventListener('input',refreshBillingValidation);
-  checkoutSubmissionFormEl.addEventListener('change',refreshBillingValidation);
-  checkoutSubmissionFormEl.addEventListener('submit', async e=>{
-    e.preventDefault();
-    if(!billingPaymentUnlocked){
-      continueToPayment();
-      return;
-    }
-    billingValidationAttempted = true;
-    if(!hasSelectedTradingPlatform()){
-      document.getElementById('billingContinueStatus').textContent = 'Choose a trading platform before submitting payment.';
-      return;
-    }
-    if(!pendingPurchase || coPayBtnEl.dataset.submitting === 'true') return;
-    if(!normalizeCheckoutSelection(pendingPurchase.productModel,pendingPurchase.size,pendingPurchase.planKey,pendingPurchase.productId,pendingPurchase.price)){
-      document.getElementById('couponStatus').className = 'coupon-status error';
-      document.getElementById('couponStatus').textContent = 'Select a valid challenge before submitting payment.';
-      return;
-    }
-    const billing = validateBillingDetails(true);
-    if(!billing.valid){
-      billingPaymentUnlocked = false;
-      document.getElementById('billingContinueStatus').textContent = 'Complete the highlighted billing details before continuing to payment.';
-      setPaymentAccess();
-      validateBillingDetails(true);
-      return;
-    }
-    const couponCode = document.getElementById('couponCodeInput').value.trim();
-    if(couponCode && couponCode.toUpperCase() !== activeCouponCode){
-      const couponStatus = document.getElementById('couponStatus');
-      couponStatus.className = 'coupon-status error';
-      couponStatus.textContent = 'Invalid coupon code. Correct or remove it before submitting payment.';
-      return;
-    }
-    if(couponCode && !couponApplied) applyCheckoutCoupon();
-    if(!couponCode && couponApplied){
-      couponApplied = false;
-      updateCheckoutPrice();
-    }
-    const proofInput = document.getElementById('proofInput');
-    if(!proofInput || proofInput.files.length === 0){
-      const popup = document.getElementById('attachPopup');
-      if(popup) popup.classList.add('show');
-      return;
-    }
-    coPayBtnEl.dataset.submitting = 'true';
-    coPayBtnEl.disabled = true;
-    coPayBtnEl.setAttribute('aria-disabled','true');
-    try{
-      const purchase = await createPurchase(pendingPurchase);
-      clearPendingSubmissionId();
-      closeCheckout();
-      purchaseAccount(purchase.accountId);
-      pendingPurchase = null;
-    }catch(error){
-      const status = document.getElementById('couponStatus');
-      status.className = 'coupon-status error';
-      status.textContent = error.message;
-    }finally{
-      delete coPayBtnEl.dataset.submitting;
-      coPayBtnEl.disabled = !(billingPaymentUnlocked && hasSelectedTradingPlatform());
-      coPayBtnEl.setAttribute('aria-disabled',String(coPayBtnEl.disabled));
-    }
-  });
-}
-const attachPopupOkEl = document.getElementById('attachPopupOk');
-if(attachPopupOkEl){
-  attachPopupOkEl.addEventListener('click', ()=>{
-    document.getElementById('attachPopup').classList.remove('show');
-  });
-}
-const attachPopupEl = document.getElementById('attachPopup');
-if(attachPopupEl){
-  attachPopupEl.addEventListener('click', e=>{
-    if(e.target === attachPopupEl) attachPopupEl.classList.remove('show');
-  });
 }
 
 async function refreshDashboard(preferredAccountId){
@@ -7437,6 +6429,116 @@ if(payoutRequestForm){
   panel.querySelectorAll('.df-support-topic').forEach(button=>{
     button.addEventListener('click',()=>{input.value = button.dataset.question; form.requestSubmit();});
   });
+})();
+</script>
+<dialog id="integratedCheckoutDialog" aria-label="Checkout">
+  <div id="checkoutLoading" class="checkout-loading" role="status" hidden>Verifying your sign-in and loading your selected challenge…</div>
+  <section id="checkoutError" class="checkout-error" role="alert" hidden>
+    <h1>Checkout unavailable</h1>
+    <p></p>
+    <button class="btn btn-primary" id="checkoutErrorBack" type="button">Return to pricing</button>
+  </section>
+  <main id="checkout" class="crazy-checkout-page active" hidden>
+    <div class="wrap">
+      <button class="co-back" id="coBack" type="button">← Back to pricing</button>
+      <div class="eyebrow">Checkout</div>
+      <h2 style="margin-bottom:24px;">Complete your purchase</h2>
+      <div class="checkout-grid">
+        <div class="co-panel">
+          <fieldset class="platform-choice">
+            <legend>Choose Your Trading Platform</legend>
+            <div class="platform-card-grid">
+              <label class="platform-card" aria-label="Select MetaTrader 5"><input type="radio" name="tradingPlatform" value="mt5"><img src="./platform-mt5-mark.png" alt=""><strong>MetaTrader 5</strong></label>
+              <label class="platform-card" aria-label="Select cTrader"><input type="radio" name="tradingPlatform" value="ctrader"><img src="./platform-ctrader-mark.png" alt=""><strong>cTrader</strong></label>
+              <label class="platform-card" aria-label="Select Match-Trader"><input type="radio" name="tradingPlatform" value="match_trader"><img src="./platform-match-trader-mark.png" alt=""><strong>Match-Trader</strong></label>
+              <label class="platform-card" aria-label="Select CF Terminal"><input type="radio" name="tradingPlatform" value="cf" checked><img src="./crazy-funded-logo.png" alt=""><strong>CF Terminal</strong></label>
+            </div>
+          </fieldset>
+          <form id="checkoutSubmissionForm" novalidate>
+            <section id="billingStep" class="billing-details" aria-labelledby="billingDetailsTitle">
+              <h4 id="billingDetailsTitle">Billing Details</h4>
+              <p class="billing-note" id="billingAccountInfoStatus" role="status" aria-live="polite">Account details are filled in when available. Complete any required fields that remain blank.</p>
+              <div class="billing-grid">
+                <div class="billing-field"><label for="billingFullName">Full Name *</label><input id="billingFullName" name="full_name" type="text" autocomplete="name" maxlength="160" required aria-describedby="billingFullNameError"><p class="billing-error" id="billingFullNameError" aria-live="polite"></p></div>
+                <div class="billing-field"><label for="billingEmail">Email Address *</label><input id="billingEmail" name="email" type="email" autocomplete="email" maxlength="254" required aria-describedby="billingEmailError"><p class="billing-error" id="billingEmailError" aria-live="polite"></p></div>
+                <div class="billing-field"><label for="billingPhone">Phone Number *</label><input id="billingPhone" name="phone" type="tel" autocomplete="tel" maxlength="32" required aria-describedby="billingPhoneError"><p class="billing-error" id="billingPhoneError" aria-live="polite"></p></div>
+                <div class="billing-field"><label for="billingCountry">Country *</label><select id="billingCountry" name="country" autocomplete="country" required aria-describedby="billingCountryError"><option value="">Select country</option></select><p class="billing-error" id="billingCountryError" aria-live="polite"></p></div>
+                <div class="billing-field"><label for="billingState">State / Province *</label><input id="billingState" name="state" type="text" autocomplete="address-level1" maxlength="100" required aria-describedby="billingStateError"><p class="billing-error" id="billingStateError" aria-live="polite"></p></div>
+                <div class="billing-field"><label for="billingCity">City *</label><input id="billingCity" name="city" type="text" autocomplete="address-level2" maxlength="100" required aria-describedby="billingCityError"><p class="billing-error" id="billingCityError" aria-live="polite"></p></div>
+                <div class="billing-field"><label for="billingPostalCode">ZIP / Postal Code *</label><input id="billingPostalCode" name="postal_code" type="text" autocomplete="postal-code" maxlength="32" required aria-describedby="billingPostalCodeError"><p class="billing-error" id="billingPostalCodeError" aria-live="polite"></p></div>
+                <div class="billing-field wide"><label for="billingAddressLine1">Address Line 1 *</label><input id="billingAddressLine1" name="address_line_1" type="text" autocomplete="address-line1" maxlength="200" required aria-describedby="billingAddressLine1Error"><p class="billing-error" id="billingAddressLine1Error" aria-live="polite"></p></div>
+                <div class="billing-field wide"><label for="billingAddressLine2">Address Line 2</label><input id="billingAddressLine2" name="address_line_2" type="text" autocomplete="address-line2" maxlength="200" aria-describedby="billingAddressLine2Error"><p class="billing-error" id="billingAddressLine2Error" aria-live="polite"></p></div>
+                <div class="billing-field"><label for="billingCompanyName">Company Name</label><input id="billingCompanyName" name="company_name" type="text" autocomplete="organization" maxlength="160" aria-describedby="billingCompanyNameError"><p class="billing-error" id="billingCompanyNameError" aria-live="polite"></p></div>
+                <div class="billing-field"><label for="billingTaxId">GST / Tax ID</label><input id="billingTaxId" name="tax_id" type="text" autocomplete="off" maxlength="64" aria-describedby="billingTaxIdError"><p class="billing-error" id="billingTaxIdError" aria-live="polite"></p></div>
+              </div>
+              <p class="billing-continue-status" id="billingContinueStatus" role="status" aria-live="polite"></p>
+              <button type="button" class="btn btn-primary checkout-submit" id="billingContinueBtn">Continue to payment</button>
+            </section>
+            <section id="paymentStep" class="payment-step" aria-labelledby="paymentStepTitle" hidden>
+              <button type="button" class="btn btn-outline" id="billingBackBtn">← Back to Billing</button>
+              <h4 id="paymentStepTitle">Choose Your Payment Method</h4>
+              <p class="lead payment-lead">Choose how you would like to pay.</p>
+              <div class="payment-method-options" role="group" aria-label="Payment methods">
+                <div class="payment-method-card payment-method-card-unavailable" aria-disabled="true">
+                  <span class="payment-choice-indicator" aria-hidden="true"></span>
+                  <div class="upi-wordmark" aria-label="UPI">UPI<span aria-hidden="true">▶</span></div>
+                  <div class="payment-method-copy"><h5>UPI</h5><p>Unavailable — UPI payments are not supported at this time.</p><div class="upi-brands" aria-label="Google Pay, PhonePe, Paytm, and BHIM"><span class="upi-brand upi-brand-google"><b>G</b> Pay</span><span class="upi-brand upi-brand-phonepe"><b>पे</b> PhonePe</span><span class="upi-brand upi-brand-paytm">paytm</span><span class="upi-brand upi-brand-bhim"><b>BHIM</b><span aria-hidden="true">▶</span></span></div></div>
+                  <span class="unavailable-badge">Unavailable</span>
+                </div>
+                <label class="payment-method-card payment-method-card-crypto"><input type="radio" name="checkoutPaymentMethod" value="crypto" checked aria-label="Pay with cryptocurrency"><span class="payment-choice-indicator" aria-hidden="true"></span><span class="crypto-wordmark" aria-hidden="true">₿</span><span class="payment-method-copy"><strong class="payment-method-title">Crypto</strong><span class="payment-method-description">Pay with cryptocurrency</span></span><span class="crypto-currency-icons" aria-label="Bitcoin, Ethereum, Tether, USD Coin, and BNB"><span class="currency-icon currency-btc" aria-hidden="true">₿</span><span class="currency-icon currency-eth" aria-hidden="true">♦</span><span class="currency-icon currency-usdt" aria-hidden="true">₮</span><span class="currency-icon currency-usdc" aria-hidden="true">$</span><span class="currency-icon currency-bnb" aria-hidden="true">✦</span></span></label>
+              </div>
+              <div class="payment-method-card payment-method-card-details"><p class="payment-provider-copy">Your selected challenge and order total will be passed to the secure checkout. Choose a cryptocurrency and network there to complete payment.</p><p class="payment-security-note">Payment is subject to provider verification and required admin approval. Returning to this site or seeing a success page does not itself confirm payment or grant account access.</p><button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn" aria-disabled="true" disabled>Continue to Secure Checkout →</button></div>
+            </section>
+          </form>
+        </div>
+        <div class="co-panel">
+          <h4>Order summary</h4>
+          <div class="co-summary-row"><span>Challenge</span><b id="coLabel">—</b></div>
+          <div class="co-summary-row"><span>Account size</span><b id="coSize">—</b></div>
+          <div class="co-summary-row"><span>Profit split</span><b id="coSplit">—</b></div>
+          <div class="co-summary-row"><span>Trading platform</span><b id="coPlatform">CF Terminal</b></div>
+          <div class="coupon-box"><label for="couponCodeInput">Coupon code</label><div class="coupon-entry"><input id="couponCodeInput" type="text" maxlength="32" autocomplete="off" placeholder="Enter coupon code"><button type="button" class="btn btn-glossy" id="applyCouponBtn">Apply</button></div><p class="coupon-status" id="couponStatus" role="status" aria-live="polite"></p></div>
+          <div class="co-summary-row" id="coSubtotalRow" style="display:none;"><span>Subtotal</span><b id="coSubtotal">$0</b></div>
+          <div class="co-summary-row coupon-discount-row" id="coDiscountRow" style="display:none;"><span>CRAZYFUNDED30 · 30% off</span><b id="coDiscount">−$0</b></div>
+          <div class="co-total"><span>Total due</span><span id="coTotal">$0</span></div>
+          <div class="co-rules"><h4>Challenge rules</h4><ul id="coRules"></ul></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</dialog>
+<script>
+(()=>{
+  const assetPrefix = window.location.protocol === 'file:' && !window.location.pathname.toLowerCase().includes('/hosting-public/')
+    ? 'hosting-public/'
+    : '';
+  const loadScript = src => new Promise((resolve,reject)=>{
+    const script = document.createElement('script');
+    script.src = assetPrefix + src;
+    script.onload = resolve;
+    script.onerror = ()=>reject(new Error('Could not load checkout support file: ' + src));
+    document.body.appendChild(script);
+  });
+  const stylesheet = document.createElement('link');
+  stylesheet.rel = 'stylesheet';
+  stylesheet.href = assetPrefix + 'integrated-checkout.css';
+  const stylesReady = new Promise((resolve,reject)=>{
+    stylesheet.onload = resolve;
+    stylesheet.onerror = ()=>reject(new Error('Could not load integrated checkout styles.'));
+  });
+  document.head.appendChild(stylesheet);
+  window.CrazyFundedIntegratedCheckoutReady = Promise.all([
+    stylesReady,
+    loadScript('checkout-countries.js')
+  ]).then(()=>loadScript('integrated-checkout.js'));
+  window.CrazyFundedCheckoutHost = {
+    clearPendingCheckout(){
+      clearPendingCheckout();
+      pendingPurchase = null;
+      pendingCheckoutResumeKey = '';
+      pendingHomepageCoupon = '';
+    }
+  };
 })();
 </script>
 </body>
