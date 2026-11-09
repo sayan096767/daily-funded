@@ -52,7 +52,7 @@
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   min-height: 100vh;
-  overflow: clip;
+  overflow: visible;
   background: var(--bg);
   color: var(--tx);
   color-scheme: dark;
@@ -80,8 +80,8 @@
 }
 
 #dashboard .dashboard-sidebar {
-  position: sticky;
-  inset: 0 auto auto;
+  position: fixed;
+  inset: 0 auto 0 0;
   display: flex;
   width: 220px;
   height: 100vh;
@@ -180,33 +180,20 @@
   transform: none;
 }
 
+#dashboard .dashboard-side-nav a.active .dashboard-nav-mark,
+#dashboard .dashboard-side-nav a:hover .dashboard-nav-mark {
+  color: var(--ac);
+}
+
 #dashboard .dashboard-nav-mark svg {
   width: 16px;
   height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   filter: none;
-}
-
-#dashboard .dashboard-side-nav a.dashboard-trade-link {
-  justify-content: center;
-  min-height: 42px;
-  margin: 14px 0 0;
-  border: 0;
-  border-radius: 8px;
-  background: var(--ac);
-  color: var(--onac);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-#dashboard .dashboard-side-nav a.dashboard-trade-link:hover {
-  background: var(--ac);
-  color: var(--onac);
-  filter: brightness(1.05);
-}
-
-#dashboard .dashboard-side-nav a.dashboard-trade-link .dashboard-nav-mark {
-  color: inherit;
 }
 
 #dashboard .dashboard-sidebar-foot {
@@ -257,9 +244,16 @@
 }
 
 #dashboard #dashboardGreeting {
-  margin-top: 4px;
-  color: var(--mu);
-  font-size: 12px;
+  margin: 0;
+  color: var(--tx);
+  font-size: clamp(30px, 3.2vw, 40px);
+  font-weight: 750;
+  letter-spacing: -.025em;
+  line-height: 1.2;
+}
+
+#dashboard #dashboardGreeting .dashboard-greeting-name {
+  color: var(--ac);
 }
 
 #dashboard .dash-top h1,
@@ -349,7 +343,6 @@
   color: var(--tx);
 }
 
-#dashboard .account-select-trigger-status,
 #dashboard .account-select-option-plan {
   color: var(--mu);
 }
@@ -449,8 +442,10 @@
 }
 
 #dashboard .account-select-option-status.is-active {
-  border-color: var(--up);
-  background: var(--upbg);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--up);
 }
 
@@ -461,14 +456,21 @@
 }
 
 #dashboard .account-select-option-status.is-rejected {
-  border-color: var(--dn);
-  background: var(--dnbg);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--dn);
 }
 
 #dashboard .dashboard-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 76px;
   min-height: 42px;
-  padding: 0 13px;
+  padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -476,6 +478,44 @@
   font: 600 12px/1 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   cursor: pointer;
   transition: border-color .16s ease, background .16s ease, color .16s ease;
+}
+
+#dashboard .dashboard-theme-toggle > span:last-child {
+  min-width: 12px;
+  color: var(--tx);
+  font-size: 15px;
+  line-height: 1;
+}
+
+#dashboard .dashboard-theme-switch-track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 34px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--line);
+  transition: background .16s ease;
+}
+
+#dashboard .dashboard-theme-switch-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--tx);
+  transform: translateX(0);
+  transition: transform .16s ease;
+}
+
+#dashboard .dashboard-theme-toggle[aria-checked="true"] .dashboard-theme-switch-track {
+  background: var(--ac);
+}
+
+#dashboard .dashboard-theme-toggle[aria-checked="true"] .dashboard-theme-switch-thumb {
+  background: var(--tx);
+  transform: translateX(14px);
 }
 
 #dashboard .dashboard-theme-toggle:hover {
@@ -569,11 +609,49 @@
 }
 
 #dashboard .account-badges {
+  display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 7px;
   max-width: 52%;
   flex-wrap: wrap;
+}
+
+#dashboard .account-badges .dashboard-trade-link:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ac);
+  color: var(--onac);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+#dashboard .account-badges .dashboard-trade-link:not([hidden]):hover {
+  color: var(--onac);
+  filter: brightness(1.05);
+}
+
+#dashboard .account-badges .dashboard-trade-link .dashboard-nav-mark {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: inherit;
+}
+
+#dashboard .account-badges .dashboard-trade-link .dashboard-nav-mark svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 #dashboard .account-badge {
@@ -586,14 +664,12 @@
   font-weight: 600;
 }
 
-#dashboard .account-badge.is-active {
-  border-color: transparent;
-  background: var(--upbg);
+#dashboard .account-status-badge.is-active {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--up);
-}
-
-#dashboard .account-badge.is-active::before {
-  content: "● ";
 }
 
 #dashboard .account-badge.is-pending {
@@ -602,14 +678,12 @@
   color: var(--warn);
 }
 
-#dashboard .account-badge.is-rejected {
-  border-color: transparent;
-  background: var(--dnbg);
+#dashboard .account-status-badge.is-rejected {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--dn);
-}
-
-#dashboard .account-badge.is-rejected::before {
-  content: "● ";
 }
 
 #dashboard .account-stat-grid {
@@ -1110,14 +1184,17 @@
   grid-column: 1 / -1;
 }
 
-#dashboard .desk-statistics-panel,
-#dashboard .desk-session-panel {
+#dashboard .desk-statistics-panel {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
 #dashboard .desk-metrics-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  flex: 1;
   gap: 8px;
 }
 
@@ -1403,43 +1480,124 @@
   color: var(--warn);
 }
 
-#dashboard .desk-session-table {
-  width: 100%;
-  border-collapse: collapse;
+#dashboard .desk-session-grid {
+  display: grid;
+  gap: 10px;
+}
+
+#dashboard .desk-session-summary {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 110px;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel2);
+}
+
+#dashboard .desk-session-gauge {
+  position: relative;
+  width: 118px;
+  height: 82px;
+  flex: 0 0 118px;
   color: var(--tx);
-  font-size: 12px;
-  text-align: left;
 }
 
-#dashboard .desk-session-table th,
-#dashboard .desk-session-table td {
-  padding: 10px 8px;
-  border-bottom: 1px solid var(--line);
+#dashboard .desk-session-gauge svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 
-#dashboard .desk-session-table th {
+#dashboard .desk-session-gauge-track,
+#dashboard .desk-session-gauge-value {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 8;
+}
+
+#dashboard .desk-session-gauge-track {
+  stroke: var(--line);
+}
+
+#dashboard .desk-session-gauge-value {
+  stroke: var(--desk-session-gauge-color, var(--ac));
+}
+
+#dashboard .desk-session-gauge-rate,
+#dashboard .desk-session-gauge-caption {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  text-align: center;
+}
+
+#dashboard .desk-session-gauge-rate {
+  top: 44px;
+  color: var(--tx);
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+#dashboard .desk-session-gauge-caption {
+  top: 59px;
+  color: var(--mu);
+  font-size: 10px;
+  line-height: 1;
+}
+
+#dashboard .desk-session-details {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 5px;
+}
+
+#dashboard .desk-session-name {
+  margin: 0;
+  color: var(--tx);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+#dashboard .desk-session-metrics {
+  display: flex;
+  gap: 18px;
+}
+
+#dashboard .desk-session-metrics > div {
+  display: grid;
+  gap: 1px;
+}
+
+#dashboard .desk-session-metrics span {
   color: var(--mu);
   font-size: 11px;
-  font-weight: 500;
 }
 
-#dashboard .desk-session-table td:last-child,
-#dashboard .desk-session-table th:last-child {
-  text-align: right;
+#dashboard .desk-session-metrics strong {
+  color: var(--tx);
+  font-size: 12px;
+  font-weight: 600;
 }
 
-#dashboard .desk-session-table td:nth-child(n+2),
-#dashboard .desk-session-table th:nth-child(n+2) {
-  text-align: right;
+#dashboard .desk-session-net {
+  color: var(--tx);
+  font-size: 17px;
+  font-weight: 750;
+  line-height: 1.1;
 }
 
-#dashboard .desk-session-table td.is-positive,
-#dashboard .desk-session-table .is-positive {
+#dashboard .desk-session-net.is-positive {
   color: var(--up);
 }
 
-#dashboard .desk-session-table td.is-negative,
-#dashboard .desk-session-table .is-negative {
+#dashboard .desk-session-net.is-negative {
   color: var(--dn);
 }
 
@@ -1449,24 +1607,6 @@
   margin-top: 10px;
   color: var(--mu);
   font-size: 11px;
-}
-
-#dashboard .desk-session-face {
-  border-color: var(--line);
-  background: var(--panel2);
-}
-
-#dashboard .desk-session-face-back {
-  border-color: var(--ac);
-}
-
-#dashboard .desk-session-flip-button:hover,
-#dashboard .desk-session-flip-button:focus-visible {
-  color: var(--ac);
-}
-
-#dashboard .desk-session-flip-button:focus-visible {
-  outline-color: var(--ac);
 }
 
 #dashboard .desk-session-bar-row {
@@ -1574,7 +1714,7 @@
 
   #dashboard .dashboard-sidebar {
     position: sticky;
-    top: 0;
+    inset: 0 auto auto;
     width: 100%;
     height: auto;
     min-height: 0;

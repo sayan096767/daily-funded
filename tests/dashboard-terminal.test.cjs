@@ -25,6 +25,11 @@ test('Crazy Funded dashboard uses its live data components without reference sam
   assert.match(fundingForgeHtml, /<section id="dashboard" data-theme="dark">/);
   assert.match(dashboardHtml, /crazy-funded-logo\.png/);
   assert.match(dashboardHtml, /width="36" height="36"/);
+  const dashboardHeader = dashboardHtml.match(/<div class="dash-top" id="dashTop">([\s\S]*?)<div class="dashboard-header-controls">/)?.[1];
+  assert.match(dashboardHeader || '', /<h1 id="dashboardGreeting">Account details<\/h1>/);
+  assert.doesNotMatch(dashboardHeader || '', /dashboard-breadcrumb|Trading desk/);
+  assert.match(dashboardStyles, /#dashboard #dashboardGreeting \{\s*margin: 0;\s*color: var\(--tx\);\s*font-size: clamp\(30px, 3\.2vw, 40px\);/);
+  assert.match(dashboardStyles, /#dashboard #dashboardGreeting \.dashboard-greeting-name \{\s*color: var\(--ac\);/);
   assert.ok(fs.existsSync(path.join(root, firebaseConfig.hosting.public, 'crazy-funded-logo.png')));
   assert.doesNotMatch(dashboardHtml, /Envy Funded|4821|\$217,952\.01|\$200,000/);
   const ids = [...dashboardHtml.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
@@ -61,14 +66,21 @@ test('Crazy Funded dashboard uses its live data components without reference sam
   assert.match(fundingForgeHtml, /statusBadge\.classList\.toggle\('is-active',data\.status === 'active'\)/);
   assert.match(fundingForgeHtml, /statusBadge\.classList\.toggle\('is-rejected',rejected\)/);
   assert.match(fundingForgeHtml, /statusBadge\.classList\.toggle\('is-pending',pending\)/);
-  assert.match(dashboardStyles, /#dashboard \.account-badge\.is-active[\s\S]*?background: var\(--upbg\);[\s\S]*?color: var\(--up\);/);
-  assert.match(dashboardStyles, /#dashboard \.account-badge\.is-rejected[\s\S]*?background: var\(--dnbg\);[\s\S]*?color: var\(--dn\);/);
+  assert.match(dashboardStyles, /#dashboard \.account-status-badge\.is-active \{\s*padding: 0;\s*border: 0;\s*border-radius: 0;\s*background: transparent;\s*color: var\(--up\);/);
+  assert.match(dashboardStyles, /#dashboard \.account-status-badge\.is-rejected \{\s*padding: 0;\s*border: 0;\s*border-radius: 0;\s*background: transparent;\s*color: var\(--dn\);/);
+  assert.match(dashboardStyles, /#dashboard \.account-select-option-status\.is-active \{\s*padding: 0;\s*border: 0;\s*border-radius: 0;\s*background: transparent;\s*color: var\(--up\);/);
+  assert.match(dashboardStyles, /#dashboard \.account-select-option-status\.is-rejected \{\s*padding: 0;\s*border: 0;\s*border-radius: 0;\s*background: transparent;\s*color: var\(--dn\);/);
+  assert.doesNotMatch(dashboardStyles, /account-badge\.is-(?:active|rejected)::before/);
   assert.doesNotMatch(dashboardHtml, /accountEngineId/);
   assert.doesNotMatch(fundingForgeHtml, /engineIdBadge|ENGINE ['"] \+ data\.tradingEngineAccountId/);
 });
 
 test('dashboard controls retain working destinations and existing handlers', () => {
   assert.ok(dashboardHtml, 'expected the user dashboard section');
+  assert.match(fundingForgeHtml, /const firstName = user && typeof user\.displayName === 'string'\s*\? user\.displayName\.trim\(\)\.split\(\/\\s\+\/\)\[0\]/);
+  assert.match(fundingForgeHtml, /new Date\(\)\.getHours\(\) < 12 \? 'Good morning, ' : 'Good evening, '/);
+  assert.match(fundingForgeHtml, /name\.textContent = firstName;/);
+  assert.doesNotMatch(fundingForgeHtml, /greeting\.textContent = 'Hello, '/);
   for (const view of [
     'desk',
     'rewards',
@@ -79,11 +91,41 @@ test('dashboard controls retain working destinations and existing handlers', () 
   ]) {
     assert.match(dashboardHtml, new RegExp(`data-dashboard-view="${view}"`));
   }
+  for (const icon of [
+    'dashboard-nav-desk',
+    'dashboard-nav-rewards',
+    'dashboard-nav-referrals',
+    'dashboard-nav-competitions',
+    'dashboard-nav-calendar',
+    'dashboard-nav-leaderboard'
+  ]) {
+    assert.match(dashboardHtml, new RegExp(`class="dashboard-nav-mark ${icon}"`));
+  }
+  assert.match(dashboardStyles, /#dashboard \.dashboard-side-nav a\.active \.dashboard-nav-mark,\s*#dashboard \.dashboard-side-nav a:hover \.dashboard-nav-mark \{\s*color: var\(--ac\);/);
+  assert.match(dashboardStyles, /#dashboard \.dashboard-nav-mark svg \{\s*width: 16px;\s*height: 16px;\s*fill: none;\s*stroke: currentColor;/);
   assert.match(dashboardHtml, /class="dashboard-trade-link" href="\/trade\/"/);
   assert.match(dashboardHtml, /id="dashboardAccountAction"/);
   assert.match(dashboardHtml, /id="accountSelectTrigger"/);
+  assert.match(dashboardHtml, /aria-labelledby="accountSelectorLabel accountSelectorValue"/);
+  assert.doesNotMatch(dashboardHtml, /accountSelectorStatus|account-select-trigger-status/);
+  assert.match(fundingForgeHtml, /status\.textContent = accountPickerStatus\(account\);/);
   assert.match(dashboardHtml, /id="dashboardThemeToggle"/);
-  assert.match(dashboardHtml, /Open trading platform/);
+  assert.match(dashboardHtml, /id="dashboardThemeToggle" role="switch"[^>]*aria-checked="false"/);
+  assert.match(dashboardHtml, /dashboard-theme-switch-track/);
+  const accountOverview = dashboardHtml.match(
+    /<div class="account-banner" id="accountOverview">([\s\S]*?)<div class="account-stat-grid">/
+  )?.[1];
+  assert.match(accountOverview || '', /<a class="dashboard-trade-link" href="\/trade\/" hidden>/);
+  const sidebarNavigation = dashboardHtml.match(
+    /<nav class="dashboard-side-nav"[\s\S]*?<\/nav>/
+  )?.[0];
+  assert.doesNotMatch(sidebarNavigation || '', /dashboard-trade-link/);
+  assert.match(fundingForgeHtml, /const tradingActive = data\.status === 'active' && data\.tradingEnabled === true;/);
+  assert.match(fundingForgeHtml, /tradeButton\.hidden = !tradingActive;/);
+  assert.match(fundingForgeHtml, /dashboard-theme\.css'\) \+ '\?v=20261109-session-analytics-cards'/);
+  assert.match(dashboardStyles, /#dashboard \.dashboard-theme-toggle > span:last-child \{\s*min-width: 12px;\s*color: var\(--tx\);/);
+  assert.match(dashboardStyles, /#dashboard \.dashboard-theme-toggle\[aria-checked="true"\] \.dashboard-theme-switch-thumb \{\s*background: var\(--tx\);/);
+  assert.match(dashboardHtml, />TRADE<\/a>/);
   assert.match(dashboardHtml, /data-performance-range="1D"/);
   assert.match(dashboardHtml, /data-performance-range="1W"/);
   assert.match(dashboardHtml, /data-performance-range="1M"/);
@@ -91,7 +133,9 @@ test('dashboard controls retain working destinations and existing handlers', () 
   assert.doesNotMatch(dashboardHtml, /data-performance-range="(?:7D|30D|90D)"/);
   assert.match(fundingForgeHtml, /const rangeMilliseconds = \{'1D':86400000,'1W':7\*86400000,'1M':30\*86400000\}/);
   assert.match(fundingForgeHtml, /const duration = \{'1D':1,'1W':7,'1M':30\}\[button\.dataset\.performanceRange\] \* 86400000/);
-  assert.doesNotMatch(fundingForgeHtml, /\.dashboard-sidebar\{position:fixed;|#dashboard\.active\{display:grid; grid-template-columns:248px/);
+  assert.match(dashboardStyles, /#dashboard \.dashboard-sidebar \{\s*position: fixed;\s*inset: 0 auto 0 0;/);
+  assert.match(dashboardStyles, /@media \(max-width: 999px\) \{[\s\S]*?#dashboard \.dashboard-sidebar \{\s*position: sticky;\s*inset: 0 auto auto;/);
+  assert.match(dashboardStyles, /#dashboard \.dashboard-main\.wrap \{\s*grid-column: 2;/);
   assert.match(fundingForgeHtml, /function signOutFirebase\(\)/);
   assert.match(fundingForgeHtml, /signOutFirebase\(\)/);
   assert.match(fundingForgeHtml, /renderDeskPerformanceChart\(button\.dataset\.performanceRange\)/);
@@ -99,7 +143,8 @@ test('dashboard controls retain working destinations and existing handlers', () 
   assert.match(fundingForgeHtml, /localStorage\.getItem\(dashboardThemeStorageKey\)/);
   assert.match(fundingForgeHtml, /localStorage\.setItem\(dashboardThemeStorageKey,activeTheme\)/);
   assert.match(fundingForgeHtml, /dashboard\.dataset\.theme = activeTheme/);
-  assert.match(fundingForgeHtml, /activeTheme === 'dark' \? '☀ Light mode' : '☾ Dark mode'/);
+  assert.match(fundingForgeHtml, /dashboardThemeToggle\.setAttribute\('aria-checked',String\(activeTheme === 'light'\)\)/);
+  assert.match(fundingForgeHtml, /activeTheme === 'dark' \? '☀' : '☾'/);
   assert.match(fundingForgeHtml, /activeTheme === 'light'\)\)/);
   assert.match(fundingForgeHtml, /const deskSignedMoney = value =>/);
   assert.match(fundingForgeHtml, /number > 0 \? '\+\$' : number < 0 \? '−\$'/);
@@ -112,6 +157,8 @@ test('dashboard navigation remains horizontally accessible on small screens', ()
   assert.match(dashboardStyles, /@media \(max-width: 999px\)/);
   assert.match(dashboardStyles, /\.dashboard-side-nav \{[\s\S]*?overflow-x: auto/);
   assert.match(dashboardStyles, /#dashboard \.account-select-trigger \{\s*flex: 1;\s*min-width: 0;\s*max-width: 100%;/);
+  assert.match(dashboardStyles, /#dashboard \.account-badges \{\s*display: flex;/);
+  assert.match(dashboardStyles, /#dashboard \.account-badges \.dashboard-trade-link \.dashboard-nav-mark svg \{\s*width: 14px;\s*height: 14px;\s*fill: none;\s*stroke: currentColor;/);
   assert.match(dashboardStyles, /@media \(min-width: 1000px\) and \(max-width: 1200px\) \{[\s\S]*?#dashboard \.dashboard-rule-grid \{\s*display: grid;\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
   assert.match(dashboardStyles, /#dashboard \.dashboard-main \.btn-primary \{\s*background: var\(--ac\);\s*color: var\(--onac\);/);
   assert.match(dashboardStyles, /#dashboard \.dash-close \{\s*min-height: 40px;[\s\S]*?background: var\(--panel\);/);
@@ -164,8 +211,19 @@ test('session analytics no longer includes the win-rate flip side or stray text'
     /function renderDeskSessionAnalytics\(trades\)\{([\s\S]*?)\n\}\nfunction formatDeskSessionPnl/
   )?.[1];
   assert.ok(sessionRenderer, 'expected the session analytics renderer');
-  assert.match(sessionRenderer, /frontTitle\.textContent = 'Session edge matrix'/);
-  assert.match(sessionRenderer, /headerRow[\s\S]*?'Win rate'/);
+  assert.doesNotMatch(sessionRenderer, /Session edge matrix|desk-session-face-title/);
+  assert.match(sessionRenderer, /grid\.className = 'desk-session-grid'/);
+  assert.match(sessionRenderer, /card\.className = 'desk-session-summary'/);
+  assert.match(sessionRenderer, /desk-session-gauge-value/);
+  assert.match(sessionRenderer, /gaugeLabel\.textContent = winRate === null \? '—' : winRate\.toFixed\(0\) \+ '%'/);
+  assert.match(sessionRenderer, /tradesLabel\.textContent = 'Trades'/);
+  assert.doesNotMatch(sessionRenderer, /Avg R|averageLabel|averageMetric/);
+  assert.match(sessionRenderer, /net\.classList\.add\(session\.netPnl > 0 \? 'is-positive' : 'is-negative'\)/);
+  assert.doesNotMatch(sessionRenderer, /desk-session-table|createElement\('table'\)/);
+  assert.match(dashboardStyles, /#dashboard \.desk-session-summary \{\s*display: flex;[\s\S]*?background: var\(--panel2\);/);
+  assert.match(dashboardStyles, /#dashboard \.desk-session-gauge-value \{\s*stroke: var\(--desk-session-gauge-color, var\(--ac\)\);/);
+  assert.match(dashboardStyles, /#dashboard \.desk-session-net\.is-positive \{\s*color: var\(--up\);/);
+  assert.match(dashboardStyles, /#dashboard \.desk-session-net\.is-negative \{\s*color: var\(--dn\);/);
   assert.doesNotMatch(sessionRenderer, /Asia 22:00|Win rate uses recorded P\/L|Avg R unavailable|matrixNote/);
   assert.doesNotMatch(sessionRenderer, /Win rate by session|Back to session matrix|barsNote\.textContent = '\.'/);
   assert.doesNotMatch(sessionRenderer, /desk-session-bars|data-session-flip/);
@@ -182,12 +240,15 @@ test('trading statistics highlight shows only win rate', () => {
   assert.doesNotMatch(statisticsRenderer, /Realized P\/L|desk-stat-highlight-value|wins\.length \+ ' wins/);
   assert.doesNotMatch(statisticsRenderer, /meterNote|summaryValue|summaryMeta/);
   assert.match(dashboardStyles, /#dashboard \.desk-stat-highlight \{\s*display: grid;\s*grid-column: 1 \/ -1;\s*grid-template-columns: minmax\(0, 1fr\);/);
+  assert.match(dashboardHtml, /class="desk-dashboard-panel desk-statistics-panel"/);
+  assert.match(dashboardStyles, /#dashboard \.desk-statistics-panel \{\s*display: flex;\s*flex-direction: column;\s*min-width: 0;/);
+  assert.match(dashboardStyles, /#dashboard \.desk-metrics-grid \{\s*display: grid;\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);\s*grid-auto-rows: 1fr;\s*flex: 1;/);
   assert.match(statisticsRenderer, /deskStatisticsNote'\)\.textContent = trades\.length \+ ' closed trades'/);
   assert.doesNotMatch(statisticsRenderer, /with recorded P\/L/);
 });
 
 test('dashboard theme stylesheet is scoped and contains both requested token palettes', () => {
-  assert.match(fundingForgeHtml, /dashboardThemeStylesheetPath = window\.location\.protocol === 'file:' \? '\.\/dashboard-theme\.css' : '\/dashboard-theme\.css'/);
+  assert.match(fundingForgeHtml, /dashboardThemeStylesheetPath = \(window\.location\.protocol === 'file:' \? '\.\/dashboard-theme\.css' : '\/dashboard-theme\.css'\) \+ '\?v=20261109-session-analytics-cards'/);
   for (const token of [
     '--bg: #0F1013',
     '--panel: #181A1F',

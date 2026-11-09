@@ -1217,7 +1217,7 @@ try{
   @media(max-width:700px){.payout-mission-banner iframe{height:680px;}}
 </style>
 <script>
-var dashboardThemeStylesheetPath = window.location.protocol === 'file:' ? './dashboard-theme.css' : '/dashboard-theme.css';
+var dashboardThemeStylesheetPath = (window.location.protocol === 'file:' ? './dashboard-theme.css' : '/dashboard-theme.css') + '?v=20261109-session-analytics-cards';
 document.write('<link rel="stylesheet" href="' + dashboardThemeStylesheetPath + '">');
 </script>
 <noscript><link rel="stylesheet" href="/dashboard-theme.css"></noscript>
@@ -1966,13 +1966,12 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
     </a>
     <div class="dashboard-sidebar-label">TRADER WORKSPACE</div>
     <nav class="dashboard-side-nav" aria-label="Trader workspace">
-      <a class="active" href="#dashTop" data-dashboard-view="desk" aria-current="page"><span class="dashboard-nav-mark dashboard-nav-desk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9M9 20v-6h6v6"/></svg></span>Trader Desk</a>
-      <a href="#rewardsView" data-dashboard-view="rewards"><span class="dashboard-nav-mark dashboard-nav-rewards" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="m8.5 12-1 9 4.5-2.5 4.5 2.5-1-9"/></svg></span>Rewards</a>
-      <a href="#referralsView" data-dashboard-view="referrals"><span class="dashboard-nav-mark dashboard-nav-referrals" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M15 15.5a4.5 4.5 0 0 1 5.5 3.5"/></svg></span>Refer a Friend</a>
-      <a href="#competitionsView" data-dashboard-view="competitions"><span class="dashboard-nav-mark dashboard-nav-competitions" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M7 6H4v2a4 4 0 0 0 4 4M17 6h3v2a4 4 0 0 1-4 4M12 13v5M8 21h8M9 18h6"/></svg></span>Competitions</a>
-      <a href="#economicCalendarView" data-dashboard-view="calendar"><span class="dashboard-nav-mark dashboard-nav-calendar" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h2M14 14h2M8 17h2"/></svg></span>Economic Calendar</a>
-      <a href="#leaderboardView" data-dashboard-view="leaderboard"><span class="dashboard-nav-mark dashboard-nav-leaderboard" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20h16M6 17V9h4v8M14 17V4h4v13M7 6h3M13 8h5"/></svg></span>Leaderboard</a>
-      <a class="dashboard-trade-link" href="/trade/"><span class="dashboard-nav-mark dashboard-nav-desk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span>Open trading platform</a>
+      <a class="active" href="#dashTop" data-dashboard-view="desk" aria-current="page"><span class="dashboard-nav-mark dashboard-nav-desk" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg></span>Trader Desk</a>
+      <a href="#rewardsView" data-dashboard-view="rewards"><span class="dashboard-nav-mark dashboard-nav-rewards" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10h16v10H4zM3 7h18v3H3zM12 7v13"/><path d="M12 7H8.5a2 2 0 1 1 2-2c0 1.2 1.5 2 1.5 2Zm0 0h3.5a2 2 0 1 0-2-2c0 1.2-1.5 2-1.5 2Z"/></svg></span>Rewards</a>
+      <a href="#referralsView" data-dashboard-view="referrals"><span class="dashboard-nav-mark dashboard-nav-referrals" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M17 8v6m-3-3h6"/></svg></span>Refer a Friend</a>
+      <a href="#competitionsView" data-dashboard-view="competitions"><span class="dashboard-nav-mark dashboard-nav-competitions" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0V4ZM7 6H4v2a4 4 0 0 0 4 4m9-6h3v2a4 4 0 0 1-4 4m-4 1v5m-4 3h8m-6-3h4"/></svg></span>Competitions</a>
+      <a href="#economicCalendarView" data-dashboard-view="calendar"><span class="dashboard-nav-mark dashboard-nav-calendar" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18m-9 4v4m-2-2h4"/></svg></span>Economic Calendar</a>
+      <a href="#leaderboardView" data-dashboard-view="leaderboard"><span class="dashboard-nav-mark dashboard-nav-leaderboard" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20h16M6 20v-6h4v6m2 0V9h4v11m2 0V4h4v16"/></svg></span>Leaderboard</a>
     </nav>
     <div class="dashboard-sidebar-foot">
       <div class="dashboard-sidebar-status">TRADING WORKSPACE</div>
@@ -1983,24 +1982,24 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
   <div class="wrap dashboard-main" id="traderDeskView">
     <div class="dash-top" id="dashTop">
       <div>
-        <div class="dashboard-breadcrumb">Home / Trader desk</div>
-        <h1>Trading desk</h1>
-        <div class="eyebrow" id="dashboardGreeting">Account details</div>
+        <h1 id="dashboardGreeting">Account details</h1>
       </div>
       <div class="dashboard-header-controls">
         <div class="dash-select account-select-picker" id="dashSelectWrap">
           <span id="accountSelectorLabel">Account</span>
-          <button type="button" class="account-select-trigger" id="accountSelectTrigger" aria-labelledby="accountSelectorLabel accountSelectorValue accountSelectorStatus" aria-haspopup="listbox" aria-expanded="false" aria-controls="accountSelectList">
+          <button type="button" class="account-select-trigger" id="accountSelectTrigger" aria-labelledby="accountSelectorLabel accountSelectorValue" aria-haspopup="listbox" aria-expanded="false" aria-controls="accountSelectList">
             <span class="account-select-trigger-copy">
               <span class="account-select-trigger-value" id="accountSelectorValue">Select account</span>
-              <span class="account-select-trigger-status" id="accountSelectorStatus"></span>
             </span>
             <svg class="account-select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
           </button>
           <div class="account-select-list" id="accountSelectList" role="listbox" aria-labelledby="accountSelectorLabel" hidden></div>
           <select id="accSelect" class="account-select-native" aria-hidden="true" tabindex="-1"></select>
         </div>
-        <button type="button" class="dashboard-theme-toggle" id="dashboardThemeToggle" aria-label="Switch to Cream &amp; Gold theme" aria-pressed="false">☀ Light mode</button>
+        <button type="button" class="dashboard-theme-toggle" id="dashboardThemeToggle" role="switch" aria-label="Switch to Cream &amp; Gold theme" aria-checked="false">
+          <span class="dashboard-theme-switch-track" aria-hidden="true"><span class="dashboard-theme-switch-thumb"></span></span>
+          <span id="dashboardThemeToggleLabel" aria-hidden="true">☀</span>
+        </button>
       </div>
     </div>
 
@@ -2021,6 +2020,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
           <span class="account-badge account-status-badge is-active">ACTIVE</span>
           <span class="account-badge" id="accountPlan">1-STEP</span>
           <span class="account-badge" id="accountPhase">PHASE 01</span>
+          <a class="dashboard-trade-link" href="/trade/" hidden><span class="dashboard-nav-mark dashboard-nav-desk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span>TRADE</a>
         </div>
       </div>
 
@@ -2064,7 +2064,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
       </div>
 
       <div class="dashboard-analytics-grid">
-        <section class="desk-dashboard-panel" aria-labelledby="deskStatisticsHeading">
+        <section class="desk-dashboard-panel desk-statistics-panel" aria-labelledby="deskStatisticsHeading">
           <div class="desk-data-panel-head"><h4 id="deskStatisticsHeading">Trading statistics</h4><span class="desk-panel-note" id="deskStatisticsNote">Closed trades</span></div>
           <div class="desk-metrics-grid" id="deskStatisticsGrid"></div>
           <div class="desk-panel-empty" id="deskStatisticsEmpty" role="status" hidden></div>
@@ -3443,9 +3443,9 @@ function setDashboardTheme(theme,persist=false){
   const activeTheme = theme === 'light' ? 'light' : 'dark';
   dashboard.dataset.theme = activeTheme;
   const nextTheme = activeTheme === 'dark' ? 'light' : 'dark';
-  dashboardThemeToggle.setAttribute('aria-pressed',String(activeTheme === 'light'));
+  dashboardThemeToggle.setAttribute('aria-checked',String(activeTheme === 'light'));
   dashboardThemeToggle.setAttribute('aria-label','Switch to ' + (nextTheme === 'dark' ? 'Graphite & Gold' : 'Cream & Gold') + ' theme');
-  dashboardThemeToggle.textContent = activeTheme === 'dark' ? '☀ Light mode' : '☾ Dark mode';
+  document.getElementById('dashboardThemeToggleLabel').textContent = activeTheme === 'dark' ? '☀' : '☾';
   if(persist){
     try{
       localStorage.setItem(dashboardThemeStorageKey,activeTheme);
@@ -3482,7 +3482,6 @@ function syncDashboardAccountPicker(accounts){
   document.getElementById('accountSelectorValue').textContent = selected
     ? '$' + selected.size.toLocaleString() + ' · ' + selected.label
     : 'Select account';
-  document.getElementById('accountSelectorStatus').textContent = selected ? accountPickerStatus(selected) : '';
   list.replaceChildren(...accounts.map(account=>{
     const option = document.createElement('button');
     option.type = 'button';
@@ -3638,15 +3637,18 @@ function updateFirebaseAccountControls(user){
 function updateDashboardGreeting(user){
   const greeting = document.getElementById('dashboardGreeting');
   if(!greeting) return;
-  const displayName = user && typeof user.displayName === 'string' ? user.displayName.trim() : '';
-  if(!displayName){
+  const firstName = user && typeof user.displayName === 'string'
+    ? user.displayName.trim().split(/\s+/)[0]
+    : '';
+  if(!firstName){
     greeting.textContent = 'Account details';
     return;
   }
-  greeting.textContent = 'Hello, ';
+  const salutation = new Date().getHours() < 12 ? 'Good morning, ' : 'Good evening, ';
+  greeting.textContent = salutation;
   const name = document.createElement('span');
   name.className = 'dashboard-greeting-name';
-  name.textContent = displayName;
+  name.textContent = firstName;
   greeting.appendChild(name);
 }
 async function signOutFirebase(){
@@ -5357,6 +5359,8 @@ if(payoutSuccessPopup){
 
 function renderAccount(){
   const sel = document.getElementById('accSelect');
+  const tradeButton = document.querySelector('#accountOverview .dashboard-trade-link');
+  tradeButton.hidden = true;
   const accounts = getAccounts();
   const data = accounts.find(a=>a.id===sel.value) || accounts[0];
   if(!data) return;
@@ -5390,6 +5394,7 @@ function renderAccount(){
       : 'PHASE ' + String(phaseNumber).padStart(2,'0');
   }
   const tradingActive = data.status === 'active' && data.tradingEnabled === true;
+  tradeButton.hidden = !tradingActive;
   deskSetMoney(document.getElementById('dBalance'),tradingActive ? null : data.balance);
   deskSetMoney(document.getElementById('dEquity'),tradingActive ? null : data.equity);
   const startingBalance = deskNumber(data.starting_balance);
@@ -5873,56 +5878,67 @@ function renderDeskSessionAnalytics(trades){
     if(pnl > 0) session.wins += 1;
   });
 
-  const flipCard = document.createElement('div');
-  flipCard.className = 'desk-session-card';
-  const inner = document.createElement('div');
-  inner.className = 'desk-session-card-inner';
-  const front = document.createElement('div');
-  front.className = 'desk-session-face';
-
-  const frontTitle = document.createElement('h5');
-  frontTitle.className = 'desk-session-face-title';
-  frontTitle.textContent = 'Session edge matrix';
-  front.appendChild(frontTitle);
-  const table = document.createElement('table');
-  table.className = 'desk-session-table';
-  const tableHead = document.createElement('thead');
-  const headerRow = document.createElement('tr');
-  ['Session','Trades','Win rate','Avg R','Net P&L'].forEach(label=>{
-    const cell = document.createElement('th');
-    cell.scope = 'col';
-    cell.textContent = label;
-    headerRow.appendChild(cell);
-  });
-  tableHead.appendChild(headerRow);
-  table.appendChild(tableHead);
-  const tableBody = document.createElement('tbody');
+  const grid = document.createElement('div');
+  grid.className = 'desk-session-grid';
   sessions.forEach(session=>{
-    const row = document.createElement('tr');
-    const name = document.createElement('td');
+    const winRate = session.knownPnlTrades
+      ? session.wins / session.knownPnlTrades * 100
+      : null;
+    const card = document.createElement('article');
+    card.className = 'desk-session-summary';
+    const gauge = document.createElement('div');
+    gauge.className = 'desk-session-gauge';
+    gauge.setAttribute('aria-hidden','true');
+    gauge.style.setProperty('--desk-session-gauge-color',
+      winRate === null ? 'var(--mu)' : winRate >= 60 ? 'var(--up)' : winRate < 45 ? 'var(--dn)' : 'var(--ac)'
+    );
+    const gaugeSvg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    gaugeSvg.setAttribute('viewBox','0 0 120 80');
+    gaugeSvg.setAttribute('focusable','false');
+    const gaugeTrack = document.createElementNS('http://www.w3.org/2000/svg','path');
+    gaugeTrack.setAttribute('class','desk-session-gauge-track');
+    gaugeTrack.setAttribute('d','M 12 70 A 48 48 0 0 1 108 70');
+    const gaugeValue = document.createElementNS('http://www.w3.org/2000/svg','path');
+    gaugeValue.setAttribute('class','desk-session-gauge-value');
+    gaugeValue.setAttribute('d','M 12 70 A 48 48 0 0 1 108 70');
+    gaugeValue.setAttribute('pathLength','100');
+    gaugeValue.setAttribute('stroke-dasharray',String(winRate === null ? 0 : winRate) + ' 100');
+    gaugeSvg.append(gaugeTrack,gaugeValue);
+    gauge.appendChild(gaugeSvg);
+    const gaugeLabel = document.createElement('span');
+    gaugeLabel.className = 'desk-session-gauge-rate';
+    gaugeLabel.textContent = winRate === null ? '—' : winRate.toFixed(0) + '%';
+    const gaugeCaption = document.createElement('span');
+    gaugeCaption.className = 'desk-session-gauge-caption';
+    gaugeCaption.textContent = 'Win rate';
+    gauge.append(gaugeLabel,gaugeCaption);
+
+    const details = document.createElement('div');
+    details.className = 'desk-session-details';
+    const name = document.createElement('h5');
+    name.className = 'desk-session-name';
     name.textContent = session.name;
-    const count = document.createElement('td');
-    count.textContent = String(session.trades);
-    const winRate = document.createElement('td');
-    winRate.textContent = session.knownPnlTrades
-      ? (session.wins / session.knownPnlTrades * 100).toFixed(0) + '%'
-      : '—';
-    const averageR = document.createElement('td');
-    averageR.textContent = '—';
-    const net = document.createElement('td');
+    const metrics = document.createElement('div');
+    metrics.className = 'desk-session-metrics';
+    const tradesMetric = document.createElement('div');
+    const tradesLabel = document.createElement('span');
+    tradesLabel.textContent = 'Trades';
+    const tradesValue = document.createElement('strong');
+    tradesValue.textContent = String(session.trades);
+    tradesMetric.append(tradesLabel,tradesValue);
+    metrics.appendChild(tradesMetric);
+    const net = document.createElement('strong');
+    net.className = 'desk-session-net';
     if(session.trades && session.pnlComplete) deskSetSessionPnl(net,session.netPnl);
     else net.textContent = '—';
     if(session.trades && session.pnlComplete && session.netPnl !== 0){
-      net.classList.add(session.netPnl > 0 ? 'desk-session-positive' : 'desk-session-negative');
+      net.classList.add(session.netPnl > 0 ? 'is-positive' : 'is-negative');
     }
-    row.append(name,count,winRate,averageR,net);
-    tableBody.appendChild(row);
+    details.append(name,metrics,net);
+    card.append(gauge,details);
+    grid.appendChild(card);
   });
-  table.appendChild(tableBody);
-  front.appendChild(table);
-  inner.appendChild(front);
-  flipCard.appendChild(inner);
-  container.appendChild(flipCard);
+  container.appendChild(grid);
 }
 function formatDeskSessionPnl(value){
   if(deskCompactMoneyQuery.matches) return deskCompactMoney(value,true).replace('$','');
