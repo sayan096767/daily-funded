@@ -838,7 +838,8 @@ test('dashboard retries paid pending provisioning and reloads the actual engine 
   assert.equal(requests[1].options.headers.Authorization, 'Bearer test-token');
   assert.equal(context.dashboardAccounts[0].tradingEngineAccountId, 'ACC_11111111-1111-4111-8111-111111111111');
   assert.match(checkoutHtml, /Payment verified\. Account provisioning is pending/);
-  assert.match(checkoutHtml, /id="accountEngineId"/);
+  assert.doesNotMatch(checkoutHtml, /id="accountEngineId"/);
+  assert.doesNotMatch(checkoutHtml, /ENGINE ['"] \+ data\.tradingEngineAccountId/);
   assert.doesNotMatch(checkoutHtml, /MT5 password|trading credentials/i);
 });
 

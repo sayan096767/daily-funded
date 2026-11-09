@@ -221,8 +221,6 @@ try{
   @media(prefers-reduced-motion:reduce){.ticker-track{animation:none;}}
 
   /* Dashboard */
-  #dashboard{display:none;}
-  #dashboard.active{display:grid; grid-template-columns:248px minmax(0,1fr); min-height:100vh; background:var(--bg);}
   body.dashboard-open>header{display:none;}
   body.dashboard-open #dfWorkspacePreview,
   body.dashboard-open .payout-mission-banner,
@@ -231,34 +229,7 @@ try{
   body.dashboard-open .df-human-support,
   body.dashboard-open #faq,
   #dashboard .desk-objectives-banner{display:none!important;}
-  .dashboard-sidebar{position:fixed; top:0; bottom:0; left:0; display:flex; flex-direction:column; width:248px; height:100vh; padding:22px 14px 16px; border-right:1px solid var(--panel-b); background:#0d1310; z-index:5;}
-  .dashboard-brand{display:flex; align-items:center; gap:10px; padding:2px 9px 23px; color:var(--text); font-size:13px; font-weight:800; white-space:nowrap;}
-  .dashboard-brand b{color:var(--green);}
-  .dashboard-brand-mark{display:grid; place-items:center; width:34px; height:34px; flex:0 0 34px; overflow:hidden; border:1px solid rgba(62,207,126,.36); border-radius:8px; background: url("./crazy-funded-logo.png") center / contain no-repeat; box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 3px 9px rgba(0,0,0,.25);}
-  .dashboard-brand-mark svg{display:none;}
-  .dashboard-sidebar-label{padding:9px 11px 8px; color:var(--sub-dim); font-size:9px; font-weight:700;}
-  .dashboard-side-nav{display:grid; gap:4px;}
-  .dashboard-side-nav a{display:flex; align-items:center; gap:11px; min-height:42px; padding:0 11px; border-radius:6px; color:var(--sub); font-size:12.5px; transition:background .16s ease,color .16s ease;}
-  .dashboard-side-nav a:hover{background:rgba(255,255,255,.04); color:var(--text);}
-  .dashboard-side-nav a.active{background:rgba(62,207,126,.12); color:var(--green);}
-  .dashboard-side-nav a.dashboard-trade-link{margin-top:10px; border:1px solid rgba(62,207,126,.35); background:rgba(62,207,126,.1); color:var(--green); font-weight:800; letter-spacing:.08em;}
-  .dashboard-side-nav a.dashboard-trade-link:hover{background:rgba(62,207,126,.18); color:#a5f0bf;}
-  .dashboard-nav-mark{display:grid; place-items:center; width:28px; height:28px; flex:0 0 28px; border:1px solid rgba(255,255,255,.08); border-radius:7px; background:linear-gradient(145deg,#202c25,#111814); box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 2px 5px rgba(0,0,0,.22); color:var(--icon-color,#7fc99a); transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease;}
-  .dashboard-nav-mark svg{display:block; width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));}
-  .dashboard-side-nav a:hover .dashboard-nav-mark{transform:translateY(-1px); border-color:rgba(255,255,255,.2); box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 4px 9px rgba(0,0,0,.3);}
-  .dashboard-side-nav a.active .dashboard-nav-mark{border-color:rgba(62,207,126,.4); background:linear-gradient(145deg,#23412e,#122319); box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 0 12px rgba(62,207,126,.12);}
-  .dashboard-nav-desk{--icon-color:#68d99b;}
-  .dashboard-nav-rewards{--icon-color:#e8c65d;}
-  .dashboard-nav-competitions{--icon-color:#f29b61;}
-  .dashboard-nav-calendar{--icon-color:#81c7e5;}
-  .dashboard-nav-leaderboard{--icon-color:#e8c65d;}
-  .dashboard-sidebar-foot{display:grid; gap:13px; margin-top:auto; padding:14px 10px 4px; border-top:1px solid var(--panel-b); color:var(--sub-dim); font-size:10px;}
-  .dashboard-sidebar-foot a{color:var(--sub); font-size:12px;}
-  .dashboard-sidebar-foot a:hover{color:var(--text);}
-  .dashboard-sidebar-status{display:flex; align-items:center; gap:7px;}
-  .dashboard-sidebar-status::before{content:''; width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 0 3px rgba(62,207,126,.1);}
-  #dashboard .dashboard-main.wrap{width:100%; max-width:1280px; margin:0 auto; padding:32px 34px;}
-  #dashboard .dashboard-main{grid-column:2;}
+
   .rewards-view,.competitions-view{min-width:0;}
   .competition-empty{display:grid; place-items:center; min-height:250px; padding:28px; text-align:center;}
   .competition-empty-mark{display:grid; place-items:center; width:44px; height:44px; margin-bottom:12px; border:1px solid rgba(230,195,77,.28); border-radius:50%; color:var(--gold); font-size:20px;}
@@ -321,385 +292,9 @@ try{
   .referrals-history-table th{color:var(--sub-dim); font-weight:500;}
   .referrals-history-table td:last-child{color:var(--sub); text-align:left;}
   .referral-activity-copy{min-height:32px; padding:0 10px; font-size:10px;}
-  .dash-top{display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px; margin-bottom:26px;}
-  .dash-select{display:flex; gap:8px; align-items:center; font-size:13px; color:var(--sub);}
-  .dash-select select{color-scheme:dark; background:var(--panel); color:var(--text); border:1px solid var(--panel-b); border-radius:7px; padding:8px 10px; font-family:inherit; font-size:13px;}
-  .dash-select select option{background:#111813; color:#eef1ef;}
-  .account-select-picker{position:relative; display:inline-flex; min-width:0;}
-  .account-select-native{position:absolute!important; width:1px!important; height:1px!important; padding:0!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important;}
-  .account-select-trigger{position:relative; isolation:isolate; display:inline-flex; align-items:center; justify-content:space-between; gap:10px; min-width:220px; max-width:min(320px,calc(100vw - 96px)); padding:10px 13px; overflow:hidden; border:1px solid rgba(169,255,201,.52); border-radius:11px; background:linear-gradient(115deg,rgba(52,112,73,.68),rgba(28,66,44,.72) 48%,rgba(16,35,24,.78)); -webkit-backdrop-filter:blur(14px) saturate(150%); backdrop-filter:blur(14px) saturate(150%); box-shadow:inset 0 1px 0 rgba(255,255,255,.34),inset 0 -1px 0 rgba(0,0,0,.25),0 8px 22px rgba(0,0,0,.35),0 0 18px rgba(62,207,126,.13); color:#f5fff7; font:600 15px 'Inter',system-ui,sans-serif; text-align:left; cursor:pointer; transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease;}
-  .account-select-trigger::before{position:absolute; z-index:-1; top:0; right:0; left:0; height:48%; border-radius:inherit; background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,0)); content:""; pointer-events:none;}
-  .account-select-trigger:hover,.account-select-trigger[aria-expanded="true"]{transform:translateY(-1px); border-color:rgba(142,255,190,.72); box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -1px 0 rgba(0,0,0,.35),0 10px 25px rgba(0,0,0,.4),0 0 0 3px rgba(62,207,126,.1),0 0 22px rgba(62,207,126,.2);}
-  .account-select-trigger:focus-visible{outline:2px solid var(--green); outline-offset:2px;}
-  .account-select-trigger-copy{display:grid; gap:3px; min-width:0;}
-  .account-select-trigger-value{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .account-select-trigger-status{color:#e1eee5; font-size:13px; font-weight:700;}
-  .account-select-chevron{width:16px; height:16px; flex:0 0 16px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; transition:transform .16s ease;}
-  .account-select-trigger[aria-expanded="true"] .account-select-chevron{transform:rotate(180deg);}
-  .account-select-list{position:fixed; z-index:50; width:min(320px,calc(100vw - 24px)); max-height:min(320px,calc(100dvh - 24px)); overflow-y:auto; padding:7px; border:1px solid rgba(169,255,201,.48); border-radius:14px; background:linear-gradient(145deg,rgba(42,78,52,.82),rgba(21,43,29,.84) 48%,rgba(12,25,17,.88)); -webkit-backdrop-filter:blur(18px) saturate(155%); backdrop-filter:blur(18px) saturate(155%); box-shadow:inset 0 1px 0 rgba(255,255,255,.26),inset 0 -1px 0 rgba(0,0,0,.3),0 20px 48px rgba(0,0,0,.68),0 0 24px rgba(62,207,126,.15); scrollbar-color:#64856d #111813; scrollbar-width:thin;}
-  .account-select-list[hidden]{display:none;}
-  .account-select-option{position:relative; display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; min-height:54px; padding:10px 10px 10px 13px; border:1px solid transparent; border-radius:9px; background:linear-gradient(100deg,rgba(255,255,255,.025),rgba(255,255,255,0)); color:#f5fff7; font:inherit; text-align:left; cursor:pointer; transition:border-color .15s ease,background .15s ease,transform .15s ease;}
-  .account-select-option:hover,.account-select-option:focus-visible{transform:translateY(-1px); border-color:rgba(174,220,187,.32); outline:none; background:linear-gradient(100deg,rgba(255,255,255,.09),rgba(255,255,255,.025));}
-  .account-select-option[aria-selected="true"]{border-color:rgba(106,239,157,.48); background:linear-gradient(100deg,rgba(62,207,126,.22),rgba(62,207,126,.07)); box-shadow:inset 0 1px 0 rgba(255,255,255,.11),0 0 14px rgba(62,207,126,.09);}
-  .account-select-option[aria-selected="true"]::before{position:absolute; top:8px; bottom:8px; left:0; width:3px; border-radius:99px; background:linear-gradient(180deg,#a2ffc0,#39d77d); content:"";}
-  .account-select-option-copy{display:grid; gap:3px; min-width:0;}
-  .account-select-option-title{overflow:hidden; color:#f5fff7; font-size:16px; font-weight:750; text-overflow:ellipsis; white-space:nowrap;}
-  .account-select-option-plan{color:#e0ebe3; font-size:14px;}
-  .account-select-option-status{flex:0 0 auto; padding:5px 8px; border:1px solid rgba(189,201,192,.35); border-radius:99px; background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,.025)); color:#edf5ef; font-size:12px; font-weight:800; letter-spacing:.025em; box-shadow:inset 0 1px 0 rgba(255,255,255,.1);}
-  .account-select-option-status.is-active{border-color:rgba(62,207,126,.56); background:linear-gradient(180deg,rgba(62,207,126,.24),rgba(62,207,126,.1)); color:#a1ffc0;}
-  .account-select-option-status.is-rejected{border-color:rgba(224,120,112,.56); background:linear-gradient(180deg,rgba(224,120,112,.23),rgba(224,120,112,.09)); color:#ffc0ba;}
-  .account-select-option-status.is-pending{border-color:rgba(230,195,77,.56); background:linear-gradient(180deg,rgba(230,195,77,.22),rgba(230,195,77,.08)); color:#ffebaa;}
-  .dash-cards{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px;}
-  .dcard{border:1px solid var(--panel-b); border-radius:var(--radius); padding:18px; background:var(--panel);}
-  .dcard .dlbl{font-size:12px; color:var(--sub-dim); margin-bottom:6px;}
-  .dcard .dval{font-size:20px; font-weight:800;}
-  .dcard .dval.up{color:var(--green);}
-  @media(max-width:760px){.dash-cards{grid-template-columns:repeat(2,1fr);}}
   .dash-panel{border:1px solid var(--panel-b); border-radius:var(--radius); padding:22px; background:var(--panel); margin-bottom:16px;}
   .dash-panel h4{font-size:14px; margin-bottom:14px;}
-  .prog-row{margin-bottom:16px;}
-  .prog-row .prow-top{display:flex; justify-content:space-between; font-size:12.5px; color:var(--sub); margin-bottom:6px;}
-  .prow-top b{color:var(--text);}
-  .prog-track{height:8px; border-radius:99px; background:var(--panel-b); overflow:hidden;}
-  .prog-fill{height:100%; border-radius:99px; background:linear-gradient(90deg,var(--green),#4fe092); transition:width .4s ease;}
-  .prog-fill.danger{background:linear-gradient(90deg,#e06a5a,#e6a34d);}
-  .dash-foot{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;}
-  .dash-close{font-size:13px; color:var(--sub); cursor:pointer; background:none; border:none; font-family:inherit;}
-  .dash-close:hover{color:var(--text);}
-  @media(max-width:760px){#dashboard.active{grid-template-columns:minmax(0,1fr); align-content:start;}.dashboard-sidebar,.dashboard-main{min-width:0;}#dashboard .dashboard-main{grid-column:1;}.dashboard-sidebar{position:sticky; top:0; bottom:auto; left:auto; width:auto; height:auto; padding:11px 14px 9px; border-right:0; border-bottom:1px solid var(--panel-b);}.dashboard-brand{padding:0 4px 10px;}.dashboard-sidebar-label,.dashboard-sidebar-status{display:none;}.dashboard-sidebar-foot{display:flex; justify-content:flex-end; margin-top:8px; padding:5px 4px 0; border-top:0;}.dashboard-side-nav{display:flex; width:100%; min-width:0; gap:4px; overflow-x:auto; scrollbar-width:thin;}.dashboard-side-nav a{flex:0 0 auto; min-height:36px; padding:0 9px; font-size:11px;}.dashboard-nav-mark{width:23px; height:23px; flex-basis:23px;}.dashboard-nav-mark svg{width:13px; height:13px;}#dashboard .dashboard-main.wrap{padding:22px 16px;}.rewards-overview{grid-template-columns:1fr;}.rewards-panel{padding:17px;}.rewards-action{min-height:0;}.referral-stat-grid{gap:8px;}.referral-stat{padding:14px;}.referral-stat strong{font-size:23px;}.reward-certificate-stage .payout-certificate{grid-template-columns:78px minmax(0,1fr); gap:6px; padding:9px;}.reward-certificate-stage .payout-trophy{min-height:230px;}.reward-certificate-stage .payout-trophy-art{width:65px;}.reward-certificate-stage .payout-certificate-title{font-size:17px;}}
   @media(max-width:420px){.referral-stat-grid{grid-template-columns:1fr;}.referral-link-row{flex-direction:column;}.referral-link-copy{width:100%;}}
-  .account-banner{display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap; padding:24px; margin-bottom:14px; border:1px solid #294134; border-left:3px solid var(--green); border-radius:var(--radius); background:linear-gradient(115deg,#15221b,#101512 62%,#1b2921);}
-  .account-kicker,.panel-kicker{font-size:10px; letter-spacing:.08em; font-weight:700; color:var(--green);}
-  .account-banner h3{font-size:26px; margin:7px 0 4px;}
-  .account-banner p{font-size:12.5px; color:var(--sub);}
-  .account-badges{display:flex; flex-wrap:wrap; gap:7px;}
-  .account-badge{padding:6px 9px; border:1px solid var(--panel-b); border-radius:5px; color:var(--sub); font-size:10px; font-weight:700;}
-  .account-badge.active{border-color:rgba(62,207,126,.3); color:var(--green); background:rgba(62,207,126,.08);}
-  .account-stat-grid{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:14px;}
-  .account-stat{padding:16px; border:1px solid var(--panel-b); border-radius:var(--radius); background:var(--panel); min-width:0;}
-  .account-stat span{display:block; font-size:11px; color:var(--sub-dim); margin-bottom:9px;}
-  .account-stat b{font-size:20px; font-variant-numeric:tabular-nums;}
-  .account-stat b.up{color:var(--green);}
-  .desk-panel{border:1px solid var(--panel-b); border-radius:var(--radius); padding:20px; background:var(--panel); min-width:0;}
-  .dashboard-rules-panel{margin:4px 0 14px; padding:12px; border:1px solid var(--panel-b); border-radius:var(--radius); background:var(--panel);}
-  .dashboard-rules-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:8px;}
-  .dashboard-rules-head h4{margin:0; font-size:13px;}
-  .dashboard-rules-note{color:var(--sub-dim); font-size:10px;}
-  .dashboard-rule-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,132px),1fr)); gap:8px; margin:0; padding:0; list-style:none;}
-  .dashboard-rule-item{display:flex; align-items:center; min-width:0; min-height:32px; gap:8px; padding:7px 8px; border:1px solid var(--panel-b); border-radius:6px; color:var(--text); font-size:11px; line-height:1.35; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
-  .dashboard-rule-item::before{content:''; width:5px; height:5px; flex:0 0 5px; border-radius:50%; background:var(--green);}
-  .dashboard-workspace-grid,.dashboard-analytics-grid{display:grid; grid-template-columns:minmax(0,.82fr) minmax(0,1.6fr); gap:12px; margin-top:12px;}
-  .dashboard-analytics-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
-  .desk-dashboard-panel{min-width:0; padding:14px; border:1px solid var(--panel-b); border-radius:var(--radius); background:var(--panel);}
-  .desk-dashboard-panel.desk-objectives-panel{align-self:start; padding:0; border:0; background:transparent;}
-  .desk-dashboard-panel h4{margin:0; font-size:12px;}
-  .desk-data-panel-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:11px;}
-  .desk-panel-note{color:var(--sub-dim); font-size:9px; text-align:right;}
-  .desk-objectives{display:grid; gap:10px; padding:15px; border:1px solid var(--panel-b); border-radius:9px; background:#121a16;}
-  .desk-objectives-title{margin:0 0 1px; color:var(--text); font-size:13px; font-weight:700;}
-  .desk-objective{display:flex; align-items:center; justify-content:space-between; min-width:0; gap:12px;}
-  .desk-objective-copy{min-width:0;}
-  .desk-objective-name{display:block; color:var(--text); font-size:11px; line-height:1.35;}
-  .desk-objective-value{display:block; margin-top:4px; color:var(--sub); font-size:10px; line-height:1.4; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
-  .desk-objective-status{flex:0 0 auto; padding:5px 9px; border:1px solid rgba(246,191,67,.4); border-radius:99px; background:rgba(246,191,67,.08); color:#f6bf43; font-size:9px; font-weight:700; white-space:nowrap;}
-  .desk-objective-status.is-passed,.desk-objective-status.is-safe{border-color:rgba(41,216,132,.38); background:rgba(41,216,132,.08); color:#29d884;}
-  .desk-objective-status.is-alert{border-color:rgba(224,106,90,.45); background:rgba(224,106,90,.09); color:#e07870;}
-  .desk-objective-status.is-unavailable,.desk-objective-status.is-not-required{border-color:var(--panel-b); background:rgba(0,0,0,.1); color:var(--sub-dim);}
-  .desk-objectives-empty{padding:16px 8px; color:var(--sub-dim); text-align:center; font-size:10px; line-height:1.5;}
-  .desk-chart{position:relative; display:grid; min-height:204px; place-items:center; overflow:hidden; border:1px solid var(--panel-b); border-radius:6px; background-color:#101512; background-image:linear-gradient(rgba(147,161,154,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(147,161,154,.08) 1px,transparent 1px); background-size:100% 25%,20% 100%;}
-  .desk-chart-empty{max-width:280px; padding:18px; color:var(--sub); text-align:center; font-size:11px; line-height:1.6;}
-  .desk-chart-empty strong{display:block; margin-bottom:5px; color:var(--text); font-size:12px;}
-  .desk-performance-summary{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; margin-bottom:9px;}
-  .desk-performance-panel{position:relative;}
-  .desk-performance-stat{min-width:0; padding:7px 8px; border:1px solid var(--panel-b); border-radius:5px; background:rgba(0,0,0,.12);}
-  .desk-performance-stat span{display:block; margin-bottom:4px; color:var(--sub-dim); font-size:8px; letter-spacing:.035em; text-transform:uppercase;}
-  .desk-performance-stat strong{display:block; overflow-wrap:anywhere; color:var(--text); font-size:11px; font-variant-numeric:tabular-nums;}
-  .desk-performance-stat strong.is-positive{color:var(--green);}
-  .desk-performance-stat strong.is-negative{color:#e07870;}
-  .desk-performance-stat strong.is-current{color:#81c7e5;}
-  .desk-performance-tools{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;}
-  .desk-performance-kind{color:var(--sub-dim); font-size:9px;}
-  .desk-performance-filters{display:flex; gap:4px;}
-  .desk-performance-filter{min-width:32px; padding:5px 7px; border:1px solid var(--panel-b); border-radius:4px; background:transparent; color:var(--sub); font-family:inherit; font-size:9px; font-weight:600; cursor:pointer;}
-  .desk-performance-filter:hover:not(:disabled),.desk-performance-filter[aria-pressed="true"]{border-color:rgba(62,207,126,.45); background:rgba(62,207,126,.1); color:var(--green);}
-  .desk-performance-filter:disabled{opacity:.4; cursor:not-allowed;}
-  .desk-chart-live{display:flex; align-items:center; gap:5px; color:var(--sub-dim); font-size:9px;}
-  .desk-chart-live::before{content:''; width:6px; height:6px; border-radius:50%; background:var(--blue,#81c7e5);}
-  .desk-chart-plot{display:block; width:100%; height:clamp(180px,22vw,250px); overflow:visible;}
-  .desk-chart-grid-line{stroke:rgba(147,161,154,.12); stroke-width:1;}
-  .desk-chart-axis-label{fill:var(--sub-dim); font:10px 'JetBrains Mono',monospace;}
-  .desk-chart-segment{fill:none; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke;}
-  .desk-chart-segment.is-positive{stroke:var(--green);}
-  .desk-chart-segment.is-negative{stroke:#e07870;}
-  .desk-chart-point{stroke:#101512; stroke-width:2; vector-effect:non-scaling-stroke; cursor:crosshair;}
-  .desk-chart-point.is-positive{fill:var(--green);}
-  .desk-chart-point.is-negative{fill:#e07870;}
-  .desk-chart-point.is-start{fill:var(--gold);}
-  .desk-chart-point:focus{stroke:var(--text); stroke-width:2.5; outline:none;}
-  .desk-chart-tooltip{position:absolute; z-index:2; max-width:min(240px,80%); padding:7px 9px; border:1px solid var(--panel-b); border-radius:5px; background:#0b100d; box-shadow:0 4px 14px rgba(0,0,0,.4); color:var(--text); font-size:10px; line-height:1.5; pointer-events:none; transform:translate(-50%,-110%);}
-  .desk-chart-tooltip[hidden]{display:none;}
-  .desk-chart-tooltip strong,.desk-chart-tooltip span{display:block; white-space:nowrap;}
-  .desk-chart-tooltip span{color:var(--sub);}
-  .desk-chart-foot{display:flex; justify-content:space-between; gap:8px; margin-top:5px; color:var(--sub-dim); font:9px 'JetBrains Mono',monospace;}
-  .desk-chart-legend{display:flex; flex-wrap:wrap; gap:12px; margin-top:7px; color:var(--sub-dim); font-size:9px;}
-  .desk-chart-legend[hidden]{display:none;}
-  .desk-chart-legend span{display:inline-flex; align-items:center; gap:5px;}
-  .desk-chart-legend i{width:8px; height:2px; background:var(--green);}
-  .desk-metrics-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px;}
-  .desk-stat-highlight{grid-column:1/-1; display:grid; grid-template-columns:minmax(0,1fr) minmax(100px,.85fr); align-items:center; gap:14px; min-width:0; padding:13px; border:1px solid rgba(62,207,126,.24); border-radius:8px; background:radial-gradient(ellipse at 0 0,rgba(62,207,126,.11),transparent 68%),#101713;}
-  .desk-stat-highlight-label{display:block; margin-bottom:6px; color:var(--sub-dim); font-size:9px; font-weight:700; letter-spacing:.075em; text-transform:uppercase;}
-  .desk-stat-highlight-value{display:block; color:var(--text); font-size:clamp(19px,2.2vw,25px); font-variant-numeric:tabular-nums; line-height:1.15; overflow-wrap:anywhere;}
-  .desk-stat-highlight-value.is-positive,.desk-stat-highlight-meter-value.is-positive{color:var(--green);}
-  .desk-stat-highlight-value.is-negative,.desk-stat-highlight-meter-value.is-negative{color:#e07870;}
-  .desk-stat-highlight-meta{margin-top:5px; color:var(--sub-dim); font-size:9px;}
-  .desk-stat-highlight-meter{min-width:0; padding-left:14px; border-left:1px solid rgba(147,161,154,.13);}
-  .desk-stat-highlight-meter-top{display:flex; align-items:baseline; justify-content:space-between; gap:6px; margin-bottom:8px;}
-  .desk-stat-highlight-meter-label{color:var(--sub-dim); font-size:9px;}
-  .desk-stat-highlight-meter-value{color:var(--text); font-size:13px; font-weight:700; font-variant-numeric:tabular-nums;}
-  .desk-stat-winloss-track{display:flex; height:6px; overflow:hidden; border-radius:99px; background:rgba(147,161,154,.16);}
-  .desk-stat-winloss-wins{background:var(--green);}
-  .desk-stat-winloss-losses{background:#e07870;}
-  .desk-stat-highlight-meter-note{margin-top:5px; color:var(--sub-dim); font-size:8px;}
-  .desk-metric{position:relative; min-width:0; min-height:56px; padding:9px 10px; overflow:hidden; border-color:rgba(147,161,154,.12); background:linear-gradient(145deg,rgba(255,255,255,.025),rgba(0,0,0,.12));}
-  .desk-metric::before{position:absolute; top:0; left:9px; width:18px; height:2px; border-radius:0 0 2px 2px; background:rgba(147,161,154,.32); content:'';}
-  .desk-metric.is-positive::before{background:var(--green);}
-  .desk-metric.is-negative::before{background:#e07870;}
-  .desk-metric span{display:block; margin-bottom:5px; color:var(--sub-dim); font-size:8px; letter-spacing:.055em; text-transform:uppercase;}
-  .desk-metric strong{display:block; overflow-wrap:anywhere; color:var(--text); font-size:12px; font-variant-numeric:tabular-nums;}
-  .desk-metric strong.is-positive{color:var(--green);}
-  .desk-metric strong.is-negative{color:#e07870;}
-  .desk-statistics-empty{padding:27px 14px; border:1px dashed rgba(147,161,154,.18); border-radius:8px; background:rgba(0,0,0,.08);}
-  @media(max-width:420px){.desk-stat-highlight{grid-template-columns:minmax(0,1fr); gap:11px;}.desk-stat-highlight-meter{padding:0; border-left:0;}.desk-metrics-grid{gap:6px;}.desk-metric{padding:8px;}}
-  .desk-calendar-panel{grid-column:1/-1;}
-  #deskActivityCalendar{container:desk-activity / inline-size;}
-  .desk-calendar-shell{padding:14px; border:1px solid var(--panel-b); border-radius:9px; background:#121a16;}
-  .desk-calendar-caption{display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:10px; color:var(--text); font-size:12px; font-weight:700;}
-  .desk-calendar-net{color:var(--sub-dim); font-size:10px; font-weight:500; white-space:nowrap;}
-  .desk-calendar-net.is-positive{color:var(--green); font-weight:700;}
-  .desk-calendar-net.is-negative{color:#e07870; font-weight:700;}
-  .desk-calendar-grid{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px;}
-  .desk-calendar-weekday,.desk-calendar-day{display:flex; min-width:0; border-radius:6px; font-size:9px;}
-  .desk-calendar-weekday{min-height:20px; align-items:center; justify-content:center; color:var(--sub-dim); font-weight:600;}
-  .desk-calendar-day{min-height:49px; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:5px; padding:6px; border:1px solid transparent; background:#0b100d; color:var(--sub); font-variant-numeric:tabular-nums;}
-  .desk-calendar-day[aria-hidden="true"]{background:transparent;}
-  .desk-calendar-date{color:#cbd3ce; font-size:9px; line-height:1;}
-  .desk-calendar-pnl{color:#a8b2ac; font-size:10px; font-weight:700; line-height:1.1; white-space:nowrap;}
-  .desk-calendar-day.has-profit{border-color:rgba(62,207,126,.46); background:rgba(62,207,126,.12);}
-  .desk-calendar-day.has-profit .desk-calendar-pnl{color:var(--green);}
-  .desk-calendar-day.has-loss{border-color:rgba(224,106,90,.5); background:rgba(224,106,90,.12);}
-  .desk-calendar-day.has-loss .desk-calendar-pnl{color:#e07870;}
-  .desk-calendar-day.has-mixed{border-color:rgba(230,195,77,.5); background:rgba(230,195,77,.1);}
-  .desk-calendar-day.has-mixed .desk-calendar-pnl{color:var(--gold);}
-  .desk-calendar-empty{margin-top:8px; color:var(--sub-dim); text-align:center; font-size:9px;}
-  @container desk-activity (max-width:560px){.desk-calendar-shell{padding:10px;}.desk-calendar-grid{gap:4px;}.desk-calendar-day{min-height:44px; padding:5px 4px;}.desk-calendar-pnl{font-size:9px;}}
-  @container desk-activity (max-width:360px){.desk-calendar-day{padding:5px 2px;}.desk-calendar-pnl{font-size:8px;}}
-  .desk-panel-empty{padding:21px 12px; color:var(--sub); text-align:center; font-size:11px; line-height:1.55;}
-  .desk-panel-error{color:#e6a39c;}
-  .desk-session-card{perspective:900px;}
-  .desk-session-card-inner{position:relative; min-height:226px; transform-style:preserve-3d; transition:transform .55s cubic-bezier(.2,.7,.2,1);}
-  .desk-session-card.is-flipped .desk-session-card-inner{transform:rotateY(180deg);}
-  .desk-session-face{position:absolute; inset:0; display:flex; flex-direction:column; padding:14px; overflow:hidden; border:1px solid var(--panel-b); border-radius:9px; background:#121a16; cursor:pointer; backface-visibility:hidden; -webkit-backface-visibility:hidden;}
-  .desk-session-face-back{transform:rotateY(180deg); border-color:rgba(62,207,126,.46);}
-  .desk-session-face-title{margin:0 0 12px; color:var(--text); font-size:12px; font-weight:700;}
-  .desk-session-table{width:100%; border-collapse:collapse; table-layout:fixed; text-align:left; font-size:10px;}
-  .desk-session-table th{padding:7px 5px; border-bottom:1px solid var(--panel-b); color:var(--sub-dim); font-size:9px; font-weight:600; white-space:nowrap;}
-  .desk-session-table td{padding:10px 5px; border-bottom:1px solid rgba(30,37,33,.72); color:var(--text); font-variant-numeric:tabular-nums; white-space:nowrap;}
-  .desk-session-table tr:last-child td{border-bottom:0;}
-  .desk-session-table th:not(:first-child),.desk-session-table td:not(:first-child){text-align:right;}
-  .desk-session-table td:first-child{font-weight:500;}
-  .desk-session-positive{color:var(--green)!important;}
-  .desk-session-negative{color:#e07870!important;}
-  .desk-session-note{margin-top:auto; padding-top:8px; color:var(--sub-dim); font-size:9px; line-height:1.4;}
-  .desk-session-flip-button{display:block; align-self:flex-end; margin:7px 0 0; padding:2px 0; border:0; background:transparent; color:var(--sub); font:inherit; font-size:9px; text-align:right; cursor:pointer;}
-  .desk-session-flip-button:hover,.desk-session-flip-button:focus-visible{color:var(--green); text-decoration:underline;}
-  .desk-session-flip-button:focus-visible{outline:2px solid var(--green); outline-offset:3px;}
-  .desk-session-bars{display:grid; gap:0;}
-  .desk-session-bar-row{display:grid; grid-template-columns:82px minmax(0,1fr) 42px; align-items:center; gap:9px; min-height:55px; border-bottom:1px solid rgba(30,37,33,.72);}
-  .desk-session-bar-row:last-child{border-bottom:0;}
-  .desk-session-bar-name{color:var(--text); font-size:10px;}
-  .desk-session-bar-track{height:10px; overflow:hidden; border-radius:99px; background:#26322c;}
-  .desk-session-bar-fill{height:100%; border-radius:inherit; background:#29d884;}
-  .desk-session-bar-fill.is-low{background:#f6bf43;}
-  .desk-session-bar-value{color:var(--green); font-size:11px; font-weight:700; text-align:right; font-variant-numeric:tabular-nums;}
-  .desk-session-bar-value.is-low{color:#f6bf43;}
-  .desk-session-empty{display:grid; min-height:122px; place-items:center; color:var(--sub-dim); text-align:center; font-size:10px;}
-  @media(max-width:760px){.desk-session-face{padding:12px;}.desk-session-bar-row{grid-template-columns:70px minmax(0,1fr) 38px; gap:7px;}}
-  .desk-data-table-wrap{overflow-x:auto; overscroll-behavior-inline:contain;}
-  .desk-data-table{width:100%; min-width:590px; border-collapse:collapse; text-align:left; font-size:10px;}
-  .desk-data-table th{padding:8px 9px; border-bottom:1px solid var(--panel-b); color:var(--sub-dim); font-size:9px; font-weight:600; white-space:nowrap; text-transform:uppercase; letter-spacing:.035em;}
-  .desk-data-table td{padding:8px 9px; border-bottom:1px solid rgba(30,37,33,.72); color:var(--sub); white-space:nowrap; font-variant-numeric:tabular-nums;}
-  .desk-data-table tbody tr:last-child td{border-bottom:0;}
-  .desk-data-table td:first-child{color:var(--text); font-weight:600;}
-  .desk-side-buy,.desk-pnl-positive{color:var(--green)!important;}
-  .desk-side-sell,.desk-pnl-negative{color:#e07870!important;}
-  .desk-data-panels-stack{display:grid; gap:12px; margin-top:12px;}
-  @media(max-width:900px){.dashboard-workspace-grid,.dashboard-analytics-grid{grid-template-columns:minmax(0,1fr);}.desk-chart{min-height:190px;}}
-  @media(max-width:760px){.dashboard-workspace-grid,.dashboard-analytics-grid,.desk-data-panels-stack{gap:9px; margin-top:9px;}.desk-dashboard-panel{padding:12px;}.desk-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.desk-data-table{min-width:570px;}.desk-performance-summary{grid-template-columns:repeat(2,minmax(0,1fr));}.desk-chart-plot{height:190px;}.desk-performance-kind{max-width:42%; line-height:1.4;}}
-  .desk-panel h4{font-size:14px; margin-bottom:4px;}
-  .desk-panel .panel-sub{font-size:11.5px; color:var(--sub-dim);}
-  .panel-top{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:18px;}
-  .sample-tag{font-size:9px; font-weight:700; color:var(--gold); border:1px solid rgba(230,195,77,.26); border-radius:4px; padding:5px 7px; white-space:nowrap;}
-  .equity-chart{width:100%; display:block; height:auto; overflow:visible; margin:8px 0 10px;}
-  .chart-labels{display:flex; justify-content:space-between; color:var(--sub-dim); font-size:10px;}
-  .risk-row{margin-top:18px;}
-  .risk-row:first-of-type{margin-top:15px;}
-  #dashboard.active{background:radial-gradient(ellipse at 72% 0%,rgba(62,207,126,.09),transparent 42%),linear-gradient(145deg,#0c110e,#090c0a 64%);}
-  .dashboard-sidebar{border-right-color:rgba(125,157,135,.24); background:linear-gradient(180deg,#121c16 0%,#0d1410 48%,#0a100d 100%); box-shadow:8px 0 28px rgba(0,0,0,.22),inset -1px 0 0 rgba(255,255,255,.025);}
-  .dashboard-brand{font-size:15px;}
-  .dashboard-sidebar-label{color:#a2b3a7; font-size:11px; letter-spacing:.08em; text-transform:uppercase;}
-  .dashboard-side-nav a{min-height:44px; border:1px solid transparent; color:#c0cbc3; font-size:13.5px;}
-  .dashboard-side-nav a:hover{border-color:rgba(255,255,255,.09); background:linear-gradient(135deg,rgba(255,255,255,.08),rgba(255,255,255,.025));}
-  .dashboard-side-nav a.active{border-color:rgba(62,207,126,.3); background:linear-gradient(135deg,rgba(62,207,126,.2),rgba(62,207,126,.07)); color:#7de6a5; box-shadow:inset 0 1px 0 rgba(255,255,255,.08);}
-  .dashboard-side-nav a.dashboard-trade-link{background:linear-gradient(135deg,rgba(62,207,126,.22),rgba(62,207,126,.08));}
-  .dashboard-sidebar-foot{color:#a2b3a7; font-size:11px;}
-  .dashboard-sidebar-foot a{font-size:13px;}
-  #dashboard .dashboard-main.wrap{padding-top:36px; padding-bottom:40px;}
-  #dashboard .dash-top h2{font-size:clamp(28px,3vw,36px); letter-spacing:-.025em;}
-  #dashboard .eyebrow{font-size:12px; letter-spacing:.09em;}
-  .dash-select{color:#c0cbc3; font-size:14px;}
-  .dash-select select{border-color:#425249; border-radius:8px; background:linear-gradient(180deg,#202b24,#151d18); box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 4px 12px rgba(0,0,0,.2); font-size:14px;}
-  .account-banner,.account-stat,.desk-panel,.dashboard-rules-panel,.desk-dashboard-panel,.rewards-panel,.dash-panel{border-color:rgba(137,171,147,.27); background:linear-gradient(145deg,#1a261e 0%,#121a15 65%,#101612 100%); box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 10px 26px rgba(0,0,0,.2);}
-  .account-banner{border-left:3px solid var(--green); border-color:rgba(137,171,147,.31); border-left-color:var(--green); background:linear-gradient(115deg,#1c3023 0%,#142019 48%,#111813 100%); box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 12px 30px rgba(0,0,0,.24),0 0 28px rgba(62,207,126,.045);}
-  .account-kicker,.panel-kicker{font-size:11px;}
-  .account-banner h3{font-size:clamp(25px,2.6vw,31px);}
-  .account-banner p{color:#c0cbc3; font-size:14px;}
-  .account-badge{border-color:#46544a; background:rgba(255,255,255,.035); color:#c0cbc3; font-size:11px;}
-  .account-stat{padding:18px;}
-  .account-stat span{color:#bdc9c0; font-size:13px;}
-  .account-stat b{font-size:clamp(21px,2vw,26px);}
-  .dashboard-rules-panel{padding:16px;}
-  .dashboard-rules-head h4{font-size:15px;}
-  .dashboard-rules-note{color:#b3c1b7; font-size:12px;}
-  .dashboard-rule-item{border-color:rgba(137,171,147,.24); border-radius:8px; background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(0,0,0,.12)); font-size:12px;}
-  .desk-dashboard-panel,.desk-panel{padding:17px;}
-  .desk-dashboard-panel h4,.desk-panel h4{font-size:14px;}
-  .desk-data-panel-head{margin-bottom:14px;}
-  .desk-panel-note{color:#b3c1b7; font-size:11px;}
-  .desk-objectives{border-color:rgba(137,171,147,.25); background:linear-gradient(145deg,#19251d,#111813); box-shadow:inset 0 1px 0 rgba(255,255,255,.07);}
-  .desk-objectives-title{font-size:15px;}
-  .desk-objective-name{font-size:13px;}
-  .desk-objective-value{color:#bbc8be; font-size:12px;}
-  .desk-objective-status{font-size:11px;}
-  .desk-objectives-empty,.desk-panel-empty{color:#bbc8be; font-size:12px;}
-  .desk-performance-summary{gap:9px;}
-  .desk-chart-live,.desk-chart-legend{color:#bbc8be; font-size:11px;}
-  .desk-chart-axis-label{font-size:11px;}
-  .desk-chart-foot{color:#bbc8be; font-size:10px;}
-  .desk-chart-tooltip{border-color:#526357; background:#111a14; font-size:12px;}
-  .desk-stat-highlight{border-color:rgba(62,207,126,.38); background:linear-gradient(145deg,rgba(62,207,126,.16),rgba(16,23,18,.96) 68%); box-shadow:inset 0 1px 0 rgba(255,255,255,.1);}
-  .desk-stat-highlight-label,.desk-stat-highlight-meta,.desk-stat-highlight-meter-label{color:#bdc9c0; font-size:10px;}
-  .desk-stat-highlight-value{font-size:clamp(21px,2.3vw,27px);}
-  .desk-stat-highlight-meter-value{font-size:14px;}
-  .desk-stat-highlight-meter-note{color:#bdc9c0; font-size:9px;}
-  .desk-metric{border:1px solid rgba(137,171,147,.24); border-radius:8px; background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(0,0,0,.16));}
-  .desk-metric span{color:#bdc9c0; font-size:10px;}
-  .desk-metric strong{font-size:14px;}
-  .desk-calendar-shell,.desk-session-face{border-color:rgba(137,171,147,.25); background:linear-gradient(145deg,#19251d,#111813); box-shadow:inset 0 1px 0 rgba(255,255,255,.07);}
-  .desk-calendar-caption{font-size:14px;}
-  .desk-calendar-net{color:#bdc9c0; font-size:11px;}
-  .desk-calendar-weekday{color:#bdc9c0; font-size:10px;}
-  .desk-calendar-day{border-color:rgba(137,171,147,.12); background:#0d1410; color:#d5ded7; font-size:10px;}
-  .desk-calendar-date{color:#e0e8e2; font-size:10px;}
-  .desk-calendar-pnl{font-size:11px;}
-  .desk-calendar-empty{color:#bdc9c0; font-size:11px;}
-  .desk-session-face-title{font-size:14px;}
-  .desk-session-table{font-size:12px;}
-  .desk-session-table th{color:#bdc9c0; font-size:10px;}
-  .desk-session-table td{border-bottom-color:rgba(137,171,147,.16);}
-  .desk-session-note{color:#bdc9c0; font-size:11px;}
-  .desk-session-flip-button{font-size:11px;}
-  .desk-session-bar-row{border-bottom-color:rgba(137,171,147,.16);}
-  .desk-session-bar-name{font-size:12px;}
-  .desk-session-bar-track{background:#2c3d32;}
-  .desk-session-bar-value{font-size:12px;}
-  .desk-session-empty{color:#bdc9c0; font-size:11px;}
-  .desk-data-table{font-size:12px;}
-  .desk-data-table th{color:#bdc9c0; font-size:11px;}
-  .desk-data-table td{border-bottom-color:rgba(137,171,147,.16); color:#d0dad2;}
-  .desk-performance-kind,.desk-performance-filter{font-size:11px;}
-  .desk-session-table th{font-size:11px;}
-  .dash-close{font-size:14px;}
-  .rewards-panel h3,.competition-empty h3{font-size:19px;}
-  .rewards-panel p,.competition-empty p{color:#c3cec6; font-size:14px; line-height:1.65;}
-  .referral-stat{border-color:rgba(137,171,147,.27); background:linear-gradient(145deg,#1a261e 0%,#121a15 65%,#101612 100%); box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 10px 26px rgba(0,0,0,.2);}
-  .referral-stat span{color:#bdc9c0; font-size:12px;}
-  .referral-stat strong{font-size:27px;}
-  .referral-policy-note{color:#bbc8be!important; font-size:12px!important;}
-  .referrals-history-head{border-bottom-color:rgba(137,171,147,.24); color:#c3cec6; font-size:12px;}
-  .referrals-history-table{font-size:12px;}
-  .referrals-history-table th,.referrals-history-table td{border-bottom-color:rgba(137,171,147,.16); color:#c3cec6;}
-  .referrals-history-table th{color:#bdc9c0; font-size:11px;}
-  .reward-certificate-note{color:#bbc8be!important; font-size:12px!important;}
-  .rewards-history-head{border-bottom-color:rgba(137,171,147,.24); color:#c3cec6; font-size:12px;}
-  .rewards-history-table{font-size:12px;}
-  .rewards-history-table th{border-bottom-color:rgba(137,171,147,.2); color:#bdc9c0; font-size:11px;}
-  .rewards-empty{color:#c3cec6; font-size:13px;}
-  .rewards-empty strong{font-size:15px;}
-  .competition-empty-mark{box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 4px 12px rgba(0,0,0,.2);}
-  .calendar-widget-copyright{color:#bdc9c0; font-size:11px;}
-  .calendar-widget-error{color:#c3cec6; font-size:13px;}
-  @media(max-width:760px){
-    #dashboard .dashboard-main.wrap{padding:24px 16px 32px;}
-    .dashboard-side-nav a{min-height:40px; font-size:12px;}
-    .dashboard-nav-mark{width:25px; height:25px; flex-basis:25px;}
-    .dashboard-nav-mark svg{width:14px; height:14px;}
-    .desk-dashboard-panel,.desk-panel{padding:14px;}
-    .account-stat{padding:14px;}
-    .account-stat span{font-size:12px;}
-    .desk-data-table{min-width:600px;}
-  }
-  .risk-row .prow-top{font-size:11px;}
-  @media(max-width:760px){.account-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
-  @media(max-width:420px){.account-banner{padding:18px;}.account-banner h3{font-size:22px;}.account-stat{padding:13px;}.account-stat b{font-size:20px;}.desk-panel{padding:16px;}}
-
-  body.dashboard-open{-webkit-font-smoothing:auto;}
-  #dashboard .account-stat,#dashboard .dashboard-rules-panel,#dashboard .desk-dashboard-panel,
-  #dashboard .desk-panel,#dashboard .dash-panel,#dashboard .rewards-panel{
-    border-color:rgba(155,190,166,.34);
-    background:linear-gradient(155deg,rgba(255,255,255,.075),transparent 38%),linear-gradient(145deg,#202e24 0%,#17221b 55%,#111813 100%);
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 12px 30px rgba(0,0,0,.26);
-  }
-  #dashboard .dashboard-sidebar-label{color:#bdc9c0; font-size:12px;}
-  #dashboard .dashboard-side-nav a{font-size:14px;}
-  #dashboard .dashboard-sidebar-foot,#dashboard .dashboard-sidebar-foot a{color:#bdc9c0; font-size:12px;}
-  #dashboard .account-kicker,#dashboard .panel-kicker{font-size:12px;}
-  #dashboard .account-badge{font-size:12px;}
-  #dashboard .dashboard-rules-note{color:#bdc9c0; font-size:13px;}
-  #dashboard .dashboard-rule-item{font-size:13px; line-height:1.45;}
-  #dashboard .desk-panel-note{color:#bdc9c0; font-size:12px;}
-  #dashboard .desk-objective-name{font-size:14px;}
-  #dashboard .desk-objective-value{font-size:13px; line-height:1.5;}
-  #dashboard .desk-objective-status{font-size:12px;}
-  #dashboard .desk-objectives-empty,#dashboard .desk-panel-empty{font-size:13px;}
-  #dashboard .desk-performance-stat span{color:#bdc9c0; font-size:11px;}
-  #dashboard .desk-performance-stat strong{font-size:13px;}
-  #dashboard .desk-performance-kind,#dashboard .desk-performance-filter,
-  #dashboard .desk-chart-live,#dashboard .desk-chart-legend{font-size:12px;}
-  #dashboard .desk-chart-axis-label{font-size:12px;}
-  #dashboard .desk-chart-foot{font-size:11px;}
-  #dashboard .desk-chart-tooltip{font-size:13px;}
-  #dashboard .desk-stat-highlight-label,#dashboard .desk-stat-highlight-meta,
-  #dashboard .desk-stat-highlight-meter-label{font-size:12px;}
-  #dashboard .desk-stat-highlight-value{font-size:clamp(24px,2.5vw,30px);}
-  #dashboard .desk-stat-highlight-meter-value{font-size:15px;}
-  #dashboard .desk-stat-highlight-meter-note{font-size:12px;}
-  #dashboard .desk-metric span{font-size:12px;}
-  #dashboard .desk-metric strong{font-size:15px;}
-  #dashboard .desk-calendar-net,#dashboard .desk-calendar-weekday,
-  #dashboard .desk-calendar-day,#dashboard .desk-calendar-date,
-  #dashboard .desk-calendar-pnl,#dashboard .desk-calendar-empty{font-size:12px;}
-  #dashboard .desk-session-table{font-size:12px;}
-  #dashboard .desk-session-table th{font-size:12px;}
-  #dashboard .desk-session-note,#dashboard .desk-session-flip-button{font-size:12px;}
-  #dashboard .desk-session-bar-name,#dashboard .desk-session-bar-value{font-size:13px;}
-  #dashboard .desk-session-empty{font-size:12px;}
-  #dashboard .desk-data-table{font-size:12px;}
-  #dashboard .desk-data-table th{font-size:12px;}
-  #dashboard .calendar-widget-copyright{font-size:12px;}
-  #dashboard .account-stat b{display:block; max-width:100%; overflow-wrap:anywhere; line-height:1.2;}
-  @media(max-width:1050px){#dashboard .account-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
-  @media(max-width:420px){#dashboard .account-stat b{font-size:clamp(16px,5vw,20px);}}
-
   #checkout{display:none;}
   #checkout.active{display:block;}
   body.checkout-open{min-height:100vh;}
@@ -1622,6 +1217,11 @@ try{
   @media(max-width:700px){.payout-mission-banner iframe{height:680px;}}
 </style>
 <script>
+var dashboardThemeStylesheetPath = window.location.protocol === 'file:' ? './dashboard-theme.css' : '/dashboard-theme.css';
+document.write('<link rel="stylesheet" href="' + dashboardThemeStylesheetPath + '">');
+</script>
+<noscript><link rel="stylesheet" href="/dashboard-theme.css"></noscript>
+<script>
 var heroBackgroundStylesheetPath = window.location.protocol === 'file:'
   ? './hero-background.css'
   : '/hero-background.css';
@@ -2358,11 +1958,11 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
   </div>
 </section>
 
-<section id="dashboard">
+<section id="dashboard" data-theme="dark">
   <aside class="dashboard-sidebar">
     <a class="dashboard-brand" href="#dashTop" aria-label="Crazy Funded trader desk">
-      <span class="dashboard-brand-mark" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="1.5" width="33" height="33" rx="10" fill="#13251A" stroke="#31543C"/><path d="M8.5 27.5V17a9.5 9.5 0 0 1 19 0v10.5" stroke="#55DB8D" stroke-width="1.8" stroke-linecap="round"/><path d="M11.5 24.5h4v-4h4v-4h4v-4h3" stroke="#D9E9DC" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="27" cy="12.5" r="2.3" fill="#E6C34D"/><path d="M8.5 28h19" stroke="#55DB8D" stroke-width="1.8" stroke-linecap="round"/></svg></span>
-      <span>DAILY <b>FUNDED</b></span>
+      <span class="dashboard-brand-mark" aria-hidden="true"><script>document.write('<img src="' + (window.location.protocol === 'file:' ? './crazy-funded-logo.png' : '/crazy-funded-logo.png') + '" alt="" width="36" height="36">');</script></span>
+      <span>CRAZY <b>FUNDED</b></span>
     </a>
     <div class="dashboard-sidebar-label">TRADER WORKSPACE</div>
     <nav class="dashboard-side-nav" aria-label="Trader workspace">
@@ -2372,7 +1972,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
       <a href="#competitionsView" data-dashboard-view="competitions"><span class="dashboard-nav-mark dashboard-nav-competitions" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M7 6H4v2a4 4 0 0 0 4 4M17 6h3v2a4 4 0 0 1-4 4M12 13v5M8 21h8M9 18h6"/></svg></span>Competitions</a>
       <a href="#economicCalendarView" data-dashboard-view="calendar"><span class="dashboard-nav-mark dashboard-nav-calendar" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h2M14 14h2M8 17h2"/></svg></span>Economic Calendar</a>
       <a href="#leaderboardView" data-dashboard-view="leaderboard"><span class="dashboard-nav-mark dashboard-nav-leaderboard" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20h16M6 17V9h4v8M14 17V4h4v13M7 6h3M13 8h5"/></svg></span>Leaderboard</a>
-      <a class="dashboard-trade-link" href="/trade/"><span class="dashboard-nav-mark dashboard-nav-desk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span>TRADE</a>
+      <a class="dashboard-trade-link" href="/trade/"><span class="dashboard-nav-mark dashboard-nav-desk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span>Open trading platform</a>
     </nav>
     <div class="dashboard-sidebar-foot">
       <div class="dashboard-sidebar-status">TRADING WORKSPACE</div>
@@ -2383,20 +1983,24 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
   <div class="wrap dashboard-main" id="traderDeskView">
     <div class="dash-top" id="dashTop">
       <div>
+        <div class="dashboard-breadcrumb">Home / Trader desk</div>
+        <h1>Trading desk</h1>
         <div class="eyebrow" id="dashboardGreeting">Account details</div>
-        <h2>Trading desk</h2>
       </div>
-      <div class="dash-select account-select-picker" id="dashSelectWrap">
-        <span id="accountSelectorLabel">Account</span>
-        <button type="button" class="account-select-trigger" id="accountSelectTrigger" aria-labelledby="accountSelectorLabel accountSelectorValue accountSelectorStatus" aria-haspopup="listbox" aria-expanded="false" aria-controls="accountSelectList">
-          <span class="account-select-trigger-copy">
-            <span class="account-select-trigger-value" id="accountSelectorValue">Select account</span>
-            <span class="account-select-trigger-status" id="accountSelectorStatus"></span>
-          </span>
-          <svg class="account-select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-        </button>
-        <div class="account-select-list" id="accountSelectList" role="listbox" aria-labelledby="accountSelectorLabel" hidden></div>
-        <select id="accSelect" class="account-select-native" aria-hidden="true" tabindex="-1"></select>
+      <div class="dashboard-header-controls">
+        <div class="dash-select account-select-picker" id="dashSelectWrap">
+          <span id="accountSelectorLabel">Account</span>
+          <button type="button" class="account-select-trigger" id="accountSelectTrigger" aria-labelledby="accountSelectorLabel accountSelectorValue accountSelectorStatus" aria-haspopup="listbox" aria-expanded="false" aria-controls="accountSelectList">
+            <span class="account-select-trigger-copy">
+              <span class="account-select-trigger-value" id="accountSelectorValue">Select account</span>
+              <span class="account-select-trigger-status" id="accountSelectorStatus"></span>
+            </span>
+            <svg class="account-select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="account-select-list" id="accountSelectList" role="listbox" aria-labelledby="accountSelectorLabel" hidden></div>
+          <select id="accSelect" class="account-select-native" aria-hidden="true" tabindex="-1"></select>
+        </div>
+        <button type="button" class="dashboard-theme-toggle" id="dashboardThemeToggle" aria-label="Switch to Cream &amp; Gold theme" aria-pressed="false">☀ Light mode</button>
       </div>
     </div>
 
@@ -2414,18 +2018,17 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
           <p id="accountSummary">Challenge details and account status.</p>
         </div>
         <div class="account-badges">
-          <span class="account-badge active">EVALUATION ACTIVE</span>
+          <span class="account-badge account-status-badge is-active">ACTIVE</span>
           <span class="account-badge" id="accountPlan">1-STEP</span>
           <span class="account-badge" id="accountPhase">PHASE 01</span>
-          <span class="account-badge" id="accountEngineId" hidden></span>
         </div>
       </div>
 
       <div class="account-stat-grid">
-        <div class="account-stat"><span>Balance</span><b id="dBalance">$0</b></div>
-        <div class="account-stat"><span>Live equity</span><b id="dEquity">$0</b></div>
-        <div class="account-stat"><span>Eligible payout amount</span><b class="up" id="dWithdraw">Unavailable</b></div>
-        <div class="account-stat"><span>Trading days</span><b id="dDays">0</b></div>
+        <div class="account-stat"><span>Balance</span><b id="dBalance">$0</b><small id="dBalanceSub">Since account start</small></div>
+        <div class="account-stat"><span>Equity</span><b id="dEquity">$0</b><small id="dEquitySub">Position data unavailable</small></div>
+        <div class="account-stat"><span>Eligible payout</span><b class="up" id="dWithdraw">Unavailable</b><small id="dWithdrawSub">Complete the objectives to unlock</small></div>
+        <div class="account-stat"><span>Trading days</span><b id="dDays">0</b><small id="dDaysSub">Minimum trading days per plan</small></div>
       </div>
 
       <section class="dashboard-rules-panel" id="dashboardRulesPanel" aria-labelledby="dashboardRulesHeading" hidden>
@@ -2446,17 +2049,17 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
           <div class="desk-performance-tools">
             <span class="desk-performance-kind">Reconstructed realized balance</span>
             <div class="desk-performance-filters" role="group" aria-label="Balance history range">
-              <button class="desk-performance-filter" type="button" data-performance-range="7D" aria-pressed="false" disabled>7D</button>
-              <button class="desk-performance-filter" type="button" data-performance-range="30D" aria-pressed="false" disabled>30D</button>
-              <button class="desk-performance-filter" type="button" data-performance-range="90D" aria-pressed="false" disabled>90D</button>
-              <button class="desk-performance-filter" type="button" data-performance-range="ALL" aria-pressed="true" disabled>ALL</button>
+              <button class="desk-performance-filter" type="button" data-performance-range="1D" aria-pressed="false" disabled>1D</button>
+              <button class="desk-performance-filter" type="button" data-performance-range="1W" aria-pressed="false" disabled>1W</button>
+              <button class="desk-performance-filter" type="button" data-performance-range="1M" aria-pressed="false" disabled>1M</button>
+              <button class="desk-performance-filter" type="button" data-performance-range="ALL" aria-pressed="true" disabled>All</button>
             </div>
           </div>
           <div class="desk-chart" id="deskPerformanceChart" role="img" aria-label="Balance history is loading">
             <div class="desk-chart-empty"><strong>Balance history is loading</strong>Waiting for authenticated account and trade data.</div>
           </div>
           <div class="desk-chart-tooltip" id="deskChartTooltip" role="status" hidden></div>
-          <div class="desk-chart-legend" id="deskChartLegend" hidden><span><i></i>Reconstructed realized balance · no floating P/L</span></div>
+          <div class="desk-chart-legend" id="deskChartLegend" hidden></div>
         </section>
       </div>
 
@@ -3833,6 +3436,33 @@ document.querySelectorAll('.dashboard-side-nav a[data-dashboard-view]').forEach(
     if(target && target.getClientRects().length) target.scrollIntoView({behavior:'smooth',block:'start'});
     else window.scrollTo({top:0,behavior:'instant'});
   });
+});
+const dashboardThemeToggle = document.getElementById('dashboardThemeToggle');
+const dashboardThemeStorageKey = 'crazyFundedDeskTheme';
+function setDashboardTheme(theme,persist=false){
+  const activeTheme = theme === 'light' ? 'light' : 'dark';
+  dashboard.dataset.theme = activeTheme;
+  const nextTheme = activeTheme === 'dark' ? 'light' : 'dark';
+  dashboardThemeToggle.setAttribute('aria-pressed',String(activeTheme === 'light'));
+  dashboardThemeToggle.setAttribute('aria-label','Switch to ' + (nextTheme === 'dark' ? 'Graphite & Gold' : 'Cream & Gold') + ' theme');
+  dashboardThemeToggle.textContent = activeTheme === 'dark' ? '☀ Light mode' : '☾ Dark mode';
+  if(persist){
+    try{
+      localStorage.setItem(dashboardThemeStorageKey,activeTheme);
+    }catch(error){
+      console.warn('Unable to save the dashboard theme preference:',error);
+    }
+  }
+}
+let savedDashboardTheme = 'dark';
+try{
+  savedDashboardTheme = localStorage.getItem(dashboardThemeStorageKey) === 'light' ? 'light' : 'dark';
+}catch(error){
+  console.warn('Unable to restore the dashboard theme preference:',error);
+}
+setDashboardTheme(savedDashboardTheme);
+dashboardThemeToggle.addEventListener('click',()=>{
+  setDashboardTheme(dashboard.dataset.theme === 'dark' ? 'light' : 'dark',true);
 });
 
 let dashboardAccounts = [];
@@ -5731,7 +5361,7 @@ function renderAccount(){
   const data = accounts.find(a=>a.id===sel.value) || accounts[0];
   if(!data) return;
 
-  document.getElementById('accountTitle').textContent = '$' + data.size.toLocaleString() + ' challenge';
+  renderDeskAccountTitle(data.size);
   const provisioningPending = data.provisioningStatus === 'pending' || data.status === 'pending_provisioning';
   document.getElementById('accountSummary').textContent = provisioningPending
     ? 'Payment verified. Account provisioning is pending; reopen or refresh the dashboard to retry. No additional payment is needed.'
@@ -5741,10 +5371,15 @@ function renderAccount(){
       ? 'Payment was rejected. Contact support for assistance.'
       : data.label + ' challenge';
   document.getElementById('accountPlan').textContent = data.label.toUpperCase();
-  const statusBadge = document.querySelector('#accountOverview .account-badge.active');
+  const statusBadge = document.querySelector('#accountOverview .account-status-badge');
+  const rejected = ['rejected','payment_rejected'].includes(data.status);
+  const pending = provisioningPending || ['pending','pending_payment_verification'].includes(data.status);
+  statusBadge.classList.toggle('is-active',data.status === 'active');
+  statusBadge.classList.toggle('is-rejected',rejected);
+  statusBadge.classList.toggle('is-pending',pending);
   statusBadge.textContent = provisioningPending
     ? 'PROVISIONING PENDING'
-    : ['pending','pending_payment_verification'].includes(data.status)
+    : pending
       ? 'PAYMENT PENDING'
     : data.status.replaceAll('_',' ').toUpperCase();
   const phaseBadge = document.getElementById('accountPhase');
@@ -5754,18 +5389,23 @@ function renderAccount(){
       ? data.phaseName.toUpperCase()
       : 'PHASE ' + String(phaseNumber).padStart(2,'0');
   }
-  const engineIdBadge = document.getElementById('accountEngineId');
-  if(engineIdBadge){
-    const hasEngineId = typeof data.tradingEngineAccountId === 'string' && data.tradingEngineAccountId.trim();
-    engineIdBadge.hidden = !hasEngineId;
-    engineIdBadge.textContent = hasEngineId ? 'ENGINE ' + data.tradingEngineAccountId : '';
-  }
-  const money = value => value != null && Number.isFinite(Number(value)) ? '$' + Number(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
   const tradingActive = data.status === 'active' && data.tradingEnabled === true;
-  document.getElementById('dBalance').textContent = tradingActive ? '—' : money(data.balance);
-  document.getElementById('dEquity').textContent = tradingActive ? '—' : money(data.equity);
-  document.getElementById('dWithdraw').textContent = 'Unavailable';
+  deskSetMoney(document.getElementById('dBalance'),tradingActive ? null : data.balance);
+  deskSetMoney(document.getElementById('dEquity'),tradingActive ? null : data.equity);
+  const startingBalance = deskNumber(data.starting_balance);
+  const balance = tradingActive ? null : deskNumber(data.balance);
+  if(balance !== null && startingBalance !== null){
+    deskSetMoney(document.getElementById('dBalanceSub'),balance - startingBalance,true,' since start');
+  }else{
+    deskSetMoney(document.getElementById('dBalanceSub'),null,false,'','Since account start');
+  }
+  document.getElementById('dEquitySub').textContent = tradingActive ? 'Position data loading…' : 'Position data unavailable';
+  deskSetMoney(document.getElementById('dWithdraw'),null,false,'','Unavailable');
   document.getElementById('dDays').textContent = Number.isInteger(data.tradingDays) ? data.tradingDays : '—';
+  const minimumDays = deskNumericRule(data,null,'minimum_trading_days',/^(\d+)\s+min trading days$/i);
+  document.getElementById('dDaysSub').textContent = minimumDays === null
+    ? 'Minimum trading days per plan'
+    : 'Minimum ' + minimumDays + ' required';
 
   const rulesPanel = document.getElementById('dashboardRulesPanel');
   const ruleList = document.getElementById('dashboardRuleList');
@@ -5802,6 +5442,79 @@ const deskMoney = value => {
   const number = deskNumber(value);
   return number === null ? '—' : (number < 0 ? '−$' : '$') + Math.abs(number).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 };
+const deskSignedMoney = value => {
+  const number = deskNumber(value);
+  return number === null ? '—' : (number > 0 ? '+$' : number < 0 ? '−$' : '$') + Math.abs(number).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+};
+const deskCompactMoneyQuery = window.matchMedia('(max-width: 640px)');
+function deskCompactMoney(value,signed=false){
+  const number = deskNumber(value);
+  if(number === null) return '—';
+  const absolute = Math.abs(number);
+  let amount = absolute.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(absolute >= 1000000){
+    amount = (absolute / 1000000).toFixed(absolute >= 100000000 ? 0 : 1).replace(/\.0$/,'') + 'm';
+  }else if(absolute >= 1000){
+    amount = (absolute / 1000).toFixed(absolute >= 100000 ? 0 : 1).replace(/\.0$/,'') + 'k';
+  }
+  const sign = signed ? number > 0 ? '+$' : number < 0 ? '−$' : '$' : number < 0 ? '−$' : '$';
+  return sign + amount;
+}
+function renderDeskAccountTitle(size){
+  const title = document.getElementById('accountTitle');
+  const exactAmount = '$' + Number(size).toLocaleString('en-US',{maximumFractionDigits:0});
+  const full = document.createElement('span');
+  full.className = 'desk-account-title-full';
+  full.textContent = exactAmount;
+  const compact = document.createElement('span');
+  compact.className = 'desk-account-title-compact';
+  compact.textContent = deskCompactMoney(size).replace(/\.00$/,'');
+  title.replaceChildren(full,compact,document.createTextNode(' challenge'));
+  title.setAttribute('aria-label',exactAmount + ' challenge');
+  title.title = exactAmount + ' challenge';
+}
+function deskSetMoney(element,value,signed=false,suffix='',emptyText='—'){
+  const number = deskNumber(value);
+  if(number === null){
+    delete element.dataset.deskMoneyValue;
+    delete element.dataset.deskMoneySigned;
+    delete element.dataset.deskMoneySuffix;
+    element.textContent = emptyText;
+    element.removeAttribute('title');
+    return;
+  }
+  element.dataset.deskMoneyValue = String(number);
+  element.dataset.deskMoneySigned = String(signed);
+  element.dataset.deskMoneySuffix = suffix;
+  const exact = (signed ? deskSignedMoney(number) : deskMoney(number)) + suffix;
+  element.textContent = (deskCompactMoneyQuery.matches ? deskCompactMoney(number,signed) : exact) + suffix;
+  element.title = exact;
+}
+function updateDeskResponsiveMoney(){
+  document.querySelectorAll('#dashboard [data-desk-money-value]').forEach(element=>{
+    deskSetMoney(
+      element,
+      element.dataset.deskMoneyValue,
+      element.dataset.deskMoneySigned === 'true',
+      element.dataset.deskMoneySuffix || ''
+    );
+  });
+  document.querySelectorAll('#dashboard [data-desk-session-pnl]').forEach(element=>{
+    deskSetSessionPnl(element,element.dataset.deskSessionPnl);
+  });
+  document.querySelectorAll('#dashboard [data-desk-calendar-pnl]').forEach(element=>{
+    deskSetCalendarPnl(element,element.dataset.deskCalendarPnl);
+  });
+  if(deskPerformanceState){
+    const activeRange = document.querySelector('#dashboard [data-performance-range][aria-pressed="true"]');
+    renderDeskPerformanceChart(activeRange ? activeRange.dataset.performanceRange : 'ALL');
+  }
+}
+if(typeof deskCompactMoneyQuery.addEventListener === 'function'){
+  deskCompactMoneyQuery.addEventListener('change',updateDeskResponsiveMoney);
+}else{
+  deskCompactMoneyQuery.addListener(updateDeskResponsiveMoney);
+}
 const deskPrice = value => {
   const number = deskNumber(value);
   return number === null ? '—' : number.toLocaleString('en-US',{maximumFractionDigits:5});
@@ -5819,6 +5532,16 @@ const deskDateTime = value => {
   const date = deskDate(value);
   return date ? new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(date) : '—';
 };
+function deskNumericRule(data,rules,field,pattern){
+  const accountRules = rules && typeof rules === 'object' ? rules : {};
+  const value = deskNumber(accountRules[field]);
+  if(value !== null && value >= 0) return value;
+  const planRules = Array.isArray(data && data.rules) ? data.rules.filter(rule=>typeof rule === 'string') : [];
+  const rule = planRules.find(item=>pattern.test(item));
+  const match = rule && rule.match(pattern);
+  if(!match) return null;
+  return Number(match[1] !== undefined ? match[1] : match[2]);
+}
 function appendDeskTableCell(row,value,className=''){
   const cell = document.createElement('td');
   cell.textContent = value == null ? '—' : String(value);
@@ -5844,19 +5567,11 @@ function renderDeskObjectives(){
   shell.appendChild(title);
 
   const planRules = Array.isArray(data.rules) ? data.rules.filter(rule=>typeof rule === 'string') : [];
-  const accountRules = rules && typeof rules === 'object' ? rules : {};
-  const numericRule = (field,pattern) => {
-    const value = deskNumber(accountRules[field]);
-    if(value !== null && value >= 0) return value;
-    const rule = planRules.find(item=>pattern.test(item));
-    const match = rule && rule.match(pattern);
-    return match ? Number(match[1] || match[2]) : null;
-  };
-  const profitTarget = numericRule('profit_target_percent',/(\d+(?:\.\d+)?)%\s+profit target/i);
-  const minimumDays = numericRule('minimum_trading_days',/^(\d+)\s+min trading days$/i);
-  const dailyLimit = numericRule('daily_drawdown_percent',/(\d+(?:\.\d+)?)%\s+daily drawdown/i);
-  const maxLimit = numericRule('max_drawdown_percent',/(\d+(?:\.\d+)?)%\s+max drawdown/i);
-  const addObjective = (name,value,status,statusClass='is-unavailable')=>{
+  const profitTarget = deskNumericRule(data,rules,'profit_target_percent',/(\d+(?:\.\d+)?)%\s+profit target/i);
+  const minimumDays = deskNumericRule(data,rules,'minimum_trading_days',/^(\d+)\s+min trading days$/i);
+  const dailyLimit = deskNumericRule(data,rules,'daily_drawdown_percent',/(\d+(?:\.\d+)?)%\s+daily drawdown/i);
+  const maxLimit = deskNumericRule(data,rules,'max_drawdown_percent',/(\d+(?:\.\d+)?)%\s+max drawdown/i);
+  const addObjective = (name,value,status,statusClass='is-unavailable',progress=null,progressClass='is-up')=>{
     const row = document.createElement('div');
     row.className = 'desk-objective';
     const copy = document.createElement('div');
@@ -5872,6 +5587,21 @@ function renderDeskObjectives(){
     badge.textContent = status;
     copy.append(label,detail);
     row.append(copy,badge);
+    if(Number.isFinite(progress)){
+      const track = document.createElement('span');
+      track.className = 'desk-objective-progress';
+      track.setAttribute('role','meter');
+      track.setAttribute('aria-label',name + ' progress');
+      track.setAttribute('aria-valuemin','0');
+      track.setAttribute('aria-valuemax','100');
+      const safeProgress = Math.max(0,Math.min(100,progress));
+      track.setAttribute('aria-valuenow',String(Math.round(safeProgress)));
+      const fill = document.createElement('span');
+      fill.className = 'desk-objective-progress-fill ' + progressClass;
+      fill.style.width = safeProgress + '%';
+      track.appendChild(fill);
+      row.appendChild(track);
+    }
     shell.appendChild(row);
   };
   const startingBalance = deskNumber(account && account.starting_balance);
@@ -5882,7 +5612,7 @@ function renderDeskObjectives(){
     const achievedPercent = (currentBalance - startingBalance) / startingBalance * 100;
     const progress = Math.max(0,Math.min(100,achievedPercent / profitTarget * 100));
     const passed = achievedPercent >= profitTarget;
-    addObjective('Profit target',achievedPercent.toFixed(1) + '% of ' + profitTarget + '% · ' + progress.toFixed(0) + '% complete',passed ? 'Passed' : 'In progress',passed ? 'is-passed' : '');
+    addObjective('Profit target',achievedPercent.toFixed(1) + '% of ' + profitTarget + '% · ' + progress.toFixed(0) + '% complete',passed ? 'Passed' : 'In progress',passed ? 'is-passed' : 'is-in-progress',progress,passed ? 'is-up' : 'is-warn');
   }else{
     addObjective('Profit target',profitTarget === null ? 'Target unavailable' : 'Waiting for account balance','Unavailable');
   }
@@ -5892,12 +5622,12 @@ function renderDeskObjectives(){
     addObjective('Minimum trading days','Not required','Not required','is-not-required');
   }else if(minimumDays !== null && tradingDays !== null){
     const passed = tradingDays >= minimumDays;
-    addObjective('Minimum trading days',Math.floor(tradingDays) + ' / ' + Math.floor(minimumDays),passed ? 'Passed' : 'In progress',passed ? 'is-passed' : '');
+    addObjective('Minimum trading days',Math.floor(tradingDays) + ' / ' + Math.floor(minimumDays),passed ? 'Passed' : 'In progress',passed ? 'is-passed' : 'is-in-progress',Math.min(100,tradingDays / minimumDays * 100));
   }else{
     addObjective('Minimum trading days',minimumDays === null ? 'Requirement unavailable' : 'Trading-day data unavailable','Unavailable');
   }
 
-  const consistencyLimit = numericRule('consistency_percent',/(?:(\d+(?:\.\d+)?)%\s+(?:max(?:imum)?\s+)?consistency|consistency\s*\(?(?:max(?:imum)?\s*)?(\d+(?:\.\d+)?)%)/i);
+  const consistencyLimit = deskNumericRule(data,rules,'consistency_percent',/(?:(\d+(?:\.\d+)?)%\s+(?:max(?:imum)?\s+)?consistency|consistency\s*\(?(?:max(?:imum)?\s*)?(\d+(?:\.\d+)?)%)/i);
   const consistencyNotRequired = planRules.some(rule=>/no .*consistency/i.test(rule)) || ['1step','2step','instant'].includes(String(data.plan || '').toLowerCase());
   if(consistencyLimit !== null){
     const dailyPnl = new Map();
@@ -5917,7 +5647,7 @@ function renderDeskObjectives(){
     if(consistencyDataComplete && totalPnl > 0){
       const ratio = bestDay / totalPnl * 100;
       const passed = ratio <= consistencyLimit;
-      addObjective('Consistency (max ' + consistencyLimit + '%)',ratio.toFixed(1) + '% of total realized profit',passed ? 'Passing' : 'Over limit',passed ? 'is-safe' : 'is-alert');
+      addObjective('Consistency (max ' + consistencyLimit + '%)',ratio.toFixed(1) + '% of total realized profit',passed ? 'Passing' : 'Over limit',passed ? 'is-safe' : 'is-alert',consistencyLimit > 0 ? Math.max(0,Math.min(100,(1 - ratio / consistencyLimit) * 100)) : null,passed ? 'is-up' : 'is-dn');
     }else if(!consistencyDataComplete){
       addObjective('Consistency (max ' + consistencyLimit + '%)','Closed-trade data is incomplete','Unavailable');
     }else{
@@ -5930,7 +5660,7 @@ function renderDeskObjectives(){
   const dailyDrawdown = deskNumber(data.dailyDrawdown);
   if(dailyLimit !== null && dailyDrawdown !== null && dailyDrawdown >= 0){
     const safe = dailyDrawdown <= dailyLimit;
-    addObjective('Daily loss limit',dailyDrawdown.toFixed(1) + '% of ' + dailyLimit + '%',safe ? 'Safe' : 'Limit reached',safe ? 'is-safe' : 'is-alert');
+    addObjective('Daily loss limit',dailyDrawdown.toFixed(1) + '% of ' + dailyLimit + '%',safe ? 'Safe' : 'Limit reached',safe ? 'is-safe' : 'is-alert',dailyLimit > 0 ? Math.max(0,Math.min(100,(1 - dailyDrawdown / dailyLimit) * 100)) : null,safe ? 'is-up' : 'is-dn');
   }else{
     addObjective('Daily loss limit',dailyLimit === null ? 'Limit unavailable' : 'Current daily drawdown unavailable' + (dailyLimit !== null ? ' · limit ' + dailyLimit + '%' : ''),'Unavailable');
   }
@@ -5938,7 +5668,7 @@ function renderDeskObjectives(){
   const maxDrawdown = deskNumber(data.overallDrawdown);
   if(maxLimit !== null && maxDrawdown !== null && maxDrawdown >= 0){
     const safe = maxDrawdown <= maxLimit;
-    addObjective('Max loss limit',maxDrawdown.toFixed(1) + '% of ' + maxLimit + '%',safe ? 'Safe' : 'Limit reached',safe ? 'is-safe' : 'is-alert');
+    addObjective('Max loss limit',maxDrawdown.toFixed(1) + '% of ' + maxLimit + '%',safe ? 'Safe' : 'Limit reached',safe ? 'is-safe' : 'is-alert',maxLimit > 0 ? Math.max(0,Math.min(100,(1 - maxDrawdown / maxLimit) * 100)) : null,safe ? 'is-up' : 'is-dn');
   }else{
     addObjective('Max loss limit',maxLimit === null ? 'Limit unavailable' : 'Current maximum drawdown unavailable' + (maxLimit !== null ? ' · limit ' + maxLimit + '%' : ''),'Unavailable');
   }
@@ -5954,7 +5684,6 @@ function renderDeskStatistics(trades){
   const losses = pnlValues.filter(value=>value < 0);
   const grossWins = wins.reduce((sum,value)=>sum+value,0);
   const grossLosses = Math.abs(losses.reduce((sum,value)=>sum+value,0));
-  const netPnl = pnlValues.reduce((sum,value)=>sum+value,0);
   if(!trades.length){
     grid.hidden = true;
     empty.classList.add('desk-statistics-empty');
@@ -5967,18 +5696,6 @@ function renderDeskStatistics(trades){
   empty.hidden = true;
   const highlight = document.createElement('div');
   highlight.className = 'desk-stat-highlight';
-  const summary = document.createElement('div');
-  const summaryLabel = document.createElement('span');
-  summaryLabel.className = 'desk-stat-highlight-label';
-  summaryLabel.textContent = 'Realized P/L';
-  const summaryValue = document.createElement('strong');
-  summaryValue.className = 'desk-stat-highlight-value' + (pnlValues.length ? netPnl >= 0 ? ' is-positive' : ' is-negative' : '');
-  summaryValue.textContent = pnlValues.length ? deskMoney(netPnl) : '—';
-  const summaryMeta = document.createElement('div');
-  summaryMeta.className = 'desk-stat-highlight-meta';
-  summaryMeta.textContent = pnlValues.length + ' of ' + trades.length + ' closed trades with recorded P/L';
-  summary.append(summaryLabel,summaryValue,summaryMeta);
-
   const meter = document.createElement('div');
   meter.className = 'desk-stat-highlight-meter';
   const meterTop = document.createElement('div');
@@ -5988,13 +5705,13 @@ function renderDeskStatistics(trades){
   meterLabel.textContent = 'Win rate';
   const winRate = pnlValues.length ? wins.length / pnlValues.length * 100 : null;
   const meterValue = document.createElement('strong');
-  meterValue.className = 'desk-stat-highlight-meter-value' + (winRate === null ? '' : winRate >= 50 ? ' is-positive' : ' is-negative');
+  meterValue.className = 'desk-stat-highlight-meter-value';
   meterValue.textContent = winRate === null ? '—' : winRate.toFixed(1) + '%';
   meterTop.append(meterLabel,meterValue);
   const winLossTrack = document.createElement('div');
   winLossTrack.className = 'desk-stat-winloss-track';
   winLossTrack.setAttribute('role','img');
-  winLossTrack.setAttribute('aria-label',winRate === null ? 'Win and loss distribution unavailable' : wins.length + ' wins and ' + losses.length + ' losses among ' + pnlValues.length + ' trades with recorded profit or loss');
+  winLossTrack.setAttribute('aria-label',winRate === null ? 'Win rate unavailable' : 'Win rate ' + winRate.toFixed(1) + '%');
   if(winRate !== null){
     const winsSegment = document.createElement('span');
     winsSegment.className = 'desk-stat-winloss-wins';
@@ -6004,33 +5721,31 @@ function renderDeskStatistics(trades){
     lossesSegment.style.width = (losses.length / pnlValues.length * 100) + '%';
     winLossTrack.append(winsSegment,lossesSegment);
   }
-  const meterNote = document.createElement('div');
-  meterNote.className = 'desk-stat-highlight-meter-note';
-  meterNote.textContent = wins.length + ' wins · ' + losses.length + ' losses';
-  meter.append(meterTop,winLossTrack,meterNote);
-  highlight.append(summary,meter);
+  meter.append(meterTop,winLossTrack);
+  highlight.appendChild(meter);
   grid.appendChild(highlight);
   const metrics = [
     ['Total trades',String(trades.length),''],
     ['Winning trades',pnlValues.length ? String(wins.length) : '—','is-positive'],
     ['Losing trades',pnlValues.length ? String(losses.length) : '—',losses.length ? 'is-negative' : ''],
-    ['Average win',wins.length ? deskMoney(grossWins / wins.length) : '—',wins.length ? 'is-positive' : ''],
-    ['Average loss',losses.length ? deskMoney(-grossLosses / losses.length) : '—',losses.length ? 'is-negative' : ''],
+    ['Average win',wins.length ? grossWins / wins.length : null,wins.length ? 'is-positive' : '',true],
+    ['Average loss',losses.length ? -grossLosses / losses.length : null,losses.length ? 'is-negative' : '',true],
     ['Profit factor',grossLosses > 0 ? (grossWins / grossLosses).toFixed(2) : '—','']
   ];
-  metrics.forEach(([label,value,className])=>{
+  metrics.forEach(([label,value,className,isMoney])=>{
     const item = document.createElement('div');
     item.className = 'desk-metric';
     if(className) item.classList.add(className);
     const name = document.createElement('span');
     name.textContent = label;
     const detail = document.createElement('strong');
-    detail.textContent = value;
+    if(isMoney) deskSetMoney(detail,value,true);
+    else detail.textContent = value;
     if(className) detail.classList.add(className);
     item.append(name,detail);
     grid.appendChild(item);
   });
-  document.getElementById('deskStatisticsNote').textContent = trades.length + ' closed trades · ' + pnlValues.length + ' with recorded P/L';
+  document.getElementById('deskStatisticsNote').textContent = trades.length + ' closed trades';
 }
 function renderDeskActivity(trades){
   const container = document.getElementById('deskActivityCalendar');
@@ -6072,7 +5787,8 @@ function renderDeskActivity(trades){
   net.className = 'desk-calendar-net';
   net.appendChild(document.createTextNode('Net '));
   const netValue = document.createElement('span');
-  netValue.textContent = monthTradeCount && monthPnlComplete ? formatDeskSessionPnl(monthNet) : monthTradeCount ? 'unavailable' : '—';
+  if(monthTradeCount && monthPnlComplete) deskSetSessionPnl(netValue,monthNet);
+  else netValue.textContent = monthTradeCount ? 'unavailable' : '—';
   net.appendChild(netValue);
   if(monthTradeCount && monthPnlComplete){
     net.classList.add(monthNet > 0 ? 'is-positive' : monthNet < 0 ? 'is-negative' : '');
@@ -6112,11 +5828,12 @@ function renderDeskActivity(trades){
       }else{
         item.classList.add('has-mixed');
       }
-      const pnlLabel = activity.pnlComplete ? formatDeskSessionPnl(activity.pnl) : 'P/L n/a';
       const pnl = document.createElement('span');
       pnl.className = 'desk-calendar-pnl';
-      pnl.textContent = pnlLabel;
+      if(activity.pnlComplete) deskSetCalendarPnl(pnl,activity.pnl);
+      else pnl.textContent = 'P/L n/a';
       item.appendChild(pnl);
+      const pnlLabel = activity.pnlComplete ? deskSignedMoney(activity.pnl) : 'P/L n/a';
       item.setAttribute('aria-label',day + ' ' + monthLabel + ': ' + pnlLabel + ' from ' + activity.count + ' closed trade' + (activity.count === 1 ? '' : 's'));
       item.title = pnlLabel + ' · ' + activity.count + ' closed trade' + (activity.count === 1 ? '' : 's');
     }
@@ -6140,13 +5857,9 @@ function renderDeskSessionAnalytics(trades){
     {name:'New York',isInSession:hour=>hour >= 13 && hour < 22}
   ].map(session=>({...session,trades:0,knownPnlTrades:0,wins:0,netPnl:0,pnlComplete:true}));
   const sessionByHour = hour=>sessions.find(session=>session.isInSession(hour));
-  let invalidTradeDates = 0;
   trades.forEach(trade=>{
     const closedAt = deskDate(trade.closed_at);
-    if(!closedAt){
-      invalidTradeDates += 1;
-      return;
-    }
+    if(!closedAt) return;
     const session = sessionByHour(closedAt.getUTCHours());
     if(!session) return;
     session.trades += 1;
@@ -6166,12 +5879,6 @@ function renderDeskSessionAnalytics(trades){
   inner.className = 'desk-session-card-inner';
   const front = document.createElement('div');
   front.className = 'desk-session-face';
-  front.setAttribute('aria-hidden','false');
-  front.inert = false;
-  const back = document.createElement('div');
-  back.className = 'desk-session-face desk-session-face-back';
-  back.setAttribute('aria-hidden','true');
-  back.inert = true;
 
   const frontTitle = document.createElement('h5');
   frontTitle.className = 'desk-session-face-title';
@@ -6203,7 +5910,8 @@ function renderDeskSessionAnalytics(trades){
     const averageR = document.createElement('td');
     averageR.textContent = '—';
     const net = document.createElement('td');
-    net.textContent = session.trades && session.pnlComplete ? formatDeskSessionPnl(session.netPnl) : '—';
+    if(session.trades && session.pnlComplete) deskSetSessionPnl(net,session.netPnl);
+    else net.textContent = '—';
     if(session.trades && session.pnlComplete && session.netPnl !== 0){
       net.classList.add(session.netPnl > 0 ? 'desk-session-positive' : 'desk-session-negative');
     }
@@ -6212,68 +5920,12 @@ function renderDeskSessionAnalytics(trades){
   });
   table.appendChild(tableBody);
   front.appendChild(table);
-  const matrixNote = document.createElement('div');
-  matrixNote.className = 'desk-session-note';
-  matrixNote.textContent = 'Asia 22:00–08:00 · London 08:00–13:00 · New York 13:00–22:00 UTC. Win rate uses recorded P/L; Avg R unavailable without historical risk.';
-  if(invalidTradeDates) matrixNote.textContent += ' ' + invalidTradeDates + ' trade date' + (invalidTradeDates === 1 ? ' was' : 's were') + ' unavailable.';
-  front.appendChild(matrixNote);
-  front.appendChild(createDeskSessionFlipButton('Click to see win-rate bars',false));
-
-  const backTitle = document.createElement('h5');
-  backTitle.className = 'desk-session-face-title';
-  backTitle.textContent = 'Win rate by session';
-  back.appendChild(backTitle);
-  const bars = document.createElement('div');
-  bars.className = 'desk-session-bars';
-  const sessionsWithPnl = sessions.filter(session=>session.knownPnlTrades > 0);
-  sessions.forEach(session=>{
-    const row = document.createElement('div');
-    row.className = 'desk-session-bar-row';
-    const name = document.createElement('span');
-    name.className = 'desk-session-bar-name';
-    name.textContent = session.name;
-    const track = document.createElement('div');
-    track.className = 'desk-session-bar-track';
-    track.setAttribute('role','meter');
-    track.setAttribute('aria-label',session.name + ' win rate');
-    track.setAttribute('aria-valuemin','0');
-    track.setAttribute('aria-valuemax','100');
-    const winRate = session.knownPnlTrades
-      ? session.wins / session.knownPnlTrades * 100
-      : null;
-    if(winRate !== null){
-      track.setAttribute('aria-valuenow',String(winRate));
-      const fill = document.createElement('div');
-      fill.className = 'desk-session-bar-fill' + (winRate < 50 ? ' is-low' : '');
-      fill.style.width = winRate + '%';
-      track.appendChild(fill);
-    }else{
-      track.setAttribute('aria-valuetext','No closed trades with recorded P/L');
-    }
-    const value = document.createElement('strong');
-    value.className = 'desk-session-bar-value' + (winRate !== null && winRate < 50 ? ' is-low' : '');
-    value.textContent = winRate === null ? '—' : winRate.toFixed(0) + '%';
-    row.append(name,track,value);
-    bars.appendChild(row);
-  });
-  if(!sessionsWithPnl.length){
-    const empty = document.createElement('div');
-    empty.className = 'desk-session-empty';
-    empty.textContent = trades.length ? 'No closed trades with valid dates and recorded P/L.' : 'No closed trades yet.';
-    bars.replaceChildren(empty);
-  }
-  back.appendChild(bars);
-  const barsNote = document.createElement('div');
-  barsNote.className = 'desk-session-note';
-  barsNote.textContent = '.';
-  back.appendChild(barsNote);
-  back.appendChild(createDeskSessionFlipButton('Back to session matrix',true));
-
-  inner.append(front,back);
+  inner.appendChild(front);
   flipCard.appendChild(inner);
   container.appendChild(flipCard);
 }
 function formatDeskSessionPnl(value){
+  if(deskCompactMoneyQuery.matches) return deskCompactMoney(value,true).replace('$','');
   const absoluteValue = Math.abs(value);
   const amount = absoluteValue < 1
     ? absoluteValue.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})
@@ -6281,35 +5933,35 @@ function formatDeskSessionPnl(value){
   const sign = value > 0 ? '+' : value < 0 ? '−' : '';
   return sign + '$' + amount;
 }
-function createDeskSessionFlipButton(label,isBack){
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'desk-session-flip-button';
-  button.dataset.sessionFlip = isBack ? 'back' : 'front';
-  button.setAttribute('aria-label',isBack ? 'Show session edge matrix' : 'Show win rate by session');
-  button.textContent = label;
-  return button;
+function deskSetSessionPnl(element,value){
+  element.dataset.deskSessionPnl = String(value);
+  element.textContent = formatDeskSessionPnl(Number(value));
+  element.title = deskSignedMoney(Number(value));
 }
-document.getElementById('deskSessionAnalytics').addEventListener('click',event=>{
-  const card = event.target.closest('.desk-session-card');
-  if(!card) return;
-  const button = event.target.closest('button[data-session-flip]');
-  const isFlipped = !card.classList.contains('is-flipped');
-  card.classList.toggle('is-flipped',isFlipped);
-  card.querySelectorAll('.desk-session-face').forEach(face=>{
-    const isVisible = face.classList.contains('desk-session-face-back') === isFlipped;
-    face.setAttribute('aria-hidden',String(!isVisible));
-    face.inert = !isVisible;
-  });
-  if(button){
-    card.querySelector('.desk-session-face' + (isFlipped ? '.desk-session-face-back' : ':not(.desk-session-face-back)') + ' .desk-session-flip-button').focus();
-  }
-});
+function formatDeskCalendarPnl(value){
+  const number = Number(value);
+  if(!deskCompactMoneyQuery.matches) return formatDeskSessionPnl(number);
+  const absolute = Math.abs(number);
+  let amount;
+  if(absolute >= 999500) amount = Math.round(absolute / 1000000) + 'm';
+  else if(absolute >= 1000) amount = Math.round(absolute / 1000) + 'k';
+  else amount = absolute.toLocaleString('en-US',{minimumFractionDigits:absolute < 10 ? 2 : absolute < 100 ? 1 : 0,maximumFractionDigits:absolute < 10 ? 2 : absolute < 100 ? 1 : 0});
+  return (number > 0 ? '+' : number < 0 ? '−' : '') + amount;
+}
+function deskSetCalendarPnl(element,value){
+  const number = Number(value);
+  element.dataset.deskCalendarPnl = String(number);
+  element.textContent = formatDeskCalendarPnl(number);
+  element.title = deskSignedMoney(number);
+}
 function renderDeskPositions(positions){
   const body = document.getElementById('deskPositionsTable');
   const wrapper = document.getElementById('deskPositionsTableWrap');
   const empty = document.getElementById('deskPositionsEmpty');
   const note = document.getElementById('deskPositionsNote');
+  document.getElementById('dEquitySub').textContent = positions.length
+    ? positions.length + ' open position' + (positions.length === 1 ? '' : 's')
+    : 'No open positions';
   const updatedAt = new Date();
   const timestamp = new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(updatedAt);
   deskPositionsLastUpdatedAt = updatedAt;
@@ -6319,7 +5971,7 @@ function renderDeskPositions(positions){
   wrapper.hidden = positions.length === 0;
   empty.hidden = positions.length > 0;
   if(!positions.length){
-    setDeskPanelEmpty('deskPositionsEmpty','No open positions');
+    setDeskPanelEmpty('deskPositionsEmpty','No open positions. New trades appear here in real time.');
     note.textContent = '0 open · Auto-refresh · 5s';
     return;
   }
@@ -6341,12 +5993,12 @@ function renderDeskPositions(positions){
     appendDeskTableCell(row,deskPrice(position.volume));
     appendDeskTableCell(row,deskPrice(position.open_price));
     appendDeskTableCell(row,isLive ? deskPrice(position.current_price) : '—');
-    appendDeskTableCell(row,deskMoney(pnl),pnl === null ? '' : pnl >= 0 ? 'desk-pnl-positive' : 'desk-pnl-negative');
+    appendDeskTableCell(row,deskSignedMoney(pnl),pnl === null ? '' : pnl >= 0 ? 'desk-pnl-positive' : 'desk-pnl-negative');
     body.appendChild(row);
   });
   note.textContent = positions.length + ' open · ' +
     (hasLivePnl
-      ? deskMoney(totalFloatingPnl) + ' floating · ' + (deskLiveEventsConnected ? 'Live stream' : 'Live · 5s fallback')
+      ? deskSignedMoney(totalFloatingPnl) + ' floating · ' + (deskLiveEventsConnected ? 'Live stream' : 'Live · 5s fallback')
       : 'Live quote unavailable · 5s');
   if(hasLivePnl && totalFloatingPnl !== 0){
     note.classList.add(totalFloatingPnl > 0 ? 'desk-pnl-positive' : 'desk-pnl-negative');
@@ -6374,7 +6026,7 @@ function renderDeskHistory(trades){
     appendDeskTableCell(row,deskPrice(trade.volume));
     appendDeskTableCell(row,deskPrice(trade.open_price));
     appendDeskTableCell(row,deskPrice(trade.close_price));
-    appendDeskTableCell(row,deskMoney(trade.realized_pnl),pnl === null ? '' : pnl >= 0 ? 'desk-pnl-positive' : 'desk-pnl-negative');
+    appendDeskTableCell(row,deskSignedMoney(trade.realized_pnl),pnl === null ? '' : pnl >= 0 ? 'desk-pnl-positive' : 'desk-pnl-negative');
     body.appendChild(row);
   });
   document.getElementById('deskHistoryNote').textContent = 'Showing ' + Math.min(8,trades.length) + ' of ' + trades.length + ' closed trades';
@@ -6405,8 +6057,17 @@ function updateDeskLiveAccountMetrics(account,positions){
   const equity = deskLiveAccountSnapshot.market_data_status === 'live' && positionsAreLive
     ? deskNumber(deskLiveAccountSnapshot.equity)
     : null;
-  document.getElementById('dBalance').textContent = deskMoney(balance);
-  document.getElementById('dEquity').textContent = deskMoney(equity);
+  deskSetMoney(document.getElementById('dBalance'),balance);
+  deskSetMoney(document.getElementById('dEquity'),equity);
+  const startingBalance = deskNumber(deskLiveAccountSnapshot.starting_balance);
+  if(balance !== null && startingBalance !== null){
+    deskSetMoney(document.getElementById('dBalanceSub'),balance - startingBalance,true,' since start');
+  }else{
+    deskSetMoney(document.getElementById('dBalanceSub'),null,false,'','Since account start');
+  }
+  document.getElementById('dEquitySub').textContent = Array.isArray(positions)
+    ? positions.length ? positions.length + ' open position' + (positions.length === 1 ? '' : 's') : 'No open positions'
+    : 'Position data unavailable';
   if(deskPerformanceState){
     if(balance !== null) deskPerformanceState.currentBalance = balance;
     deskPerformanceState.currentEquity = equity;
@@ -6590,13 +6251,14 @@ function setDeskPerformanceEmpty(message,isError=false){
   tooltip.dataset.pointIndex = '';
   document.getElementById('deskChartLegend').hidden = true;
 }
-function appendPerformanceSummary(label,value,className=''){
+function appendPerformanceSummary(label,value,className='',moneyValue=null){
   const item = document.createElement('div');
   item.className = 'desk-performance-stat';
   const title = document.createElement('span');
   title.textContent = label;
   const detail = document.createElement('strong');
-  detail.textContent = value;
+  if(moneyValue !== null) deskSetMoney(detail,moneyValue);
+  else detail.textContent = value;
   if(className) detail.className = className;
   item.append(title,detail);
   document.getElementById('deskPerformanceSummary').appendChild(item);
@@ -6618,14 +6280,10 @@ function compareDeskTrades(left,right){
 function renderDeskPerformanceSummary(state){
   const summary = document.getElementById('deskPerformanceSummary');
   summary.replaceChildren();
-  appendPerformanceSummary('Starting balance',deskMoney(state.startingBalance));
-  appendPerformanceSummary('Current balance',deskMoney(state.currentBalance),'is-current');
-  if(state.currentEquity !== null) appendPerformanceSummary('Current live equity',deskMoney(state.currentEquity),'is-current');
-  appendPerformanceSummary('Total realized P/L',deskMoney(state.realizedPnl),state.realizedPnl >= 0 ? 'is-positive' : 'is-negative');
-  appendPerformanceSummary('Best trade',state.trades.length ? deskMoney(state.bestTrade) : '—',state.trades.length ? state.bestTrade >= 0 ? 'is-positive' : 'is-negative' : '');
-  appendPerformanceSummary('Worst trade',state.trades.length ? deskMoney(state.worstTrade) : '—',state.trades.length ? state.worstTrade < 0 ? 'is-negative' : 'is-positive' : '');
-  appendPerformanceSummary('Closed trades',String(state.trades.length));
-  appendPerformanceSummary('Max balance drawdown',state.trades.length ? state.maxBalanceDrawdown.toFixed(2) + '%' : '—',state.maxBalanceDrawdown > 0 ? 'is-negative' : '');
+  appendPerformanceSummary('Starting balance',deskMoney(state.startingBalance),'',state.startingBalance);
+  appendPerformanceSummary('Current balance',deskMoney(state.currentBalance),'is-current',state.currentBalance);
+  appendPerformanceSummary('Highest balance',deskMoney(state.highestBalance),'is-positive',state.highestBalance);
+  appendPerformanceSummary('Max drawdown used',state.trades.length ? state.maxBalanceDrawdown.toFixed(2) + '%' : '—',state.trades.length ? 'is-negative' : '');
 }
 function svgDeskElement(name,attributes={}){
   const element = document.createElementNS('http://www.w3.org/2000/svg',name);
@@ -6634,7 +6292,9 @@ function svgDeskElement(name,attributes={}){
 }
 function formatDeskAxisMoney(value){
   const absolute = Math.abs(value);
-  const formatted = absolute >= 1000000 ? '$' + (absolute / 1000000).toFixed(1) + 'm' : absolute >= 1000 ? '$' + (absolute / 1000).toFixed(absolute >= 10000 ? 0 : 1) + 'k' : deskMoney(absolute);
+  const formatted = deskCompactMoneyQuery.matches
+    ? deskCompactMoney(absolute)
+    : deskMoney(absolute);
   return value < 0 ? '−' + formatted : formatted;
 }
 function deskShortDate(timestamp){
@@ -6654,7 +6314,7 @@ function showDeskChartTooltip(pointElement,panelRect){
     tooltip.append(balance,date);
     if(pointElement.dataset.pnl !== ''){
       const pnl = document.createElement('span');
-      pnl.textContent = 'Realized P/L: ' + deskMoney(Number(pointElement.dataset.pnl));
+      pnl.textContent = 'Realized P/L: ' + deskSignedMoney(Number(pointElement.dataset.pnl));
       tooltip.appendChild(pnl);
     }
     tooltip.dataset.pointIndex = pointIndex;
@@ -6670,7 +6330,7 @@ function renderDeskPerformanceChart(range='ALL'){
     setDeskPerformanceEmpty('No closed-trade performance history yet');
     return;
   }
-  const rangeMilliseconds = {'7D':7*86400000,'30D':30*86400000,'90D':90*86400000};
+  const rangeMilliseconds = {'1D':86400000,'1W':7*86400000,'1M':30*86400000};
   const now = Date.now();
   const cutoff = range === 'ALL' ? state.createdAt : now - rangeMilliseconds[range];
   const tradesInRange = state.trades.filter(trade=>trade.closedAt.getTime() >= cutoff);
@@ -6682,7 +6342,7 @@ function renderDeskPerformanceChart(range='ALL'){
   const chart = document.getElementById('deskPerformanceChart');
   const svgWidth = Math.max(chart.clientWidth,220);
   const svg = svgDeskElement('svg',{class:'desk-chart-plot',viewBox:'0 0 ' + svgWidth + ' 240',preserveAspectRatio:'none',role:'img','aria-label':range === 'ALL' ? 'Reconstructed account balance history for all closed trades' : 'Reconstructed account balance history for the last ' + range});
-  const plot = {left:60,right:svgWidth-12,top:18,bottom:198};
+  const plot = {left:deskCompactMoneyQuery.matches ? 60 : 92,right:svgWidth-12,top:18,bottom:198};
   const chartPoints = [];
   if(range === 'ALL') chartPoints.push({timestamp:state.createdAt,balance:state.startingBalance,pnl:null,label:'Starting balance'});
   tradesInRange.forEach(trade=>chartPoints.push({timestamp:trade.closedAt.getTime(),balance:trade.balance,pnl:trade.pnl,label:'Trade closed',tradeId:trade.id}));
@@ -6690,14 +6350,24 @@ function renderDeskPerformanceChart(range='ALL'){
   let xEnd = range === 'ALL' ? Math.max(now,tradesInRange[tradesInRange.length-1].closedAt.getTime()) : now;
   if(xEnd <= xStart) xEnd = xStart + 86400000;
   const balances = chartPoints.map(point=>point.balance);
-  let low = balances.reduce((minimum,value)=>Math.min(minimum,value),Infinity);
-  let high = balances.reduce((maximum,value)=>Math.max(maximum,value),-Infinity);
+  const scaleBalances = balances.concat([state.profitTargetBalance,state.maxLossBalance].filter(Number.isFinite));
+  let low = scaleBalances.reduce((minimum,value)=>Math.min(minimum,value),Infinity);
+  let high = scaleBalances.reduce((maximum,value)=>Math.max(maximum,value),-Infinity);
   const spread = high - low;
   const padding = spread > 0 ? spread * .14 : Math.max(Math.abs(high) * .01,1);
   low -= padding;
   high += padding;
   const x = timestamp=>plot.left + (timestamp - xStart) / (xEnd - xStart) * (plot.right - plot.left);
   const y = balance=>plot.bottom - (balance - low) / (high - low) * (plot.bottom - plot.top);
+
+  const firstPoint = chartPoints[0];
+  const lastPoint = chartPoints[chartPoints.length - 1];
+  const areaPath = [
+    'M ' + x(firstPoint.timestamp) + ' ' + plot.bottom,
+    ...chartPoints.map(point=>'L ' + x(point.timestamp) + ' ' + y(point.balance)),
+    'L ' + x(lastPoint.timestamp) + ' ' + plot.bottom + ' Z'
+  ].join(' ');
+  svg.appendChild(svgDeskElement('path',{d:areaPath,class:'desk-chart-area'}));
 
   for(let tick=0;tick<=4;tick++){
     const tickY = plot.top + tick * (plot.bottom - plot.top) / 4;
@@ -6707,6 +6377,19 @@ function renderDeskPerformanceChart(range='ALL'){
     label.textContent = formatDeskAxisMoney(balance);
     svg.appendChild(label);
   }
+  [
+    [state.profitTargetBalance,'desk-chart-threshold is-profit-target'],
+    [state.maxLossBalance,'desk-chart-threshold is-max-loss']
+  ].forEach(([threshold,className])=>{
+    if(!Number.isFinite(threshold)) return;
+    svg.appendChild(svgDeskElement('line',{
+      x1:plot.left,
+      y1:y(threshold),
+      x2:plot.right,
+      y2:y(threshold),
+      class:className
+    }));
+  });
   const xAxis = svgDeskElement('line',{x1:plot.left,y1:plot.bottom,x2:plot.right,y2:plot.bottom,class:'desk-chart-grid-line'});
   svg.appendChild(xAxis);
   const startLabel = svgDeskElement('text',{x:plot.left,y:226,'text-anchor':'start',class:'desk-chart-axis-label'});
@@ -6721,7 +6404,7 @@ function renderDeskPerformanceChart(range='ALL'){
     const current = chartPoints[index];
     const segment = svgDeskElement('path',{
       d:'M '+x(previous.timestamp)+' '+y(previous.balance)+' L '+x(current.timestamp)+' '+y(current.balance),
-      class:'desk-chart-segment ' + (current.balance >= previous.balance ? 'is-positive' : 'is-negative')
+      class:'desk-chart-segment'
     });
     svg.appendChild(segment);
   }
@@ -6733,7 +6416,7 @@ function renderDeskPerformanceChart(range='ALL'){
       class:'desk-chart-point ' + (index === 0 && range === 'ALL' ? 'is-start' : point.balance >= state.startingBalance ? 'is-positive' : 'is-negative'),
       tabindex:'0',
       role:'img',
-      'aria-label':point.label + ': ' + deskMoney(point.balance) + (point.pnl === null ? '' : ', realized P/L ' + deskMoney(point.pnl)),
+      'aria-label':point.label + ': ' + deskMoney(point.balance) + (point.pnl === null ? '' : ', realized P/L ' + deskSignedMoney(point.pnl)),
       'data-point-index':state.accountId + ':' + range + ':' + index,
       'data-balance':point.balance,
       'data-timestamp':point.timestamp,
@@ -6741,7 +6424,7 @@ function renderDeskPerformanceChart(range='ALL'){
       'data-point-label':point.label
     });
     const title = svgDeskElement('title');
-    title.textContent = point.label + ' · ' + (point.timestamp === null ? 'Date unavailable' : deskDateTime(new Date(point.timestamp).toISOString())) + ' · Balance ' + deskMoney(point.balance) + (point.pnl === null ? '' : ' · Realized P/L ' + deskMoney(point.pnl));
+    title.textContent = point.label + ' · ' + (point.timestamp === null ? 'Date unavailable' : deskDateTime(new Date(point.timestamp).toISOString())) + ' · Balance ' + deskMoney(point.balance) + (point.pnl === null ? '' : ' · Realized P/L ' + deskSignedMoney(point.pnl));
     marker.appendChild(title);
     svg.appendChild(marker);
   });
@@ -6751,7 +6434,23 @@ function renderDeskPerformanceChart(range='ALL'){
   const tooltip = document.getElementById('deskChartTooltip');
   tooltip.hidden = true;
   tooltip.dataset.pointIndex = '';
-  document.getElementById('deskChartLegend').hidden = false;
+  const legend = document.getElementById('deskChartLegend');
+  legend.replaceChildren();
+  const addLegendItem = (label,className)=>{
+    const item = document.createElement('span');
+    const line = document.createElement('i');
+    line.className = className;
+    item.append(line,document.createTextNode(label));
+    legend.appendChild(item);
+  };
+  addLegendItem('Balance','is-balance');
+  if(Number.isFinite(state.profitTargetBalance)){
+    addLegendItem('Profit target ' + deskMoney(state.profitTargetBalance).replace(/\.00$/,''),'is-profit-target');
+  }
+  if(Number.isFinite(state.maxLossBalance)){
+    addLegendItem('Max loss ' + deskMoney(state.maxLossBalance).replace(/\.00$/,''),'is-max-loss');
+  }
+  legend.hidden = false;
   const activeButton = document.querySelector('.desk-performance-filter[aria-pressed="true"]');
   if(activeButton && activeButton.dataset.performanceRange !== range) activeButton.setAttribute('aria-pressed','false');
   const nextButton = document.querySelector('.desk-performance-filter[data-performance-range="' + range + '"]');
@@ -6770,6 +6469,8 @@ function renderDeskPerformance(accountSnapshot,trades,accountId){
   const currentEquity = accountSnapshot && accountSnapshot.market_data_status === 'live' ? deskNumber(accountSnapshot.equity) : null;
   const createdAt = deskDate(accountSnapshot && accountSnapshot.created_at);
   const tradingAccountId = accountSnapshot && accountSnapshot.id;
+  const profitTarget = deskNumericRule(deskObjectivesState && deskObjectivesState.data,deskObjectivesState && deskObjectivesState.rules,'profit_target_percent',/(\d+(?:\.\d+)?)%\s+profit target/i);
+  const maxDrawdownLimit = deskNumericRule(deskObjectivesState && deskObjectivesState.data,deskObjectivesState && deskObjectivesState.rules,'max_drawdown_percent',/(\d+(?:\.\d+)?)%\s+max drawdown/i);
   if(startingBalance === null || startingBalance <= 0 || !createdAt){
     setDeskPerformanceEmpty('Balance history unavailable: authoritative starting balance or account creation time is missing.',true);
     return;
@@ -6815,12 +6516,19 @@ function renderDeskPerformance(accountSnapshot,trades,accountId){
     startingBalance,
     currentBalance,
     currentEquity,
+    profitTargetBalance: profitTarget !== null && profitTarget > 0
+      ? startingBalance * (1 + profitTarget / 100)
+      : null,
+    maxLossBalance: maxDrawdownLimit !== null && maxDrawdownLimit > 0 && maxDrawdownLimit <= 100
+      ? startingBalance * (1 - maxDrawdownLimit / 100)
+      : null,
     createdAt:createdAt.getTime(),
     trades:normalizedTrades,
     realizedPnl,
     bestTrade:normalizedTrades.length ? bestTrade : null,
     worstTrade:normalizedTrades.length ? worstTrade : null,
-    maxBalanceDrawdown
+    maxBalanceDrawdown,
+    highestBalance:peakBalance
   };
   renderDeskPerformanceSummary(deskPerformanceState);
   if(!normalizedTrades.length){
@@ -6832,7 +6540,7 @@ function renderDeskPerformance(accountSnapshot,trades,accountId){
       button.disabled = false;
       return;
     }
-    const duration = {'7D':7,'30D':30,'90D':90}[button.dataset.performanceRange] * 86400000;
+    const duration = {'1D':1,'1W':7,'1M':30}[button.dataset.performanceRange] * 86400000;
     button.disabled = !normalizedTrades.some(trade=>trade.closedAt.getTime() >= Date.now()-duration);
   });
   renderDeskPerformanceChart('ALL');
@@ -6896,6 +6604,7 @@ async function loadDeskTradingData(data){
   ['deskPositionsEmpty','deskHistoryEmpty'].forEach(id=>setDeskPanelEmpty(id,'Loading account activity…'));
   if(data.status !== 'active' || data.tradingEnabled !== true){
     const message = 'Trading is not enabled for this account.';
+    document.getElementById('dEquitySub').textContent = message;
     document.getElementById('deskPositionsNote').textContent = 'Not active';
     setDeskPerformanceEmpty(message);
     setDeskPanelEmpty('deskPositionsEmpty',message);
@@ -6908,6 +6617,7 @@ async function loadDeskTradingData(data){
   }
   if(!data.accountId){
     const message = 'Trading account identifier is unavailable.';
+    document.getElementById('dEquitySub').textContent = 'Position data unavailable';
     document.getElementById('deskPositionsNote').textContent = 'Live refresh unavailable';
     document.getElementById('deskPositionsNote').classList.add('desk-panel-error');
     setDeskPerformanceEmpty(message,true);
@@ -6934,6 +6644,7 @@ async function loadDeskTradingData(data){
     renderDeskPositions(accountResult.value.positions);
     updateDeskLiveAccountMetrics(accountResult.value.account,accountResult.value.positions);
   }else{
+    document.getElementById('dEquitySub').textContent = 'Position data unavailable';
     const message = accountResult.status === 'rejected' ? accountResult.reason.message : 'The trading service returned invalid open-position data.';
     setDeskPanelEmpty('deskPositionsEmpty',message,true);
     document.getElementById('deskPositionsNote').textContent = 'Live update unavailable · retrying';
@@ -7070,7 +6781,7 @@ function payoutEligibilityReasonText(reasonCodes){
 async function loadPayoutEligibility(accountId){
   const requestId = ++payoutEligibilitySequence;
   payoutEligibilityState = {accountId:accountId || null,status:'unavailable',amountCents:null};
-  document.getElementById('dWithdraw').textContent = 'Unavailable';
+  deskSetMoney(document.getElementById('dWithdraw'),null,false,'','Unavailable');
   if(payoutRequestButton) payoutRequestButton.disabled = true;
   if(payoutEligibilityStatus){
     payoutEligibilityStatus.textContent = accountId
@@ -7103,7 +6814,7 @@ async function loadPayoutEligibility(accountId){
     }
     payoutEligibilityState = {accountId,status:eligibility.status,amountCents};
     if(amountCents !== null){
-      document.getElementById('dWithdraw').textContent = '$' + (amountCents / 100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+      deskSetMoney(document.getElementById('dWithdraw'),amountCents / 100);
     }
     if(payoutEligibilityStatus){
       if(eligibility.status === 'eligible' && amountCents > 0){
@@ -7124,7 +6835,7 @@ async function loadPayoutEligibility(accountId){
   }catch(error){
     if(requestId !== payoutEligibilitySequence) return;
     payoutEligibilityState = {accountId,status:'unavailable',amountCents:null};
-    document.getElementById('dWithdraw').textContent = 'Unavailable';
+    deskSetMoney(document.getElementById('dWithdraw'),null,false,'','Unavailable');
     if(payoutRequestButton) payoutRequestButton.disabled = true;
     if(payoutEligibilityStatus){
       payoutEligibilityStatus.textContent = 'Payout eligibility could not be verified. Requests are disabled until the service is available.';
