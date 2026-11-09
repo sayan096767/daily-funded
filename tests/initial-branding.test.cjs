@@ -22,11 +22,33 @@ test('Firebase Hosting source renders Crazy Funded branding in its initial HTML'
 
   for (const brand of brands) {
     assert.match(brand, /aria-label="Crazy Funded"/);
-    assert.match(brand, /class="brand-symbol"[^>]*>[\s\S]*?src="\/crazy-funded-logo\.png"/);
+    assert.match(
+      brand,
+      /window\.location\.protocol === 'file:' \? '\.\/crazy-funded-logo\.png' : '\/crazy-funded-logo\.png'/
+    );
     assert.match(brand, /<img[^>]+width="30"[^>]+height="30"/);
     assert.match(brand, /<span>Crazy<\/span> <span class="brand-funded">Funded<\/span>/);
     assert.doesNotMatch(brand, /FundingForge|Funding Forge/);
   }
+});
+
+test('homepage branding assets support file previews without changing hosted URLs', () => {
+  assert.match(
+    fundingForgeHtml,
+    /window\.location\.protocol === 'file:'[\s\S]*?'\.\/hero-background\.css'[\s\S]*?'\/hero-background\.css'/
+  );
+  assert.match(
+    fs.readFileSync(path.join(root, firebaseConfig.hosting.public, 'hero-background.css'), 'utf8'),
+    /url\("hero-assets\.png"\)/
+  );
+  assert.ok(
+    fs.existsSync(path.join(root, firebaseConfig.hosting.public, 'crazy-funded-logo.png')),
+    'expected the Crazy Funded logo asset'
+  );
+  assert.ok(
+    fs.existsSync(path.join(root, firebaseConfig.hosting.public, 'hero-assets.png')),
+    'expected the hero background image'
+  );
 });
 
 test('delayed scripts cannot restore the legacy brand or its embedded logo', () => {
