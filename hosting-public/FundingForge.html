@@ -616,6 +616,13 @@ try{
   .coupon-status{min-height:15px; margin-top:6px; color:var(--sub-dim); font-size:10px;}
   .coupon-status.success{color:var(--green);}
   .coupon-status.error{color:#ef8c7d;}
+  .checkout-purchase-toast{position:fixed;right:24px;bottom:24px;z-index:10000;display:flex;align-items:flex-start;gap:14px;width:min(440px,calc(100vw - 32px));padding:18px;border:1px solid rgba(85,219,141,.38);border-radius:16px;background:linear-gradient(145deg,#17271e,#111a15);box-shadow:0 20px 60px rgba(0,0,0,.4);color:var(--text);}
+  .checkout-purchase-toast[hidden]{display:none;}
+  .checkout-purchase-toast-icon{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border-radius:50%;background:rgba(85,219,141,.14);color:#55db8d;font-size:20px;font-weight:800;}
+  .checkout-purchase-toast strong{display:block;margin:1px 0 5px;font-size:15px;}
+  .checkout-purchase-toast p{margin:0;color:var(--sub);font-size:13px;line-height:1.5;}
+  .checkout-purchase-toast button{margin-left:auto;border:0;background:transparent;color:var(--sub);font-size:20px;line-height:1;cursor:pointer;}
+  @media(max-width:520px){.checkout-purchase-toast{right:16px;bottom:16px;padding:15px}}
   .coupon-discount-row b{color:#e5484d!important;}
   .co-total{display:flex; justify-content:space-between; font-size:16px; font-weight:800; padding-top:14px; margin-top:6px; border-top:1px solid var(--panel-b);}
   .co-total > span:last-child{color:var(--green);}
@@ -1335,7 +1342,7 @@ const API_BASE = ['localhost','127.0.0.1'].includes(window.location.hostname)
       <a href="#pricing" class="btn btn-primary btn-lg">Start your challenge →</a>
       <a href="#how" class="btn btn-outline btn-lg">See how it works</a>
     </div>
-    <button type="button" class="hero-coupon" id="heroCouponCheckoutBtn" aria-label="Copy coupon CRAZYFUNDED30 and choose a Classic account">
+    <button type="button" class="hero-coupon" id="heroCouponCheckoutBtn" aria-label="Copy coupon CRAZYFUNDED30 and choose an account">
       <span class="hero-coupon-label">LIMITED OFFER</span>
       <span class="hero-coupon-code">CRAZYFUNDED30</span>
       <span class="hero-coupon-discount">30% OFF</span>
@@ -1765,10 +1772,10 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
           <section id="paymentStep" class="payment-step" aria-labelledby="paymentStepTitle" hidden>
             <button type="button" class="btn btn-outline" id="billingBackBtn">← Back to Billing</button>
             <div class="hosted-crypto-panel">
-              <span class="hosted-crypto-brand">Secure checkout · NOWPayments</span>
+              <span class="hosted-crypto-brand" id="hostedCryptoBrand">Secure checkout · NOWPayments</span>
               <h4 id="paymentStepTitle">Pay securely with crypto</h4>
-              <p>Continue to NOWPayments to choose an available cryptocurrency and network, then follow the provider’s payment instructions.</p>
-              <div class="hosted-payment-methods" aria-label="Available payment methods">
+              <p id="paymentStepDescription">Continue to NOWPayments to choose an available cryptocurrency and network, then follow the provider’s payment instructions.</p>
+              <div class="hosted-payment-methods" id="hostedPaymentMethods" aria-label="Available payment methods">
                 <div class="hosted-method-card hosted-method-card-unavailable" aria-label="UPI is unavailable">
                   <span class="hosted-method-radio" aria-hidden="true"></span>
                   <span class="hosted-upi-wordmark" aria-hidden="true">UPI<span class="hosted-upi-arrows"><span>›</span><span>›</span></span></span>
@@ -1794,13 +1801,13 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
                   </span>
                 </div>
               </div>
-              <div class="hosted-crypto-steps" aria-label="Checkout steps">
+              <div class="hosted-crypto-steps" id="hostedCryptoSteps" aria-label="Checkout steps">
                 <span>1. Review your order</span>
                 <span>2. Choose a coin and network</span>
                 <span>3. Complete provider verification</span>
               </div>
-              <p class="hosted-crypto-note">Your trading journey starts here! Complete your payment and get ready to unlock your funded trading opportunity. Your account will be activated once your payment is successfully verified.</p>
-              <button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn" aria-disabled="true" disabled><svg class="checkout-lock-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3"/></svg>Continue to Secure Checkout →</button>
+              <p class="hosted-crypto-note" id="hostedCryptoNote">Your trading journey starts here! Complete your payment and get ready to unlock your funded trading opportunity. Your account will be activated once your payment is successfully verified.</p>
+              <button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn" aria-disabled="true" disabled><svg class="checkout-lock-icon" id="checkoutLockIcon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3"/></svg><span id="coPayBtnLabel">Continue to Secure Checkout →</span></button>
             </div>
           </section>
         </form>
@@ -1820,7 +1827,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
           <p class="coupon-status" id="couponStatus" role="status" aria-live="polite"></p>
         </div>
         <div class="co-summary-row" id="coSubtotalRow" style="display:none;"><span>Subtotal</span><b id="coSubtotal">$0</b></div>
-        <div class="co-summary-row coupon-discount-row" id="coDiscountRow" style="display:none;"><span>CRAZYFUNDED30 · 30% off</span><b id="coDiscount">−$0</b></div>
+        <div class="co-summary-row coupon-discount-row" id="coDiscountRow" style="display:none;"><span id="coDiscountLabel"></span><b id="coDiscount">−$0</b></div>
         <div class="co-total"><span>Total due</span><span id="coTotal">$0</span></div>
         <div class="co-rules">
           <h4>Challenge rules</h4>
@@ -1830,6 +1837,12 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
     </div>
   </div>
 </section>
+
+<div id="checkoutPurchaseToast" class="checkout-purchase-toast" role="status" aria-live="polite" hidden>
+  <span class="checkout-purchase-toast-icon" aria-hidden="true">✓</span>
+  <div><strong id="checkoutPurchaseToastTitle">Purchase complete</strong><p id="checkoutPurchaseToastMessage">Your account is ready to trade now.</p></div>
+  <button type="button" id="checkoutPurchaseToastClose" aria-label="Dismiss purchase notification">×</button>
+</div>
 
 <section id="registration" aria-labelledby="registrationTitle">
   <div class="registration-story">
@@ -4522,6 +4535,12 @@ async function createCryptoCheckout(purchase){
   try{ result = responseText ? JSON.parse(responseText) : {}; }
   catch(error){ result.error = 'Payment API returned HTTP ' + response.status + ' with a non-JSON response.'; }
   if(!response.ok) throw new Error(result.error || 'Crypto checkout could not be created (HTTP ' + response.status + ').');
+  if(result.requiresPayment === false){
+    if(typeof result.purchaseId !== 'string' || result.totalCents !== 0 || typeof result.provisioningStatus !== 'string'){
+      throw new Error('Payment API returned an invalid free-purchase response.');
+    }
+    return result;
+  }
   if(typeof result.invoiceUrl !== 'string' || !result.invoiceUrl) throw new Error('Payment API did not return a checkout URL.');
   const invoiceUrl = new URL(result.invoiceUrl, window.location.origin);
   if(invoiceUrl.protocol !== 'https:' || invoiceUrl.hostname !== 'nowpayments.io'){
@@ -4529,6 +4548,26 @@ async function createCryptoCheckout(purchase){
   }
   return result;
 }
+
+let checkoutPurchaseToastTimer = null;
+function showCheckoutPurchaseToast(readyToTrade){
+  const toast = document.getElementById('checkoutPurchaseToast');
+  if(!toast) return;
+  document.getElementById('checkoutPurchaseToastTitle').textContent = readyToTrade
+    ? 'Purchase complete'
+    : 'Purchase received';
+  document.getElementById('checkoutPurchaseToastMessage').textContent = readyToTrade
+    ? 'Your account is ready. You can trade now.'
+    : 'Your order is recorded, but account activation is still in progress.';
+  toast.hidden = false;
+  clearTimeout(checkoutPurchaseToastTimer);
+  checkoutPurchaseToastTimer = setTimeout(()=>{toast.hidden = true;},7000);
+}
+document.getElementById('checkoutPurchaseToastClose').addEventListener('click',()=>{
+  const toast = document.getElementById('checkoutPurchaseToast');
+  if(toast) toast.hidden = true;
+  clearTimeout(checkoutPurchaseToastTimer);
+});
 
 function getPendingSubmissionId(purchase){
   const key = 'dailyFundedPendingPurchase';
@@ -4559,6 +4598,12 @@ let billingPaymentUnlocked = false;
 const activeCouponCode = 'CRAZYFUNDED30';
 let checkoutBasePrice = 0;
 let couponApplied = false;
+let appliedCouponCode = '';
+let couponListPriceCents = 0;
+let couponDiscountCents = 0;
+let couponTotalCents = 0;
+let couponDiscountPercent = 0;
+let couponValidationRequestId = 0;
 let pendingHomepageCoupon = '';
 const pendingCheckoutStorageKey = 'dailyFundedPendingCheckout';
 let pendingCheckoutResumeKey = '';
@@ -4909,14 +4954,41 @@ function formatCheckoutAmount(amount){
   return '$' + new Intl.NumberFormat('en-US',{minimumFractionDigits:Number.isInteger(rounded) ? 0 : 2,maximumFractionDigits:2}).format(rounded);
 }
 
+function setCheckoutPaymentMode(isFree){
+  document.getElementById('hostedCryptoBrand').hidden = isFree;
+  document.getElementById('hostedPaymentMethods').hidden = isFree;
+  document.getElementById('hostedCryptoSteps').hidden = isFree;
+  document.getElementById('checkoutLockIcon').hidden = isFree;
+  document.getElementById('paymentStepTitle').textContent = isFree
+    ? 'Complete your free purchase'
+    : 'Pay securely with crypto';
+  document.getElementById('paymentStepDescription').textContent = isFree
+    ? 'No payment is due. Complete your purchase to provision your account.'
+    : 'Continue to NOWPayments to choose an available cryptocurrency and network, then follow the provider’s payment instructions.';
+  document.getElementById('hostedCryptoNote').textContent = isFree
+    ? 'Your coupon covers the full cost. We will activate your account after you complete this step.'
+    : 'Your trading journey starts here! Complete your payment and get ready to unlock your funded trading opportunity. Your account will be activated once your payment is successfully verified.';
+  document.getElementById('billingContinueBtn').textContent = isFree
+    ? 'Continue to purchase'
+    : 'Continue to payment';
+  document.getElementById('coPayBtnLabel').textContent = isFree
+    ? 'Complete purchase →'
+    : 'Continue to Secure Checkout →';
+}
+
 function updateCheckoutPrice(){
-  const discount = couponApplied ? Math.round(checkoutBasePrice * .3 * 100) / 100 : 0;
-  const total = Math.max(0,checkoutBasePrice - discount);
-  document.getElementById('coSubtotal').textContent = formatCheckoutAmount(checkoutBasePrice);
-  document.getElementById('coDiscount').textContent = '−' + formatCheckoutAmount(discount);
+  const subtotalCents = couponApplied ? couponListPriceCents : Math.round(checkoutBasePrice * 100);
+  const discountCents = couponApplied ? couponDiscountCents : 0;
+  const totalCents = couponApplied ? couponTotalCents : subtotalCents;
+  document.getElementById('coSubtotal').textContent = formatCheckoutAmount(subtotalCents / 100);
+  document.getElementById('coDiscount').textContent = '−' + formatCheckoutAmount(discountCents / 100);
+  document.getElementById('coDiscountLabel').textContent = couponApplied
+    ? appliedCouponCode + ' · ' + couponDiscountPercent + '% off'
+    : '';
   document.getElementById('coSubtotalRow').style.display = couponApplied ? '' : 'none';
   document.getElementById('coDiscountRow').style.display = couponApplied ? '' : 'none';
-  document.getElementById('coTotal').textContent = formatCheckoutAmount(total);
+  document.getElementById('coTotal').textContent = formatCheckoutAmount(totalCents / 100);
+  setCheckoutPaymentMode(couponApplied && couponTotalCents === 0);
 }
 
 function persistPendingCheckoutState(){
@@ -4925,27 +4997,106 @@ function persistPendingCheckoutState(){
   }
 }
 
-function applyCheckoutCoupon(){
+async function applyCheckoutCoupon(){
   const input = document.getElementById('couponCodeInput');
   const status = document.getElementById('couponStatus');
-  if(pendingPurchase && pendingPurchase.productModel !== 'classic'){
-    couponApplied = false;
-    input.value = '';
+  const applyButton = document.getElementById('applyCouponBtn');
+  const requestId = ++couponValidationRequestId;
+  const couponCode = input.value.trim().toUpperCase();
+  const selection = pendingPurchase;
+  couponApplied = false;
+  appliedCouponCode = '';
+  couponListPriceCents = 0;
+  couponDiscountCents = 0;
+  couponTotalCents = 0;
+  couponDiscountPercent = 0;
+  updateCheckoutPrice();
+  if(!couponCode){
+    status.className = 'coupon-status';
+    status.textContent = '';
+    persistPendingCheckoutState();
+    return false;
+  }
+  if(!selection){
     status.className = 'coupon-status error';
-    status.textContent = 'CRAZYFUNDED30 is only available for Classic accounts.';
+    status.textContent = 'Select a challenge before applying a coupon.';
+    persistPendingCheckoutState();
+    return false;
+  }
+  applyButton.disabled = true;
+  status.className = 'coupon-status';
+  status.textContent = 'Checking coupon…';
+  try{
+    const headers = await firebaseApiHeaders({'Content-Type':'application/json',Accept:'application/json'});
+    const response = await fetch(API_BASE + '/api/crypto/coupon/validate',{
+      method:'POST',
+      credentials:'same-origin',
+      headers,
+      body:JSON.stringify({
+        productModel:selection.productModel,
+        productId:selection.productId,
+        plan:selection.planKey,
+        size:selection.size,
+        submissionId:pendingSubmissionId,
+        coupon:couponCode
+      })
+    });
+    const result = await response.json();
+    if(requestId !== couponValidationRequestId
+      || pendingPurchase !== selection
+      || input.value.trim().toUpperCase() !== couponCode) return false;
+    if(!response.ok) throw new Error(result.error || 'Coupon could not be validated.');
+    if(result.couponCode !== couponCode
+      || !Number.isSafeInteger(result.listPriceCents)
+      || !Number.isSafeInteger(result.discountCents)
+      || !Number.isSafeInteger(result.totalCents)
+      || !Number.isInteger(result.discountPercent)
+      || result.listPriceCents <= 0
+      || result.discountCents < 0
+      || result.discountCents > result.listPriceCents
+      || result.totalCents < 0
+      || result.discountPercent < 1
+      || result.discountPercent > 100
+      || result.listPriceCents - result.discountCents !== result.totalCents){
+      throw new Error('Coupon service returned an invalid price.');
+    }
+    couponApplied = true;
+    appliedCouponCode = couponCode;
+    couponListPriceCents = result.listPriceCents;
+    couponDiscountCents = result.discountCents;
+    couponTotalCents = result.totalCents;
+    couponDiscountPercent = result.discountPercent;
+    status.className = 'coupon-status success';
+    status.textContent = 'Coupon applied: ' + couponDiscountPercent + '% off.';
     updateCheckoutPrice();
     persistPendingCheckoutState();
-    return;
+    return true;
+  }catch(error){
+    if(requestId !== couponValidationRequestId) return false;
+    status.className = 'coupon-status error';
+    status.textContent = error.message || 'Coupon could not be validated.';
+    updateCheckoutPrice();
+    persistPendingCheckoutState();
+    return false;
+  }finally{
+    if(requestId === couponValidationRequestId) applyButton.disabled = false;
   }
-  couponApplied = input.value.trim().toUpperCase() === activeCouponCode;
-  status.className = 'coupon-status ' + (couponApplied ? 'success' : 'error');
-  status.textContent = couponApplied ? 'Coupon applied: 30% off.' : 'Invalid coupon code.';
-  updateCheckoutPrice();
-  persistPendingCheckoutState();
 }
 
 document.getElementById('applyCouponBtn').addEventListener('click',applyCheckoutCoupon);
-document.getElementById('couponCodeInput').addEventListener('input',persistPendingCheckoutState);
+document.getElementById('couponCodeInput').addEventListener('input',()=>{
+  ++couponValidationRequestId;
+  couponApplied = false;
+  appliedCouponCode = '';
+  couponListPriceCents = 0;
+  couponDiscountCents = 0;
+  couponTotalCents = 0;
+  couponDiscountPercent = 0;
+  document.getElementById('applyCouponBtn').disabled = false;
+  document.getElementById('couponStatus').textContent = '';
+  updateCheckoutPrice();
+  persistPendingCheckoutState();
+});
 document.getElementById('couponCodeInput').addEventListener('keydown',event=>{
   if(event.key === 'Enter'){
     event.preventDefault();
@@ -5017,28 +5168,24 @@ function renderCheckout(selection,accountDetails={billing:{},message:''}){
   else setTradingPlatform('cf');
   pendingSubmissionId = getPendingSubmissionId(pendingPurchase);
   checkoutBasePrice = selection.price;
-  const classicCouponEligible = selection.productModel === 'classic';
-  const couponForCheckout = classicCouponEligible
-    ? pendingHomepageCoupon || (savedCheckoutState ? savedCheckoutState.couponCode : '')
-    : '';
-  const applyRestoredCoupon = classicCouponEligible
-    && savedCheckoutState
-    && savedCheckoutState.couponApplied
-    && couponForCheckout.trim().toUpperCase() === activeCouponCode;
-  const applyHomepageCoupon = classicCouponEligible && pendingHomepageCoupon.trim().toUpperCase() === activeCouponCode;
+  const couponForCheckout = pendingHomepageCoupon || (savedCheckoutState ? savedCheckoutState.couponCode : '');
   pendingHomepageCoupon = '';
-  couponApplied = Boolean(applyRestoredCoupon || applyHomepageCoupon);
+  ++couponValidationRequestId;
+  couponApplied = false;
+  appliedCouponCode = '';
+  couponListPriceCents = 0;
+  couponDiscountCents = 0;
+  couponTotalCents = 0;
+  couponDiscountPercent = 0;
   const couponBox = document.querySelector('.coupon-box');
   const couponInput = document.getElementById('couponCodeInput');
   const applyCouponButton = document.getElementById('applyCouponBtn');
-  couponBox.hidden = !classicCouponEligible;
-  couponInput.disabled = !classicCouponEligible;
-  applyCouponButton.disabled = !classicCouponEligible;
+  couponBox.hidden = false;
+  couponInput.disabled = false;
+  applyCouponButton.disabled = false;
   couponInput.value = couponForCheckout;
-  document.getElementById('couponStatus').textContent = !classicCouponEligible
-    ? 'CRAZYFUNDED30 is only available for Classic accounts.'
-    : couponApplied ? 'Coupon applied: 30% off.' : '';
-  document.getElementById('couponStatus').className = couponApplied ? 'coupon-status success' : 'coupon-status';
+  document.getElementById('couponStatus').textContent = '';
+  document.getElementById('couponStatus').className = 'coupon-status';
   mainSections.forEach(sel=>{ const el = document.querySelector(sel); if(el) el.style.display = 'none'; });
   document.querySelector('footer').style.display = 'none';
   checkout.classList.add('active');
@@ -5049,7 +5196,7 @@ function renderCheckout(selection,accountDetails={billing:{},message:''}){
   document.getElementById('coSize').textContent = '$' + selection.size.toLocaleString();
   document.getElementById('coSplit').textContent = selection.split || '—';
   updateCheckoutPrice();
-  if(couponForCheckout && !couponApplied) applyCheckoutCoupon();
+  if(couponForCheckout) applyCheckoutCoupon();
   const rules = document.getElementById('coRules');
   rules.replaceChildren();
   const plan = pricing[selection.planKey];
@@ -5161,22 +5308,37 @@ if(checkoutSubmissionFormEl && coPayBtnEl){
       return;
     }
     const couponCode = document.getElementById('couponCodeInput').value.trim();
-    if(couponCode && couponCode.toUpperCase() !== activeCouponCode){
-      const couponStatus = document.getElementById('couponStatus');
-      couponStatus.className = 'coupon-status error';
-      couponStatus.textContent = 'Invalid coupon code. Correct or remove it before submitting payment.';
-      return;
-    }
-    if(couponCode && !couponApplied) applyCheckoutCoupon();
-    if(!couponCode && couponApplied){
-      couponApplied = false;
-      updateCheckoutPrice();
-    }
     coPayBtnEl.dataset.submitting = 'true';
     coPayBtnEl.disabled = true;
     coPayBtnEl.setAttribute('aria-disabled','true');
     try{
+      if(couponCode && (!couponApplied || appliedCouponCode !== couponCode.toUpperCase())){
+        if(!await applyCheckoutCoupon()) return;
+      }
+      if(!couponCode && couponApplied){
+        couponApplied = false;
+        appliedCouponCode = '';
+        couponListPriceCents = 0;
+        couponDiscountCents = 0;
+        couponTotalCents = 0;
+        couponDiscountPercent = 0;
+        updateCheckoutPrice();
+      }
       const purchase = await createCryptoCheckout(pendingPurchase);
+      if(purchase.requiresPayment === false){
+        if(purchase.provisioningStatus === 'provisioned'){
+          clearPendingSubmissionId();
+          const accountId = purchase.accountId || purchase.purchaseId;
+          closeCheckout();
+          openDashboard(accountId);
+          showCheckoutPurchaseToast(true);
+        }else{
+          document.getElementById('couponStatus').className = 'coupon-status';
+          document.getElementById('couponStatus').textContent = 'Your purchase is recorded and no payment was taken. Account activation is still in progress; you can retry here shortly.';
+          showCheckoutPurchaseToast(false);
+        }
+        return;
+      }
       clearPendingSubmissionId();
       window.location.assign(purchase.invoiceUrl);
     }catch(error){

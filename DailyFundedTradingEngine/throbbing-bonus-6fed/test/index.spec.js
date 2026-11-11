@@ -2953,6 +2953,30 @@ describe("Flexible provisioning worker", () => {
 		expect(state.accounts[0].profit_target_percent).toBe(target ?? 0);
 	});
 
+	it("tracks daily and trailing loss from the start for a newly purchased Spark account", async () => {
+		const { db, state } = mockDb();
+		const provisioned = await provision(db, payloadFor("spark_1step"));
+		const payload = await provisioned.json();
+		const today = new Date().toISOString().slice(0, 10);
+		const snapshot = state.snapshots[0];
+
+		expect(provisioned.status).toBe(201);
+		expect(snapshot).toMatchObject({
+			high_water_mark: 100,
+			high_water_mark_tracking_complete: 1,
+			starting_day_balance: 100,
+			starting_day_equity: 100,
+			starting_day_utc_date: today,
+		});
+
+		Object.assign(state.accounts[0], { balance: 90, equity: 90 });
+		const response = await getAccount(db, payload.account.id);
+		const { account } = await response.json();
+
+		expect(account.drawdown.daily_percent_used).toBeCloseTo(10, 8);
+		expect(account.drawdown.max_percent_used).toBeCloseTo(10, 8);
+	});
+
 	it.each(["random-value", "UNKNOWN_PLAN"])("rejects unknown plan key %s without model fallback", async (planKey) => {
 		const { db, state } = mockDb();
 		const response = await provision(db, payloadFor(planKey));

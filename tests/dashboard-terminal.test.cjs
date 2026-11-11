@@ -229,6 +229,26 @@ test('dashboard computes live drawdown only when current-day trading history is 
     opened_at: '2026-11-10T23:00:00.000Z',
   }],today);
   assert.equal(overnight.daily_percent_used, null);
+
+  const sparkRules = {
+    daily_drawdown_type: 'START_OF_DAY_EQUITY',
+    max_drawdown_type: 'TRAILING',
+    high_water_mark: 12000,
+    high_water_mark_tracking_complete: 1,
+  };
+  const spark = calculateDrawdown({
+    ...account,
+    balance: 11000,
+    equity: 11000,
+  },sparkRules,[],[],today);
+  assert.ok(Math.abs(spark.max_percent_used - 100 / 12) < 1e-12);
+
+  const legacySpark = calculateDrawdown({
+    ...account,
+    balance: 11000,
+    equity: 11000,
+  },{...sparkRules,high_water_mark_tracking_complete:0},[],[],today);
+  assert.equal(legacySpark.max_percent_used, null);
 });
 
 test('calendar P/L labels fit narrow mobile day cells while retaining exact values in the title', () => {

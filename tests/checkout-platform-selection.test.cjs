@@ -192,7 +192,7 @@ test('hosted payment step shows unavailable UPI and selected crypto reference ca
 test('checkout highlights the supplied payment and account activation message', () => {
   assert.match(
     checkoutHtml,
-    /<p class="hosted-crypto-note">Your trading journey starts here! Complete your payment and get ready to unlock your funded trading opportunity\. Your account will be activated once your payment is successfully verified\.<\/p>/
+    /<p class="hosted-crypto-note" id="hostedCryptoNote">Your trading journey starts here! Complete your payment and get ready to unlock your funded trading opportunity\. Your account will be activated once your payment is successfully verified\.<\/p>/
   );
   assert.match(checkoutHtml, /\.hosted-crypto-panel \.hosted-crypto-note\{[^}]*border-left:4px solid #34c98b;[^}]*background:#10213b;[^}]*background:linear-gradient\(115deg,#123229,#142648\);[^}]*color:#f4f8ff/);
   assert.match(checkoutHtml, /\.hosted-crypto-note strong\{display:block;[^}]*color:#67e6ab/);
@@ -323,7 +323,7 @@ test('checkout stacks panels for tablet and uses a 2-by-2 platform grid on phone
   assert.match(checkoutHtml, /@media\(max-width:520px\)\{\.platform-card-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\);\}\}/);
 });
 
-test('checkout price and coupon rendering use only elements present in the hosted markup', () => {
+test('checkout validates coupons for Spark and switches full discounts to a no-payment flow', async () => {
   const ids = new Set([...checkoutHtml.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
   const elements = new Map([...ids].map(id => [id, {
     textContent: '',
@@ -351,6 +351,25 @@ test('checkout price and coupon rendering use only elements present in the hoste
       createElement: () => ({textContent: ''})
     },
     window: {scrollTo() {}},
+    API_BASE: 'https://api.example.test',
+    firebaseApiHeaders: async headers => headers,
+    fetch: async (url, options) => {
+      assert.equal(url, 'https://api.example.test/api/crypto/coupon/validate');
+      const request = JSON.parse(options.body);
+      const discountPercent = request.coupon === 'FUNDED100' ? 100 : 30;
+      const listPriceCents = 3900;
+      const discountCents = listPriceCents * discountPercent / 100;
+      return {
+        ok: true,
+        json: async () => ({
+          couponCode: request.coupon,
+          discountPercent,
+          listPriceCents,
+          discountCents,
+          totalCents: listPriceCents - discountCents
+        })
+      };
+    },
     readPendingCheckoutState: () => null,
     applyCheckoutAccountDetails(accountDetails) {
       const billing = accountDetails.billing || {};
@@ -371,50 +390,76 @@ test('checkout price and coupon rendering use only elements present in the hoste
     checkout: {classList: {add() {}, remove() {}, contains() {return false;}}},
     mainSections: [],
     billingFields: {},
-    pricing: {'1step': {extra: []}},
+    pricing: getFrontendPricing(),
     pendingHomepageCoupon: '',
     getPendingSubmissionId: () => 'submission-id',
     setTradingPlatform() {},
     checkoutBasePrice: 32,
     couponApplied: false,
+    appliedCouponCode: '',
+    couponListPriceCents: 0,
+    couponDiscountCents: 0,
+    couponTotalCents: 0,
+    couponDiscountPercent: 0,
+    couponValidationRequestId: 0,
     activeCouponCode: 'CRAZYFUNDED30',
-    pendingPurchase: {productModel: 'classic'}
+    pendingPurchase: null
   });
-  const formatPrice = extractFunction('formatCheckoutAmount', 'updateCheckoutPrice');
-  const updatePrice = extractFunction('updateCheckoutPrice', 'applyCheckoutCoupon');
+  const formatPriceStart = checkoutHtml.indexOf('function formatCheckoutAmount(');
+  const formatPriceEnd = checkoutHtml.indexOf('\nfunction setCheckoutPaymentMode(', formatPriceStart);
+  assert.ok(formatPriceStart >= 0 && formatPriceEnd > formatPriceStart);
+  const formatPrice = checkoutHtml.slice(formatPriceStart, formatPriceEnd);
+  const paymentMode = extractFunction('setCheckoutPaymentMode', 'updateCheckoutPrice');
+  const updatePriceStart = checkoutHtml.indexOf('function updateCheckoutPrice()');
+  const updatePriceEnd = checkoutHtml.indexOf('\nasync function applyCheckoutCoupon()', updatePriceStart);
+  assert.ok(updatePriceStart >= 0 && updatePriceEnd > updatePriceStart);
+  const updatePrice = checkoutHtml.slice(updatePriceStart, updatePriceEnd);
   const renderCheckout = extractFunction('renderCheckout', 'closeCheckout');
-  const applyCouponStart = checkoutHtml.indexOf('function applyCheckoutCoupon()');
+  const applyCouponStart = checkoutHtml.indexOf('async function applyCheckoutCoupon()');
   const applyCouponEnd = checkoutHtml.indexOf("\ndocument.getElementById('applyCouponBtn')", applyCouponStart);
   assert.ok(applyCouponStart >= 0 && applyCouponEnd > applyCouponStart);
 
   vm.runInContext(
-    `${formatPrice}\n${updatePrice}\n${renderCheckout}\n${checkoutHtml.slice(applyCouponStart, applyCouponEnd)}`,
+    `${formatPrice}\n${paymentMode}\n${updatePrice}\n${renderCheckout}\n${checkoutHtml.slice(applyCouponStart, applyCouponEnd)}`,
     context
   );
   context.renderCheckout({
-    productModel: 'classic',
-    planKey: '1step',
-    label: '1-Step',
-    size: 5000,
-    split: '80%',
-    price: 32
+    productModel: 'spark',
+    productId: 'MODEL_FX_SPARK_1STEP',
+    planKey: 'spark_1step',
+    label: 'Spark 1-Step',
+    size: 25000,
+    split: '70%',
+    price: 39
   });
-  assert.equal(elements.get('coLabel').textContent, '1-Step Challenge');
-  assert.equal(elements.get('coTotal').textContent, '$32');
+  assert.equal(elements.get('coLabel').textContent, 'Spark 1-Step Challenge');
+  assert.equal(elements.get('couponCodeInput').disabled, false);
+  assert.equal(queryElements.get('.coupon-box').hidden, false);
+  assert.equal(elements.get('coTotal').textContent, '$39');
 
   elements.get('couponCodeInput').value = 'CRAZYFUNDED30';
-  context.applyCheckoutCoupon();
+  assert.equal(await context.applyCheckoutCoupon(), true);
   assert.equal(context.couponApplied, true);
-  assert.equal(elements.get('coSubtotal').textContent, '$32');
-  assert.equal(elements.get('coDiscount').textContent, '−$9.60');
-  assert.equal(elements.get('coTotal').textContent, '$22.40');
+  assert.equal(elements.get('coSubtotal').textContent, '$39');
+  assert.equal(elements.get('coDiscount').textContent, '−$11.70');
+  assert.equal(elements.get('coTotal').textContent, '$27.30');
   assert.equal(elements.get('coSubtotalRow').style.display, '');
   assert.equal(elements.get('coDiscountRow').style.display, '');
 
+  elements.get('couponCodeInput').value = 'FUNDED100';
+  assert.equal(await context.applyCheckoutCoupon(), true);
+  assert.equal(elements.get('coDiscount').textContent, '−$39');
+  assert.equal(elements.get('coTotal').textContent, '$0');
+  assert.equal(elements.get('paymentStepTitle').textContent, 'Complete your free purchase');
+  assert.equal(elements.get('coPayBtnLabel').textContent, 'Complete purchase →');
+  assert.equal(elements.get('hostedPaymentMethods').hidden, true);
+  assert.doesNotMatch(checkoutHtml, /FUNDED100/);
+
   elements.get('couponCodeInput').value = '';
-  context.applyCheckoutCoupon();
+  assert.equal(await context.applyCheckoutCoupon(), false);
   assert.equal(context.couponApplied, false);
-  assert.equal(elements.get('coTotal').textContent, '$32');
+  assert.equal(elements.get('coTotal').textContent, '$39');
+  assert.equal(elements.get('paymentStepTitle').textContent, 'Pay securely with crypto');
   assert.equal(elements.get('coSubtotalRow').style.display, 'none');
   assert.equal(elements.get('coDiscountRow').style.display, 'none');
 });
