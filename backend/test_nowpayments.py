@@ -496,28 +496,184 @@ class NowPaymentsTests(unittest.TestCase):
                 )
                 self.assertEqual(result[:3], (list_price, discount, total))
 
-    def test_checkout_rejects_invalid_coupon_and_spark_coupon_before_provider_call(self):
-        invalid_cases = (
-            (self.checkout_payload(coupon="NOT-A-COUPON"), "Invalid coupon"),
-            (
-                self.checkout_payload(
-                    plan="spark_1step",
-                    size=25000,
-                    productModel="spark",
-                    productId="MODEL_FX_SPARK_1STEP",
-                ),
-                "only available for Classic",
-            ),
+    def test_checkout_rejects_invalid_coupon_before_provider_call(self):
+        with patch("app.get_firestore") as firestore_client:
+            with patch("app.nowpayments_api_request") as provider_request:
+                response = self.authenticated_post(
+                    "/api/crypto/checkout",
+                    self.checkout_payload(coupon="NOT-A-COUPON"),
+                )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Invalid coupon", response.get_json()["error"])
+        firestore_client.assert_not_called()
+        provider_request.assert_not_called()
+
+    def test_configured_coupons_apply_to_spark_and_funded100_is_exactly_free(self):
+        for plan_key, plan in app_module.CATALOG.items():
+            for size, price in plan["prices"].items():
+                with self.subTest(plan=plan_key, size=size):
+                    list_price = price * 100
+                    discount = (list_price * 30 + 50) // 100
+                    self.assertEqual(
+                        app_module.calculate_purchase_amount(
+                            plan_key, size, "CRAZYFUNDED30"
+                        )[:3],
+                        (list_price, discount, list_price - discount),
+                    )
+                    self.assertEqual(
+                        app_module.calculate_purchase_amount(
+                            plan_key, size, "FUNDED100"
+                        )[:3],
+                        (list_price, list_price, 0),
+                    )
+
+        spark_30 = app_module.calculate_purchase_amount(
+            "spark_1step", 25000, "CRAZYFUNDED30"
         )
-        for payload, expected_error in invalid_cases:
-            with self.subTest(payload=payload):
-                with patch("app.get_firestore") as firestore_client:
-                    with patch("app.nowpayments_api_request") as provider_request:
-                        response = self.authenticated_post("/api/crypto/checkout", payload)
-                self.assertEqual(response.status_code, 400)
-                self.assertIn(expected_error, response.get_json()["error"])
-                firestore_client.assert_not_called()
-                provider_request.assert_not_called()
+        self.assertEqual(spark_30, (3900, 1170, 2730, "CRAZYFUNDED30"))
+        full_discount = app_module.calculate_purchase_amount(
+            "spark_1step", 25000, "FUNDED100"
+        )
+        self.assertEqual(full_discount, (3900, 3900, 0, "FUNDED100"))
+        self.assertTrue(app_module.purchase_payment_allows_auto_provisioning({
+            "status": "pending",
+            "paymentProvider": "coupon",
+            "paymentMethod": "coupon",
+            "paymentStatus": "not_required",
+            "couponCode": "FUNDED100",
+            "couponRedemptionVerified": True,
+            "listPriceCents": 3900,
+            "discountCents": 3900,
+            "totalCents": 0,
+        }))
+        self.assertFalse(app_module.purchase_payment_allows_auto_provisioning({
+            "paymentProvider": "coupon",
+            "paymentMethod": "coupon",
+            "paymentStatus": "not_required",
+            "couponCode": "FUNDED100",
+            "couponRedemptionVerified": False,
+            "listPriceCents": 3900,
+            "discountCents": 3900,
+            "totalCents": 0,
+        }))
+
+    def test_funded100_checkout_skips_payment_and_redeems_once_per_user(self):
+        database = MemoryFirestore()
+        user_ref = MemoryUserDocument("verified-user-a")
+        database.collection("users").documents[user_ref.id] = user_ref
+        free_payload = self.checkout_payload(
+            plan="spark_1step",
+            size=25000,
+            productModel="spark",
+            productId="MODEL_FX_SPARK_1STEP",
+            coupon="FUNDED100",
+        )
+        with patch("app.get_firestore", return_value=database):
+            with patch(
+                "app.nowpayments_configuration",
+                side_effect=AssertionError("free checkout must not configure NOWPayments"),
+            ) as payment_config:
+                with patch("app.nowpayments_api_request") as provider_request:
+                    with patch(
+                        "app.provision_verified_purchase",
+                        return_value={"state": "provisioned", "accountId": "ACC_TEST"},
+                    ) as provisioner:
+                        with patch(
+                            "app.firestore.transactional",
+                            side_effect=lambda function: lambda transaction: function(transaction),
+                        ):
+                            response = self.authenticated_post(
+                                "/api/crypto/checkout", free_payload
+                            )
+                            purchase_id = response.get_json()["purchaseId"]
+                            saved_purchase = user_ref.collection("purchases").document(
+                                purchase_id
+                            ).data
+                            redemption = user_ref.collection(
+                                "couponRedemptions"
+                            ).document("FUNDED100").data
+
+                            replayed = self.authenticated_post(
+                                "/api/crypto/checkout", free_payload
+                            )
+                            retry_payload = dict(free_payload)
+                            retry_payload["submissionId"] = "00000000-0000-4000-8000-000000000457"
+                            reused = self.authenticated_post(
+                                "/api/crypto/checkout", retry_payload
+                            )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.get_json()["requiresPayment"])
+        self.assertEqual(response.get_json()["provisioningStatus"], "provisioned")
+        self.assertNotIn("invoiceUrl", response.get_json())
+        self.assertEqual(saved_purchase["totalCents"], 0)
+        self.assertEqual(saved_purchase["paymentProvider"], "coupon")
+        self.assertTrue(saved_purchase["couponRedemptionVerified"])
+        self.assertEqual(redemption["purchaseId"], purchase_id)
+        self.assertEqual(replayed.status_code, 200)
+        self.assertTrue(replayed.get_json()["idempotentReplay"])
+        self.assertEqual(reused.status_code, 409)
+        self.assertIn("already been used", reused.get_json()["error"])
+        payment_config.assert_not_called()
+        provider_request.assert_not_called()
+        self.assertEqual(provisioner.call_count, 2)
+
+    def test_coupon_validation_returns_server_price_and_rejects_used_full_coupon(self):
+        database = MemoryFirestore()
+        user_ref = MemoryUserDocument("verified-user-a")
+        database.collection("users").documents[user_ref.id] = user_ref
+        payload = {
+            "plan": "spark_1step",
+            "size": 25000,
+            "productModel": "spark",
+            "productId": "MODEL_FX_SPARK_1STEP",
+            "coupon": "CRAZYFUNDED30",
+        }
+        with patch("app.get_firestore", return_value=database):
+            response = self.authenticated_post(
+                "/api/crypto/coupon/validate", payload
+            )
+            full_payload = dict(payload, coupon="FUNDED100")
+            full_discount = self.authenticated_post(
+                "/api/crypto/coupon/validate", full_payload
+            )
+            user_ref.collection("couponRedemptions").document("FUNDED100").data = {
+                "purchaseId": "prior-purchase",
+            }
+            used = self.authenticated_post(
+                "/api/crypto/coupon/validate", full_payload
+            )
+            replay_submission = self.submission_id
+            replay_purchase_id = str(uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"daily-funded:verified-user-a:{replay_submission}",
+            ))
+            user_ref.collection("purchases").document(replay_purchase_id).data = {
+                "ownerUid": "verified-user-a",
+                "planKey": "spark_1step",
+                "accountSize": 25000,
+                "couponCode": "FUNDED100",
+                "paymentProvider": "coupon",
+                "paymentMethod": "coupon",
+                "paymentStatus": "not_required",
+                "couponRedemptionVerified": True,
+                "listPriceCents": 3900,
+                "discountCents": 3900,
+                "totalCents": 0,
+                "status": "approved",
+            }
+            replay = self.authenticated_post(
+                "/api/crypto/coupon/validate",
+                dict(full_payload, submissionId=replay_submission),
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["discountPercent"], 30)
+        self.assertEqual(response.get_json()["totalCents"], 2730)
+        self.assertEqual(full_discount.status_code, 200)
+        self.assertEqual(full_discount.get_json()["totalCents"], 0)
+        self.assertEqual(used.status_code, 409)
+        self.assertEqual(replay.status_code, 200)
 
     def test_checkout_rejects_invalid_product_and_size_before_provider_call(self):
         for overrides in (
@@ -1020,6 +1176,33 @@ class NowPaymentsTests(unittest.TestCase):
         self.assertEqual(account["accountSize"], 5000)
         self.assertEqual(purchase.reference.data["paymentStatus"], "finished")
         self.assertEqual(purchase.reference.data["provisioningStatus"], "provisioned")
+
+    def test_full_coupon_provisions_without_awarding_a_payment_referral_reward(self):
+        database, purchase, purchase_data, user_ref = self.provisioning_fixture()
+        purchase_data.update({
+            "status": "pending",
+            "paymentProvider": "coupon",
+            "paymentMethod": "coupon",
+            "paymentStatus": "not_required",
+            "couponCode": "FUNDED100",
+            "couponRedemptionVerified": True,
+            "listPriceCents": 3900,
+            "discountCents": 3900,
+            "totalCents": 0,
+        })
+        purchase.reference.data.update(purchase_data)
+        worker_response = self.engine_account_response(purchase_data)
+
+        with patch("app.user_document", return_value=user_ref):
+            with patch("app.cloudflare_worker_configuration", return_value=("https://engine.example.test", "test-token")):
+                with patch("app.provision_cloudflare_account", return_value=worker_response):
+                    with patch("app.award_referral_reward") as referral_reward:
+                        with patch("app.firestore.transactional", side_effect=self.transactional_lock):
+                            result = app_module.provision_verified_purchase(purchase, database)
+
+        self.assertEqual(result["state"], "provisioned")
+        self.assertEqual(purchase.reference.data["approvalSource"], "automatic_coupon")
+        referral_reward.assert_not_called()
 
     def test_engine_failure_keeps_payment_paid_and_retries_same_purchase_id(self):
         database, purchase, purchase_data, user_ref = self.provisioning_fixture()

@@ -235,18 +235,30 @@ class PurchaseApiTests(unittest.TestCase):
                 purchase_data = fake_firestore.batch.return_value.create.call_args_list[0].args[1]
                 self.assertEqual(purchase_data["tradingPlatform"], platform)
 
-    def test_classic_coupon_is_rejected_for_spark_before_writes(self):
-        response, firestore_client, r2_client, *_ = self.submit(
+    def test_crazyfunded30_applies_to_spark_purchase(self):
+        response, fake_firestore, r2_client, *_ = self.submit(
             product_model="spark",
             product_id="MODEL_FX_SPARK_1STEP",
             plan_key="spark_1step",
             size=25000,
             coupon="CRAZYFUNDED30",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        purchase_data = fake_firestore.batch.return_value.create.call_args_list[0].args[1]
+        self.assertEqual(purchase_data["listPriceCents"], 3900)
+        self.assertEqual(purchase_data["discountCents"], 1170)
+        self.assertEqual(purchase_data["totalCents"], 2730)
+        r2_client.put_object.assert_called_once()
+
+    def test_funded100_requires_secure_hosted_checkout(self):
+        response, firestore_client, r2_client, *_ = self.submit(
+            coupon="FUNDED100",
             include_proof=False,
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn("only available for Classic", response.get_json()["error"])
+        self.assertIn("secure hosted checkout", response.get_json()["error"])
         firestore_client.collection.assert_not_called()
         r2_client.put_object.assert_not_called()
 

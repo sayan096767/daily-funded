@@ -29,6 +29,8 @@ from urllib.parse import urlencode, urlsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from coupon_config import COUPONS
+
 
 FRONTEND_ORIGINS = {
     origin.strip().rstrip("/")
@@ -99,7 +101,6 @@ CATALOG = {
         "profit_split": "70% profit split",
     },
 }
-COUPON_CODE = "CRAZYFUNDED30"
 NETWORKS = {
     "usdt": {"trc20", "erc20", "bep20"},
     "btc": {"btc_native", "btc_bep20"},
@@ -650,12 +651,54 @@ def calculate_purchase_amount(plan_key, size, coupon_code):
     plan = CATALOG[plan_key]
     list_price = plan["prices"][size] * 100
     normalized_coupon = str(coupon_code or "").strip().upper()
-    if normalized_coupon and normalized_coupon != COUPON_CODE:
+    coupon = COUPONS.get(normalized_coupon)
+    if normalized_coupon and coupon is None:
         raise ValueError("Invalid coupon code.")
-    if normalized_coupon == COUPON_CODE and plan.get("product_model", "classic") != "classic":
-        raise ValueError("This coupon is only available for Classic accounts.")
-    discount = (list_price * 30 + 50) // 100 if normalized_coupon == COUPON_CODE else 0
-    return list_price, discount, list_price - discount, (COUPON_CODE if discount else None)
+    discount = (
+        (list_price * coupon["discount_percent"] + 50) // 100
+        if coupon
+        else 0
+    )
+    return list_price, discount, list_price - discount, (normalized_coupon if discount else None)
+
+
+def coupon_redemption_ref(database, uid, coupon_code):
+    return (
+        database.collection("users")
+        .document(uid)
+        .collection("couponRedemptions")
+        .document(coupon_code)
+    )
+
+
+def purchase_has_verified_full_coupon(purchase):
+    if not isinstance(purchase, dict):
+        return False
+    coupon_code = purchase.get("couponCode")
+    if not isinstance(coupon_code, str):
+        return False
+    coupon = COUPONS.get(coupon_code)
+    list_price = purchase.get("listPriceCents")
+    discount = purchase.get("discountCents")
+    total = purchase.get("totalCents")
+    return (
+        isinstance(coupon, dict)
+        and coupon["discount_percent"] == 100
+        and purchase.get("paymentProvider") == "coupon"
+        and purchase.get("paymentMethod") == "coupon"
+        and purchase.get("paymentStatus") == "not_required"
+        and purchase.get("couponRedemptionVerified") is True
+        and purchase.get("manualReviewRequired") is not True
+        and isinstance(list_price, int)
+        and not isinstance(list_price, bool)
+        and list_price > 0
+        and isinstance(discount, int)
+        and not isinstance(discount, bool)
+        and discount == list_price
+        and isinstance(total, int)
+        and not isinstance(total, bool)
+        and total == 0
+    )
 
 
 def purchase_response(purchase_id, purchase, status_code=201, replay=False):
@@ -675,6 +718,8 @@ def purchase_response(purchase_id, purchase, status_code=201, replay=False):
 def purchase_payment_allows_approval(purchase):
     if purchase.get("status") == "rejected":
         return False
+    if purchase.get("paymentProvider") == "coupon":
+        return purchase_has_verified_full_coupon(purchase)
     if purchase.get("paymentProvider") != "nowpayments":
         return True
     if purchase.get("paymentStatus") != "finished":
@@ -691,6 +736,11 @@ def purchase_payment_allows_approval(purchase):
 
 
 def purchase_payment_allows_auto_provisioning(purchase):
+    if isinstance(purchase, dict) and purchase.get("paymentProvider") == "coupon":
+        return (
+            purchase.get("status") != "rejected"
+            and purchase_has_verified_full_coupon(purchase)
+        )
     return (
         isinstance(purchase, dict)
         and purchase.get("status") != "rejected"
@@ -1155,12 +1205,13 @@ def provision_verified_purchase(purchase, database=None):
             return {"state": "in_progress"}
 
         if current.get("status") != "approved":
-            award_referral_reward(
-                transaction,
-                database,
-                values["ownerUid"],
-                values["purchaseId"],
-            )
+            if current.get("paymentProvider") != "coupon":
+                award_referral_reward(
+                    transaction,
+                    database,
+                    values["ownerUid"],
+                    values["purchaseId"],
+                )
 
         account_fields = {
             "ownerUid": values["ownerUid"],
@@ -1188,7 +1239,9 @@ def provision_verified_purchase(purchase, database=None):
             transaction.set(account_ref, account_fields)
         transaction.update(purchase_ref, {
             "status": "approved",
-            "approvalSource": "automatic_nowpayments",
+            "approvalSource": "automatic_coupon"
+            if current.get("paymentProvider") == "coupon"
+            else "automatic_nowpayments",
             "approvedAt": current.get("approvedAt") or firestore.SERVER_TIMESTAMP,
             "provisioningStatus": "in_progress",
             "provisioningAttemptId": attempt_id,
@@ -2334,6 +2387,8 @@ def create_purchase():
         )
     except ValueError as error:
         return jsonify(error=str(error)), 400
+    if coupon_code and COUPONS[coupon_code]["single_use_per_user"]:
+        return jsonify(error="This coupon requires the secure hosted checkout."), 400
 
     try:
         billing_details = normalize_billing_details(request.form.get("billing_details"))
@@ -2522,6 +2577,88 @@ def create_purchase():
     return purchase_response(purchase_id, purchase_data)
 
 
+@app.post("/api/crypto/coupon/validate")
+@firebase_auth_required
+def validate_crypto_coupon():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify(error="Coupon details are required."), 400
+
+    plan_key = str(payload.get("plan", ""))
+    try:
+        size = int(payload.get("size", ""))
+    except (TypeError, ValueError):
+        return jsonify(error="Select a valid challenge size."), 400
+    plan = CATALOG.get(plan_key)
+    if not plan or size not in plan["prices"]:
+        return jsonify(error="That challenge is not available."), 400
+    product_model = str(payload.get("productModel", "classic")).strip().lower()
+    product_id = str(payload.get("productId", plan_key)).strip()
+    if (
+        product_model != plan.get("product_model", "classic")
+        or product_id != plan.get("product_id", plan_key)
+    ):
+        return jsonify(error="That challenge product is not available."), 400
+
+    coupon_code = str(payload.get("coupon", "")).strip().upper()
+    if not coupon_code:
+        return jsonify(error="Enter a coupon code."), 400
+    try:
+        list_price, discount, total, normalized_coupon = calculate_purchase_amount(
+            plan_key, size, coupon_code
+        )
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+
+    coupon = COUPONS[normalized_coupon]
+    if coupon["single_use_per_user"]:
+        try:
+            database = get_firestore()
+            redemption = coupon_redemption_ref(database, g.firebase_uid, normalized_coupon).get()
+        except Exception as error:
+            app.logger.exception("Could not check coupon redemption for user %s", g.firebase_uid)
+            return firebase_service_error("Firestore", error)
+        if redemption.exists:
+            existing_purchase = None
+            try:
+                submission_id = str(uuid.UUID(str(payload.get("submissionId", "")).strip()))
+                purchase_id = str(uuid.uuid5(
+                    uuid.NAMESPACE_URL, f"daily-funded:{g.firebase_uid}:{submission_id}"
+                ))
+                purchase_snapshot = (
+                    database.collection("users")
+                    .document(g.firebase_uid)
+                    .collection("purchases")
+                    .document(purchase_id)
+                    .get()
+                )
+                existing_purchase = purchase_snapshot.to_dict() if purchase_snapshot.exists else None
+            except (AttributeError, TypeError, ValueError):
+                pass
+            except Exception as error:
+                app.logger.exception("Could not check coupon checkout replay for user %s", g.firebase_uid)
+                return firebase_service_error("Firestore", error)
+            if not (
+                isinstance(existing_purchase, dict)
+                and existing_purchase.get("ownerUid") == g.firebase_uid
+                and existing_purchase.get("planKey") == plan_key
+                and existing_purchase.get("accountSize") == size
+                and existing_purchase.get("couponCode") == normalized_coupon
+                and existing_purchase.get("paymentProvider") == "coupon"
+                and existing_purchase.get("status") != "rejected"
+                and purchase_has_verified_full_coupon(existing_purchase)
+            ):
+                return jsonify(error="This coupon has already been used on your account."), 409
+
+    return jsonify(
+        couponCode=normalized_coupon,
+        discountPercent=coupon["discount_percent"],
+        listPriceCents=list_price,
+        discountCents=discount,
+        totalCents=total,
+    ), 200
+
+
 @app.post("/api/crypto/checkout")
 @firebase_auth_required
 def create_crypto_checkout():
@@ -2566,6 +2703,7 @@ def create_crypto_checkout():
 
     uid = g.firebase_uid
     purchase_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"daily-funded:{uid}:{submission_id}"))
+    payment_provider = "coupon" if coupon_code and total == 0 else "nowpayments"
     retry_existing = False
     try:
         database = get_firestore()
@@ -2581,9 +2719,25 @@ def create_crypto_checkout():
                 or existing.get("couponCode") != coupon_code
                 or existing.get("tradingPlatform") != trading_platform
                 or existing.get("billingDetails") != billing_details
-                or existing.get("paymentProvider") != "nowpayments"
+                or existing.get("paymentProvider") != payment_provider
             ):
                 return jsonify(error="This submissionId is already associated with a different purchase."), 409
+            if payment_provider == "coupon":
+                if not purchase_has_verified_full_coupon(existing):
+                    return jsonify(error="This coupon checkout could not be verified. Please contact support."), 409
+                provisioning = provision_verified_purchase(existing_snapshot, database)
+                if provisioning["state"] in {"not_eligible", "account_rejected"}:
+                    return jsonify(error="This coupon purchase could not be provisioned. Please contact support."), 409
+                return jsonify(
+                    purchaseId=purchase_id,
+                    accountId=purchase_id,
+                    status="approved" if provisioning["state"] == "provisioned" else "pending",
+                    paymentStatus="not_required",
+                    totalCents=0,
+                    requiresPayment=False,
+                    provisioningStatus=provisioning["state"],
+                    idempotentReplay=True,
+                ), 200 if provisioning["state"] == "provisioned" else 202
             invoice_url = existing.get("invoiceUrl")
             if invoice_url:
                 return jsonify(
@@ -2605,11 +2759,13 @@ def create_crypto_checkout():
         app.logger.exception("Could not check existing crypto checkout %s", purchase_id)
         return firebase_service_error("Firestore", error)
 
-    try:
-        config = nowpayments_configuration()
-    except Exception:
-        app.logger.exception("Could not validate NOWPayments configuration")
-        return jsonify(error="Crypto checkout is temporarily unavailable."), 503
+    config = None
+    if payment_provider == "nowpayments":
+        try:
+            config = nowpayments_configuration()
+        except Exception:
+            app.logger.exception("Could not validate NOWPayments configuration")
+            return jsonify(error="Crypto checkout is temporarily unavailable."), 503
 
     try:
         profile = user_ref.get().to_dict() or {}
@@ -2684,16 +2840,83 @@ def create_crypto_checkout():
         "discountCents": discount,
         "totalCents": total,
         "couponCode": coupon_code,
-        "paymentMethod": "crypto",
-        "paymentProvider": "nowpayments",
+        "paymentMethod": "coupon" if payment_provider == "coupon" else "crypto",
+        "paymentProvider": payment_provider,
         "tradingPlatform": trading_platform,
         "billingDetails": billing_details,
         "status": "pending",
-        "paymentStatus": "waiting",
-        "invoiceCreationStatus": "creating",
+        "paymentStatus": "not_required" if payment_provider == "coupon" else "waiting",
+        "invoiceCreationStatus": "not_required" if payment_provider == "coupon" else "creating",
         "createdAt": firestore.SERVER_TIMESTAMP,
     }
+    if payment_provider == "coupon":
+        purchase_data["couponRedemptionVerified"] = True
     if not retry_existing:
+        if payment_provider == "coupon":
+            redemption_ref = coupon_redemption_ref(database, uid, coupon_code)
+
+            @firestore.transactional
+            def reserve_coupon_purchase(transaction):
+                current_purchase = purchase_ref.get(transaction=transaction)
+                if current_purchase.exists:
+                    return "existing", current_purchase.to_dict() or {}
+                redemption_snapshot = redemption_ref.get(transaction=transaction)
+                redemption_data = redemption_snapshot.to_dict() or {}
+                if (
+                    redemption_snapshot.exists
+                    and redemption_data.get("purchaseId") != purchase_id
+                ):
+                    return "coupon_used", {}
+                transaction.create(purchase_ref, purchase_data)
+                if not redemption_snapshot.exists:
+                    transaction.create(redemption_ref, {
+                        "couponCode": coupon_code,
+                        "ownerUid": uid,
+                        "purchaseId": purchase_id,
+                        "redeemedAt": firestore.SERVER_TIMESTAMP,
+                    })
+                return "created", purchase_data
+
+            try:
+                reservation, saved_purchase = reserve_coupon_purchase(database.transaction())
+            except Exception as error:
+                app.logger.exception("Could not reserve coupon checkout %s", purchase_id)
+                return firebase_service_error("Firestore", error)
+            if reservation == "coupon_used":
+                return jsonify(error="This coupon has already been used on your account."), 409
+            if reservation == "existing" and (
+                saved_purchase.get("ownerUid") != uid
+                or saved_purchase.get("planKey") != plan_key
+                or saved_purchase.get("accountSize") != size
+                or saved_purchase.get("couponCode") != coupon_code
+                or saved_purchase.get("tradingPlatform") != trading_platform
+                or saved_purchase.get("billingDetails") != billing_details
+                or not purchase_has_verified_full_coupon(saved_purchase)
+            ):
+                return jsonify(error="This submissionId is already associated with a different purchase."), 409
+            replay = reservation == "existing"
+            purchase_snapshot = purchase_ref.get()
+            try:
+                provisioning = provision_verified_purchase(purchase_snapshot, database)
+            except Exception as error:
+                app.logger.exception("Could not provision coupon purchase %s", purchase_id)
+                return firebase_service_error("Account provisioning", error)
+            if provisioning["state"] in {"not_eligible", "account_rejected"}:
+                return jsonify(error="This coupon purchase could not be provisioned. Please contact support."), 409
+            state = provisioning["state"]
+            status_code = 202
+            if state == "provisioned":
+                status_code = 200 if replay else 201
+            return jsonify(
+                purchaseId=purchase_id,
+                accountId=purchase_id,
+                status="approved" if state == "provisioned" else "pending",
+                paymentStatus="not_required",
+                totalCents=0,
+                requiresPayment=False,
+                provisioningStatus=state,
+                idempotentReplay=replay,
+            ), status_code
         try:
             purchase_ref.create(purchase_data)
         except AlreadyExists:
