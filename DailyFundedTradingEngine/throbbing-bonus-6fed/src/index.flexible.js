@@ -639,10 +639,16 @@ async function getAccountRuleContext(env, accountId, ownerUserId = null) {
   return { account, snapshot, rules };
 }
 
+const DRAWDOWN_RESET_UTC_HOUR = 22;
+
+function isSparkAccount(account) {
+  return String(account.challenge_model || "").toUpperCase().startsWith("SPARK_");
+}
+
 function drawdownDate(value) {
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp)
-    ? new Date(timestamp).toISOString().slice(0, 10)
+    ? new Date(timestamp - DRAWDOWN_RESET_UTC_HOUR * 60 * 60 * 1000).toISOString().slice(0, 10)
     : null;
 }
 
@@ -652,7 +658,8 @@ async function updateAccountDrawdownMetrics(
   rules,
   positions,
   equity,
-  observedAt = new Date().toISOString()
+  observedAt = new Date().toISOString(),
+  { enforceBreach = true } = {}
 ) {
   const today = drawdownDate(observedAt);
   const balance = account.balance === null || account.balance === undefined || account.balance === ""
@@ -666,6 +673,7 @@ async function updateAccountDrawdownMetrics(
     daily_reason: "Live equity unavailable",
     max_percent_used: null,
     max_reason: "Live equity unavailable",
+    breached: account.status === "breached",
   };
   if (!today || !Number.isFinite(balance) || !Number.isFinite(liveEquity)) {
     return drawdown;
@@ -674,8 +682,19 @@ async function updateAccountDrawdownMetrics(
   let startingDayBalance = Number(rules.starting_day_balance);
   let startingDayEquity = Number(rules.starting_day_equity);
   let startingDayDate = rules.starting_day_utc_date;
+  const isSpark = isSparkAccount(account);
+  const maxType = String(rules.max_drawdown_type || "").toUpperCase();
+  const startingBalance = Number(account.starting_balance);
+  let highWaterMark = Number(rules.high_water_mark);
   let snapshotChanged = false;
-  if (
+  const utcDayChanged = Boolean(startingDayDate) && startingDayDate !== today;
+  if (utcDayChanged && isSpark) {
+    startingDayBalance = balance;
+    startingDayEquity = liveEquity;
+    startingDayDate = today;
+    snapshotChanged = true;
+    if (maxType === "TRAILING") highWaterMark = liveEquity;
+  } else if (
     startingDayDate !== today ||
     !Number.isFinite(startingDayBalance) ||
     startingDayBalance <= 0 ||
@@ -686,14 +705,20 @@ async function updateAccountDrawdownMetrics(
     let realizedToday = 0;
     let floatingToday = 0;
     try {
+      const dayStart = new Date(
+        Date.parse(`${today}T00:00:00.000Z`) +
+        DRAWDOWN_RESET_UTC_HOUR * 60 * 60 * 1000
+      ).toISOString();
+      const nextDayStart = new Date(Date.parse(dayStart) + 24 * 60 * 60 * 1000).toISOString();
       const trades = await env.daily_funded_trading_db
         .prepare(`
           SELECT realized_pnl, opened_at, closed_at
           FROM trades
           WHERE account_id = ?
-            AND substr(closed_at, 1, 10) = ?
+            AND datetime(closed_at) >= datetime(?)
+            AND datetime(closed_at) < datetime(?)
         `)
-        .bind(account.id, today)
+        .bind(account.id, dayStart, nextDayStart)
         .all();
       for (const trade of trades.results || []) {
         if (drawdownDate(trade.closed_at) !== today) continue;
@@ -746,15 +771,21 @@ async function updateAccountDrawdownMetrics(
       : "Start-of-day reference is unavailable";
   }
 
-  const maxType = String(rules.max_drawdown_type || "").toUpperCase();
-  const startingBalance = Number(account.starting_balance);
-  let highWaterMark = Number(rules.high_water_mark);
   if (!Number.isFinite(highWaterMark) || highWaterMark <= 0) {
     highWaterMark = startingBalance;
   }
-  if (Number.isFinite(startingBalance) && startingBalance > 0) {
+  if (
+    (maxType !== "TRAILING" || !isSpark) &&
+    Number.isFinite(startingBalance) &&
+    startingBalance > 0
+  ) {
     highWaterMark = Math.max(highWaterMark, startingBalance, balance, liveEquity);
-    if (highWaterMark !== Number(rules.high_water_mark)) snapshotChanged = true;
+  }
+  if (
+    Number.isFinite(highWaterMark) &&
+    highWaterMark !== Number(rules.high_water_mark)
+  ) {
+    snapshotChanged = true;
   }
   if (maxType === "STATIC" && startingBalance > 0) {
     drawdown.max_percent_used = Math.max(0, (startingBalance - liveEquity) / startingBalance * 100);
@@ -773,6 +804,7 @@ async function updateAccountDrawdownMetrics(
   }
 
   if (snapshotChanged) {
+    const persistedHighWaterMark = Number.isFinite(highWaterMark) ? highWaterMark : null;
     await env.daily_funded_trading_db
       .prepare(`
         UPDATE account_rule_snapshots
@@ -783,13 +815,56 @@ async function updateAccountDrawdownMetrics(
             updated_at = CURRENT_TIMESTAMP
         WHERE account_id = ?
       `)
-      .bind(highWaterMark, startingDayBalance, startingDayEquity, startingDayDate, account.id)
+      .bind(persistedHighWaterMark, startingDayBalance, startingDayEquity, startingDayDate, account.id)
       .run();
-    rules.high_water_mark = highWaterMark;
+    rules.high_water_mark = persistedHighWaterMark;
     rules.starting_day_balance = startingDayBalance;
     rules.starting_day_equity = startingDayEquity;
     rules.starting_day_utc_date = startingDayDate;
   }
+
+  const breachReasons = [];
+  const dailyLimit = Number(rules.daily_drawdown_percent);
+  const maxLimit = Number(rules.max_drawdown_percent);
+  if (
+    enforceBreach &&
+    isSpark &&
+    Number.isFinite(dailyLimit) && dailyLimit > 0 &&
+    drawdown.daily_percent_used !== null &&
+    drawdown.daily_percent_used >= dailyLimit
+  ) {
+    breachReasons.push("daily_drawdown");
+  }
+  if (
+    enforceBreach &&
+    isSpark &&
+    Number.isFinite(maxLimit) && maxLimit > 0 &&
+    drawdown.max_percent_used !== null &&
+    drawdown.max_percent_used >= maxLimit
+  ) {
+    breachReasons.push("max_drawdown");
+  }
+  if (enforceBreach && isSpark && breachReasons.length && account.status === "active") {
+    const result = await env.daily_funded_trading_db
+      .prepare(`
+        UPDATE trading_accounts
+        SET status = 'breached', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ? AND status = 'active'
+      `)
+      .bind(account.id, account.user_id)
+      .run();
+    if (Number(result?.meta?.changes || 0) === 1) {
+      account.status = "breached";
+    } else {
+      const current = await env.daily_funded_trading_db
+        .prepare("SELECT * FROM trading_accounts WHERE id = ? AND user_id = ?")
+        .bind(account.id, account.user_id)
+        .first();
+      if (current) account.status = current.status;
+    }
+  }
+  drawdown.breached = account.status === "breached";
+  if (breachReasons.length) drawdown.breach_reasons = breachReasons;
   return drawdown;
 }
 
@@ -1160,7 +1235,7 @@ async function createAccountAndRuleSnapshot(
       size.size,
       size.size,
       size.size,
-      new Date().toISOString().slice(0, 10),
+      drawdownDate(new Date().toISOString()),
       1
     );
 
@@ -2244,14 +2319,13 @@ export class MarketFeedDO {
 
   async publishAccountMarkUpdate(accountId, timestampMs) {
     if (!this.env.POSITION_EVENTS) return;
-    const accountPositions = [...this.positionsById.values()].filter(
+    let accountPositions = [...this.positionsById.values()].filter(
       (position) => position.account_id === accountId
     );
-    if (!accountPositions.length) return;
 
     let totalFloatingPnl = 0;
     let completeMarketData = true;
-    const positions = [];
+    let positions = [];
     for (const position of accountPositions) {
       const tick = this.latestTicks.get(position.symbol);
       const price = protectionPrice(position, tick);
@@ -2293,38 +2367,81 @@ export class MarketFeedDO {
       }
     }
 
-    const balanceValue = accountPositions[0].account_balance;
-    const balance = balanceValue === null || balanceValue === undefined || balanceValue === ""
-      ? NaN
-      : Number(balanceValue);
-    const accountIsLive = completeMarketData && Number.isFinite(balance);
-    let drawdown = null;
+    let context;
     try {
-      const context = await getAccountRuleContext(
+      context = await getAccountRuleContext(
         this.env,
         accountId,
-        accountPositions[0].user_id
+        accountPositions[0]?.user_id
       );
-      if (context.error) {
-        throw new Error(context.error);
-      }
+      if (context.error) throw new Error(context.error);
+    } catch (error) {
+      console.error(`Unable to load account drawdown context for ${accountId}:`, error);
+      return;
+    }
+    if (
+      !accountPositions.length &&
+      !isSparkAccount(context.account)
+    ) {
+      return;
+    }
+    let balanceValue = context.account.balance;
+    const initialBalance = balanceValue === null || balanceValue === undefined || balanceValue === ""
+      ? NaN
+      : Number(balanceValue);
+    let drawdown = null;
+    try {
       drawdown = await updateAccountDrawdownMetrics(
         this.env,
         context.account,
         context.rules,
         accountPositions,
-        accountIsLive ? balance + totalFloatingPnl : null,
+        completeMarketData && Number.isFinite(initialBalance)
+          ? initialBalance + totalFloatingPnl
+          : null,
         new Date(timestampMs).toISOString()
       );
     } catch (error) {
       console.error(`Unable to update live drawdown metrics for account ${accountId}:`, error);
     }
-    await publishPositionEvent(this.env, accountPositions[0].user_id, accountId, {
+    let liquidationPending = false;
+    if ((drawdown?.breached || context.account.status === "breached") && accountPositions.length) {
+      try {
+        await requestAccountBreachLiquidation(
+          this.env,
+          accountId,
+          context.account.user_id
+        );
+        const refreshedContext = await getAccountRuleContext(
+          this.env,
+          accountId,
+          context.account.user_id
+        );
+        if (refreshedContext.error) throw new Error(refreshedContext.error);
+        accountPositions = await this.refreshAccountPositions(accountId);
+        positions = [];
+        totalFloatingPnl = 0;
+        completeMarketData = true;
+        context = refreshedContext;
+        balanceValue = context.account.balance;
+      } catch (error) {
+        liquidationPending = true;
+        console.error(`Unable to liquidate breached account ${accountId}:`, error);
+      }
+    }
+    const balance = balanceValue === null || balanceValue === undefined || balanceValue === ""
+      ? NaN
+      : Number(balanceValue);
+    const accountIsLive = completeMarketData && Number.isFinite(balance);
+    if (liquidationPending && drawdown) drawdown.liquidation_pending = true;
+    await publishPositionEvent(this.env, context.account.user_id, accountId, {
       type: "ACCOUNT_MARK_UPDATED",
       account_id: accountId,
       timestamp: new Date(timestampMs).toISOString(),
       positions,
       account: {
+        id: accountId,
+        status: context.account.status,
         balance: Number.isFinite(balance) ? balance : null,
         open_pnl: accountIsLive ? totalFloatingPnl : null,
         equity: accountIsLive ? balance + totalFloatingPnl : null,
@@ -2590,15 +2707,10 @@ export class MarketFeedDO {
     for (const positionId of positionIds) {
       const position = this.positionsById.get(positionId);
       if (!position || !tickIsAfterPositionOpen(position, tick)) continue;
+      updatedAccountIds.add(position.account_id);
       const trigger = triggeredProtection(position, tick);
       if (!trigger) continue;
       await this.settleTriggeredPosition(position.id, tick, trigger.reason);
-    }
-    for (const positionId of positionIds) {
-      const position = this.positionsById.get(positionId);
-      if (position && tickIsAfterPositionOpen(position, tick)) {
-        updatedAccountIds.add(position.account_id);
-      }
     }
     for (const accountId of updatedAccountIds) {
       await this.publishAccountMarkUpdate(accountId, Number(tick.timestamp_ms));
@@ -2859,6 +2971,57 @@ async function syncMarketFeedAccount(env, accountId) {
   return response.json();
 }
 
+async function closeBreachedAccountPositions(env, accountId, userId) {
+  const db = env.daily_funded_trading_db;
+  const openPositions = await db.prepare(`
+    SELECT p.id
+    FROM positions p
+    INNER JOIN trading_accounts a ON a.id = p.account_id
+    WHERE p.account_id = ? AND a.user_id = ? AND p.status = 'open'
+  `).bind(accountId, userId).all();
+  let closedPositions = 0;
+  for (const position of openPositions.results || []) {
+    try {
+      const result = await settlePosition(env, position.id, userId, {
+        source: "manual",
+        reason: "DRAWDOWN_BREACH",
+      });
+      if (!result.error && !result.skipped) closedPositions += 1;
+      else if (result.error && result.error !== "position_not_found") {
+        console.error(`Drawdown liquidation failed for position ${position.id}: ${result.error}`);
+      }
+    } catch (error) {
+      console.error(`Drawdown liquidation failed for position ${position.id}:`, error);
+    }
+  }
+  const remaining = await db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM positions
+    WHERE account_id = ? AND status = 'open'
+  `).bind(accountId).first();
+  const remainingPositions = Number(remaining?.count || 0);
+  return {
+    success: remainingPositions === 0,
+    closed_positions: closedPositions,
+    remaining_positions: remainingPositions,
+  };
+}
+
+async function requestAccountBreachLiquidation(env, accountId, userId) {
+  if (!env.POSITION_EVENTS) throw new Error("Position event service is not configured");
+  const id = env.POSITION_EVENTS.idFromName(`account:${accountId}`);
+  const response = await env.POSITION_EVENTS.get(id).fetch("https://position-events/liquidate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ account_id: accountId, user_id: userId }),
+  });
+  const result = await response.json();
+  if (!response.ok || result.success !== true) {
+    throw new Error(result.error || "One or more positions could not be liquidated");
+  }
+  return result;
+}
+
 async function ensureMarketFeed(env, symbol) {
   try {
     const ensureUrl = new URL("https://market-feed/ensure");
@@ -2926,6 +3089,49 @@ export class PositionEventsDO {
         if (result.error) return tradingError(result.error, result.message || "Position could not be closed", result.status);
         const { _settlementRowsWritten, ...publicResult } = result;
         if (body.source === "manual") {
+          const context = await getAccountRuleContext(this.env, accountId, body.user_id);
+          if (
+            !context.error &&
+            isSparkAccount(context.account)
+          ) {
+            const openPositions = await this.env.daily_funded_trading_db.prepare(`
+              SELECT p.*
+              FROM positions p
+              WHERE p.account_id = ? AND p.status = 'open'
+            `).bind(accountId).all();
+            const drawdown = await updateAccountDrawdownMetrics(
+              this.env,
+              context.account,
+              context.rules,
+              openPositions.results || [],
+              Number(result.account.equity)
+            );
+            publicResult.account.status = context.account.status;
+            publicResult.account.drawdown = drawdown;
+            if (context.account.status === "breached") {
+              const liquidation = await closeBreachedAccountPositions(
+                this.env,
+                accountId,
+                body.user_id
+              );
+              if (!liquidation.success) drawdown.liquidation_pending = true;
+              const updatedAccount = await this.env.daily_funded_trading_db.prepare(`
+                SELECT balance, equity
+                FROM trading_accounts
+                WHERE id = ? AND user_id = ?
+              `).bind(accountId, body.user_id).first();
+              if (updatedAccount) {
+                publicResult.account.balance = Number(updatedAccount.balance);
+                publicResult.account.equity = Number(updatedAccount.equity);
+                if (liquidation.success) {
+                  publicResult.account.open_pnl = 0;
+                  publicResult.account.used_margin = 0;
+                  publicResult.account.free_margin = Number(updatedAccount.equity);
+                  publicResult.account.available_margin = Number(updatedAccount.equity);
+                }
+              }
+            }
+          }
           try {
             await syncMarketFeedAccount(this.env, accountId);
           } catch (error) {
@@ -2933,6 +3139,34 @@ export class PositionEventsDO {
           }
         }
         return json({ success: true, ...publicResult });
+      });
+    }
+    if (request.method === "POST" && url.pathname === "/liquidate") {
+      const body = await readJson(request);
+      const accountId = normalizeText(body.account_id);
+      const userId = normalizeText(body.user_id);
+      if (!accountId || !userId) {
+        return json({ success: false, error: "account_id and user_id are required" }, 400);
+      }
+      return withAccountQueue(this, accountId, async () => {
+        const account = await this.env.daily_funded_trading_db.prepare(`
+          SELECT status
+          FROM trading_accounts
+          WHERE id = ? AND user_id = ?
+        `).bind(accountId, userId).first();
+        if (!account || account.status !== "breached") {
+          return tradingError("trading_disabled", "The account has not breached a drawdown limit", 409);
+        }
+        const result = await closeBreachedAccountPositions(this.env, accountId, userId);
+        try {
+          await syncMarketFeedAccount(this.env, accountId);
+        } catch (error) {
+          console.error("Drawdown liquidation completed, but market-feed state refresh failed:", error);
+        }
+        return json({
+          ...result,
+          error: result.success ? undefined : "One or more positions could not be liquidated; the account remains disabled",
+        }, result.success ? 200 : 503);
       });
     }
     if (request.method === "POST" && url.pathname === "/modify") {
@@ -2951,7 +3185,10 @@ export class PositionEventsDO {
         const updateResult = await this.env.daily_funded_trading_db.prepare(`
           UPDATE positions SET ${assignments.join(", ")}
           WHERE id = ? AND account_id = ? AND status = 'open'
-            AND EXISTS (SELECT 1 FROM trading_accounts WHERE id = ? AND user_id = ?)
+            AND EXISTS (
+              SELECT 1 FROM trading_accounts
+              WHERE id = ? AND user_id = ? AND status = 'active'
+            )
         `).bind(
           ...values, body.position_id, body.account_id, body.account_id, body.user_id
         ).run();
@@ -4628,7 +4865,7 @@ export default {
         let totalUsedMargin = 0;
         let completeMarketData = true;
         let completeMarginData = Number(context.snapshot.leverage) > 0;
-        const markedPositions = [];
+        let markedPositions = [];
         const positionUpdates = [];
 
         for (const position of openPositions) {
@@ -4662,7 +4899,9 @@ export default {
               pnl_metadata: pnlMetadata,
               current_price: null,
               floating_pnl: null,
-              market_data_status: quote?.stale ? "stale" : "unavailable",
+              market_data_status: quote?.stale || quote?.market_state?.toLowerCase() === "closed"
+                ? "stale"
+                : "unavailable",
             });
             continue;
           }
@@ -4705,26 +4944,92 @@ export default {
           }
         }
 
-        const account = {
+        const storedNumber = (value) => {
+          if (value === null || value === undefined || value === "") return null;
+          const number = Number(value);
+          return Number.isFinite(number) ? number : null;
+        };
+        const balance = storedNumber(context.account.balance);
+        const cachedFloatingPnls = openPositions.map((position) => storedNumber(position.floating_pnl));
+        const cachedOpenPnl = cachedFloatingPnls.every((pnl) => pnl !== null)
+          ? cachedFloatingPnls.reduce((total, pnl) => total + pnl, 0)
+          : null;
+        const cachedEquity = balance !== null && cachedOpenPnl !== null
+          ? balance + cachedOpenPnl
+          : storedNumber(context.account.equity);
+        if (!completeMarketData) {
+          const storedPositionsById = new Map(openPositions.map((position) => [position.id, position]));
+          markedPositions = markedPositions.map((position) => {
+            const storedPosition = storedPositionsById.get(position.id);
+            const currentPrice = storedNumber(storedPosition?.current_price);
+            const floatingPnl = storedNumber(storedPosition?.floating_pnl);
+            return {
+              ...position,
+              current_price: currentPrice,
+              floating_pnl: floatingPnl,
+              market_data_status: currentPrice !== null && floatingPnl !== null
+                ? "stale"
+                : "unavailable",
+            };
+          });
+        }
+        const marketDataStatus = completeMarketData
+          ? "live"
+          : cachedEquity !== null
+            ? "stale"
+            : "unavailable";
+        const equity = completeMarketData
+          ? balance === null ? null : balance + totalFloatingPnl
+          : cachedEquity;
+        let account = {
           ...context.account,
-          open_pnl: completeMarketData ? totalFloatingPnl : null,
-          equity: completeMarketData ? Number(context.account.balance) + totalFloatingPnl : null,
+          open_pnl: completeMarketData
+            ? totalFloatingPnl
+            : cachedEquity !== null && balance !== null ? cachedEquity - balance : null,
+          equity,
           used_margin: completeMarketData && completeMarginData ? totalUsedMargin : null,
-          free_margin: completeMarketData && completeMarginData
-            ? Number(context.account.balance) + totalFloatingPnl - totalUsedMargin
+          free_margin: completeMarketData && completeMarginData && equity !== null
+            ? equity - totalUsedMargin
             : null,
-          available_margin: completeMarketData && completeMarginData
-            ? Number(context.account.balance) + totalFloatingPnl - totalUsedMargin
+          available_margin: completeMarketData && completeMarginData && equity !== null
+            ? equity - totalUsedMargin
             : null,
-          market_data_status: completeMarketData ? "live" : "unavailable",
+          market_data_status: marketDataStatus,
         };
         account.drawdown = await updateAccountDrawdownMetrics(
           env,
           context.account,
           context.rules,
           markedPositions,
-          account.equity
+          account.equity,
+          new Date().toISOString(),
+          { enforceBreach: completeMarketData }
         );
+        account.drawdown.market_data_status = marketDataStatus;
+        account.status = context.account.status;
+        if (context.account.status === "breached" && openPositions.length) {
+          try {
+            await requestAccountBreachLiquidation(env, accountId, tradingAuth.userId);
+            const refreshed = await getAccountRuleContext(env, accountId, tradingAuth.userId);
+            if (refreshed.error) throw new Error(refreshed.error);
+            account = {
+              ...account,
+              ...refreshed.account,
+              status: "breached",
+              open_pnl: 0,
+              equity: Number(refreshed.account.balance),
+              used_margin: 0,
+              free_margin: Number(refreshed.account.balance),
+              available_margin: Number(refreshed.account.balance),
+              market_data_status: "live",
+              drawdown: account.drawdown,
+            };
+            markedPositions = [];
+          } catch (error) {
+            account.drawdown.liquidation_pending = true;
+            console.error(`Unable to liquidate breached account ${accountId}:`, error);
+          }
+        }
 
         if (completeMarketData) {
           positionUpdates.push(env.daily_funded_trading_db.prepare(`
@@ -4816,6 +5121,18 @@ export default {
         const account = context.account;
 
         if (account.status !== "active") {
+          if (account.status === "breached") {
+            try {
+              await requestAccountBreachLiquidation(env, accountId, tradingAuth.userId);
+            } catch (error) {
+              console.error(`Unable to liquidate breached account ${accountId}:`, error);
+            }
+            return tradingError(
+              "trading_disabled",
+              "Account breached a drawdown limit and trading is disabled",
+              409
+            );
+          }
           return tradingError("trading_disabled", "Trading account is not active", 409);
         }
 
@@ -4967,6 +5284,31 @@ export default {
           }
         }
 
+        if (isSparkAccount(account)) {
+          await updateAccountDrawdownMetrics(
+            env,
+            account,
+            rules,
+            existingPositions,
+            Number(account.balance) + existingPnl
+          );
+        }
+        if (account.status !== "active") {
+          if (account.status === "breached") {
+            try {
+              await requestAccountBreachLiquidation(env, accountId, tradingAuth.userId);
+            } catch (error) {
+              console.error(`Unable to liquidate breached account ${accountId}:`, error);
+            }
+            return tradingError(
+              "trading_disabled",
+              "Account breached a drawdown limit and trading is disabled",
+              409
+            );
+          }
+          return tradingError("trading_disabled", "Trading account is not active", 409);
+        }
+
         const leverage = Number(context.snapshot.leverage);
         let requiredMargin;
         try {
@@ -5002,7 +5344,7 @@ export default {
           }
         }
 
-        await env.daily_funded_trading_db.batch([
+        const orderResults = await env.daily_funded_trading_db.batch([
           env.daily_funded_trading_db
           .prepare(`
             INSERT INTO orders (
@@ -5015,7 +5357,11 @@ export default {
               order_type,
               status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            SELECT ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE EXISTS (
+              SELECT 1 FROM trading_accounts
+              WHERE id = ? AND user_id = ? AND status = 'active'
+            )
           `)
           .bind(
             orderId,
@@ -5025,7 +5371,9 @@ export default {
             volume,
             openPrice,
             orderType,
-            "filled"
+            "filled",
+            accountId,
+            tradingAuth.userId
           )
           ,
           env.daily_funded_trading_db
@@ -5045,7 +5393,11 @@ export default {
               status,
               opened_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE EXISTS (
+              SELECT 1 FROM trading_accounts
+              WHERE id = ? AND user_id = ? AND status = 'active'
+            )
           `)
           .bind(
             positionId,
@@ -5060,7 +5412,9 @@ export default {
             takeProfit,
             stopLoss,
             "open",
-            openedAt
+            openedAt,
+            accountId,
+            tradingAuth.userId
           ),
           env.daily_funded_trading_db
             .prepare(`
@@ -5068,10 +5422,20 @@ export default {
                 position_id,
                 metadata_json
               )
-              VALUES (?, ?)
+              SELECT ?, ?
+              WHERE EXISTS (
+                SELECT 1 FROM positions WHERE id = ? AND status = 'open'
+              )
             `)
-            .bind(positionId, JSON.stringify(symbolMetadata)),
+            .bind(positionId, JSON.stringify(symbolMetadata), positionId),
         ]);
+        if (Number(orderResults?.[0]?.meta?.changes || 0) !== 1) {
+          return tradingError(
+            "trading_disabled",
+            "Trading account is no longer active",
+            409
+          );
+        }
 
         const position = {
           id: positionId,
@@ -5349,6 +5713,9 @@ export default {
         }
 
         const account = context.account;
+        if (account.status !== "active") {
+          return tradingError("trading_disabled", "Trading account is not active", 409);
+        }
         const openPrice = Number(position.open_price);
         const volume = Number(position.volume);
         let price;
@@ -5381,22 +5748,28 @@ export default {
               current_price = ?,
               floating_pnl = ?
             WHERE id = ? AND account_id = ? AND status = 'open'
+              AND EXISTS (
+                SELECT 1 FROM trading_accounts
+                WHERE id = ? AND user_id = ? AND status = 'active'
+              )
           `)
           .bind(
             price,
             floatingPnl,
             positionId,
-            position.account_id
+            position.account_id,
+            position.account_id,
+            tradingAuth.userId
           )
           .run();
 
-        await env.daily_funded_trading_db
+        const accountUpdate = await env.daily_funded_trading_db
           .prepare(`
             UPDATE trading_accounts
             SET
               equity = ?,
               updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND user_id = ?
+            WHERE id = ? AND user_id = ? AND status = 'active'
           `)
           .bind(
             newEquity,
@@ -5404,6 +5777,35 @@ export default {
             tradingAuth.userId
           )
           .run();
+        if (Number(accountUpdate?.meta?.changes || 0) !== 1) {
+          return tradingError("trading_disabled", "Trading account is no longer active", 409);
+        }
+        const openPositions = await env.daily_funded_trading_db.prepare(`
+          SELECT p.*
+          FROM positions p
+          WHERE p.account_id = ? AND p.status = 'open'
+        `).bind(position.account_id).all();
+        const drawdown = isSparkAccount(account)
+          ? await updateAccountDrawdownMetrics(
+            env,
+            account,
+            context.rules,
+            openPositions.results || [],
+            newEquity
+          )
+          : null;
+        if (account.status === "breached") {
+          try {
+            await requestAccountBreachLiquidation(env, position.account_id, tradingAuth.userId);
+          } catch (error) {
+            console.error(`Unable to liquidate breached account ${position.account_id}:`, error);
+          }
+          return tradingError(
+            "trading_disabled",
+            "Account breached a drawdown limit and trading is disabled",
+            409
+          );
+        }
 
         return json({
           success: true,
@@ -5420,6 +5822,8 @@ export default {
           account: {
             balance: Number(account.balance),
             equity: newEquity,
+            status: account.status,
+            drawdown,
           },
         });
       }

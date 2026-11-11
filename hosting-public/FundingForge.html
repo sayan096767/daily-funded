@@ -5550,27 +5550,32 @@ function renderAccount(){
   const data = accounts.find(a=>a.id===sel.value) || accounts[0];
   if(!data) return;
 
+  const liveWorkerBreach = deskLiveAccountSnapshot?.id === data.id &&
+    deskLiveAccountSnapshot.status === 'breached';
+  const status = liveWorkerBreach ? 'breached' : data.status;
   renderDeskAccountTitle(data.size);
-  const provisioningPending = data.provisioningStatus === 'pending' || data.status === 'pending_provisioning';
+  const provisioningPending = data.provisioningStatus === 'pending' || status === 'pending_provisioning';
   document.getElementById('accountSummary').textContent = provisioningPending
     ? 'Payment verified. Account provisioning is pending; reopen or refresh the dashboard to retry. No additional payment is needed.'
-    : ['pending','pending_payment_verification'].includes(data.status)
+    : status === 'breached'
+    ? 'A drawdown limit was reached. Trading is disabled for this account.'
+    : ['pending','pending_payment_verification'].includes(status)
       ? 'Payment submitted. Awaiting admin approval.'
-    : ['rejected','payment_rejected'].includes(data.status)
+    : ['rejected','payment_rejected'].includes(status)
       ? 'Payment was rejected. Contact support for assistance.'
       : data.label + ' challenge';
   document.getElementById('accountPlan').textContent = data.label.toUpperCase();
   const statusBadge = document.querySelector('#accountOverview .account-status-badge');
-  const rejected = ['rejected','payment_rejected'].includes(data.status);
-  const pending = provisioningPending || ['pending','pending_payment_verification'].includes(data.status);
-  statusBadge.classList.toggle('is-active',data.status === 'active');
+  const rejected = ['rejected','payment_rejected','breached'].includes(status);
+  const pending = provisioningPending || ['pending','pending_payment_verification'].includes(status);
+  statusBadge.classList.toggle('is-active',status === 'active');
   statusBadge.classList.toggle('is-rejected',rejected);
   statusBadge.classList.toggle('is-pending',pending);
   statusBadge.textContent = provisioningPending
     ? 'PROVISIONING PENDING'
     : pending
       ? 'PAYMENT PENDING'
-    : data.status.replaceAll('_',' ').toUpperCase();
+    : status.replaceAll('_',' ').toUpperCase();
   const phaseBadge = document.getElementById('accountPhase');
   if(phaseBadge){
     const phaseNumber = Number.isInteger(data.phaseNumber) ? data.phaseNumber : 1;
@@ -5578,7 +5583,7 @@ function renderAccount(){
       ? data.phaseName.toUpperCase()
       : 'PHASE ' + String(phaseNumber).padStart(2,'0');
   }
-  const tradingActive = data.status === 'active' && data.tradingEnabled === true;
+  const tradingActive = status === 'active' && data.tradingEnabled === true;
   tradeButton.hidden = !tradingActive;
   deskSetMoney(document.getElementById('dBalance'),tradingActive ? null : data.balance);
   deskSetMoney(document.getElementById('dEquity'),tradingActive ? null : data.equity);
@@ -5734,8 +5739,9 @@ function deskNumericRule(data,rules,field,pattern){
 }
 function deskComputeDrawdownMetrics(account,rules,trades,positions,today=new Date()){
   const metrics = account && account.drawdown && typeof account.drawdown === 'object' ? {...account.drawdown} : {};
-  const currentEquity = account && account.market_data_status === 'live' ? deskNumber(account.equity) : null;
-  const balance = account && account.market_data_status === 'live' ? deskNumber(account.balance) : null;
+  const hasEquity = account && ['live','stale'].includes(account.market_data_status);
+  const currentEquity = hasEquity ? deskNumber(account.equity) : null;
+  const balance = hasEquity ? deskNumber(account.balance) : null;
   const todayDate = today.toISOString().slice(0,10);
   const utcDate = value=>{
     const date = deskDate(value);
@@ -5764,7 +5770,7 @@ function deskComputeDrawdownMetrics(account,rules,trades,positions,today=new Dat
     if(complete){
       for(const position of positions){
         const pnl = deskNumber(position.floating_pnl);
-        if(position.market_data_status !== 'live' || utcDate(position.opened_at) !== todayDate || pnl === null){
+        if(!['live','stale'].includes(position.market_data_status) || utcDate(position.opened_at) !== todayDate || pnl === null){
           complete = false;
           break;
         }
@@ -5918,7 +5924,8 @@ function renderDeskObjectives(){
     if(consistencyDataComplete && totalPnl > 0){
       const ratio = bestDay / totalPnl * 100;
       const passed = ratio <= consistencyLimit;
-      addObjective('Consistency (max ' + consistencyLimit + '%)',ratio.toFixed(1) + '% of total realized profit',passed ? 'Passing' : 'Over limit',passed ? 'is-safe' : 'is-alert',consistencyLimit > 0 ? Math.max(0,Math.min(100,(1 - ratio / consistencyLimit) * 100)) : null,passed ? 'is-up' : 'is-dn');
+      const limitUsage = consistencyLimit > 0 ? ratio / consistencyLimit * 100 : null;
+      addObjective('Consistency (max ' + consistencyLimit + '%)',ratio.toFixed(1) + '% of total realized profit' + (limitUsage === null ? '' : ' · ' + limitUsage.toFixed(0) + '% of limit'),passed ? 'Passing' : 'Over limit',passed ? 'is-safe' : 'is-alert',limitUsage,passed ? 'is-up' : 'is-dn');
     }else if(!consistencyDataComplete){
       addObjective('Consistency (max ' + consistencyLimit + '%)','Closed-trade data is incomplete','Unavailable');
     }else{
@@ -5929,10 +5936,11 @@ function renderDeskObjectives(){
   }
 
   const drawdownMetrics = deskComputeDrawdownMetrics(account,rules,trades,deskLivePositions);
+  const drawdownIsStale = account && account.market_data_status === 'stale';
   const dailyDrawdown = deskNumber(drawdownMetrics && drawdownMetrics.daily_percent_used);
   if(dailyLimit !== null && dailyDrawdown !== null && dailyDrawdown >= 0){
     const safe = dailyDrawdown <= dailyLimit;
-    addObjective('Daily loss limit',dailyDrawdown.toFixed(1) + '% of ' + dailyLimit + '%',safe ? 'Safe' : 'Limit reached',safe ? 'is-safe' : 'is-alert',dailyLimit > 0 ? Math.max(0,Math.min(100,(1 - dailyDrawdown / dailyLimit) * 100)) : null,safe ? 'is-up' : 'is-dn');
+    addObjective('Daily loss limit',dailyDrawdown.toFixed(1) + '% of ' + dailyLimit + '%' + (drawdownIsStale ? ' · last known (market closed/data unavailable)' : ''),drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',dailyLimit > 0 ? Math.max(0,Math.min(100,(1 - dailyDrawdown / dailyLimit) * 100)) : null,drawdownIsStale ? '' : safe ? 'is-up' : 'is-dn');
   }else{
     const reason = drawdownMetrics && drawdownMetrics.daily_reason;
     addObjective('Daily loss limit',dailyLimit === null ? 'Limit unavailable' : (reason || 'Current daily drawdown unavailable') + ' · limit ' + dailyLimit + '%','Unavailable');
@@ -5941,7 +5949,7 @@ function renderDeskObjectives(){
   const maxDrawdown = deskNumber(drawdownMetrics && drawdownMetrics.max_percent_used);
   if(maxLimit !== null && maxDrawdown !== null && maxDrawdown >= 0){
     const safe = maxDrawdown <= maxLimit;
-    addObjective('Max loss limit',maxDrawdown.toFixed(1) + '% of ' + maxLimit + '%',safe ? 'Safe' : 'Limit reached',safe ? 'is-safe' : 'is-alert',maxLimit > 0 ? Math.max(0,Math.min(100,(1 - maxDrawdown / maxLimit) * 100)) : null,safe ? 'is-up' : 'is-dn');
+    addObjective('Max loss limit',maxDrawdown.toFixed(1) + '% of ' + maxLimit + '%' + (drawdownIsStale ? ' · last known (market closed/data unavailable)' : ''),drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',maxLimit > 0 ? Math.max(0,Math.min(100,(1 - maxDrawdown / maxLimit) * 100)) : null,drawdownIsStale ? '' : safe ? 'is-up' : 'is-dn');
   }else{
     const reason = drawdownMetrics && drawdownMetrics.max_reason;
     addObjective('Max loss limit',maxLimit === null ? 'Limit unavailable' : (reason || 'Current maximum drawdown unavailable') + ' · limit ' + maxLimit + '%','Unavailable');
@@ -6260,32 +6268,35 @@ function renderDeskPositions(positions){
     note.textContent = '0 open · Auto-refresh · 5s';
     return;
   }
-  const hasLivePnl = positions.every(position=>
-    position.market_data_status === 'live' &&
+  const hasUsablePnl = positions.every(position=>
+    ['live','stale'].includes(position.market_data_status) &&
     deskNumber(position.current_price) !== null &&
     deskNumber(position.floating_pnl) !== null
   );
-  const totalFloatingPnl = hasLivePnl
+  const hasStalePnl = positions.some(position=>position.market_data_status === 'stale');
+  const totalFloatingPnl = hasUsablePnl
     ? positions.reduce((total,position)=>total + Number(position.floating_pnl),0)
     : null;
   positions.forEach(position=>{
     const row = document.createElement('tr');
     const side = String(position.side || '—').toUpperCase();
-    const isLive = position.market_data_status === 'live';
-    const pnl = isLive ? deskNumber(position.floating_pnl) : null;
+    const hasPnl = ['live','stale'].includes(position.market_data_status) &&
+      deskNumber(position.current_price) !== null &&
+      deskNumber(position.floating_pnl) !== null;
+    const pnl = hasPnl ? deskNumber(position.floating_pnl) : null;
     appendDeskTableCell(row,position.symbol || '—');
     appendDeskTableCell(row,side,side === 'BUY' ? 'desk-side-buy' : side === 'SELL' ? 'desk-side-sell' : '');
     appendDeskTableCell(row,deskPrice(position.volume));
     appendDeskTableCell(row,deskPrice(position.open_price));
-    appendDeskTableCell(row,isLive ? deskPrice(position.current_price) : '—');
+    appendDeskTableCell(row,hasPnl ? deskPrice(position.current_price) : '—');
     appendDeskTableCell(row,deskSignedMoney(pnl),pnl === null ? '' : pnl >= 0 ? 'desk-pnl-positive' : 'desk-pnl-negative');
     body.appendChild(row);
   });
   note.textContent = positions.length + ' open · ' +
-    (hasLivePnl
-      ? deskSignedMoney(totalFloatingPnl) + ' floating · ' + (deskLiveEventsConnected ? 'Live stream' : 'Live · 5s fallback')
+    (hasUsablePnl
+      ? deskSignedMoney(totalFloatingPnl) + ' floating · ' + (hasStalePnl ? 'Last known · market closed/data unavailable' : deskLiveEventsConnected ? 'Live stream' : 'Live · 5s fallback')
       : 'Live quote unavailable · 5s');
-  if(hasLivePnl && totalFloatingPnl !== 0){
+  if(hasUsablePnl && totalFloatingPnl !== 0){
     note.classList.add(totalFloatingPnl > 0 ? 'desk-pnl-positive' : 'desk-pnl-negative');
   }
 }
@@ -6333,15 +6344,29 @@ function updateDeskLiveAccountMetrics(account,positions){
     deskLiveAccountSnapshot = {...(deskLiveAccountSnapshot || {}),...account};
   }
   if(!deskLiveAccountSnapshot) return;
+  if(deskLiveAccountSnapshot.status === 'breached'){
+    const statusBadge = document.querySelector('#accountOverview .account-status-badge');
+    const tradeButton = document.querySelector('#accountOverview .dashboard-trade-link');
+    const summary = document.getElementById('accountSummary');
+    if(statusBadge){
+      statusBadge.classList.remove('is-active','is-pending');
+      statusBadge.classList.add('is-rejected');
+      statusBadge.textContent = 'BREACHED';
+    }
+    if(tradeButton) tradeButton.hidden = true;
+    if(summary) summary.textContent = 'A drawdown limit was reached. Trading is disabled for this account.';
+  }
   const balance = deskNumber(deskLiveAccountSnapshot.balance);
-  const positionsAreLive = Array.isArray(positions) && positions.every(position=>
-    position.market_data_status === 'live' &&
+  const positionsHaveMarks = Array.isArray(positions) && positions.every(position=>
+    ['live','stale'].includes(position.market_data_status) &&
     deskNumber(position.current_price) !== null &&
     deskNumber(position.floating_pnl) !== null
   );
-  const equity = deskLiveAccountSnapshot.market_data_status === 'live' && positionsAreLive
+  const equity = deskLiveAccountSnapshot.market_data_status === 'stale'
     ? deskNumber(deskLiveAccountSnapshot.equity)
-    : null;
+    : deskLiveAccountSnapshot.market_data_status === 'live' && positionsHaveMarks
+      ? deskNumber(deskLiveAccountSnapshot.equity)
+      : null;
   deskSetMoney(document.getElementById('dBalance'),balance);
   deskSetMoney(document.getElementById('dEquity'),equity);
   const startingBalance = deskNumber(deskLiveAccountSnapshot.starting_balance);
@@ -6350,7 +6375,9 @@ function updateDeskLiveAccountMetrics(account,positions){
   }else{
     deskSetMoney(document.getElementById('dBalanceSub'),null,false,'','Since account start');
   }
-  document.getElementById('dEquitySub').textContent = Array.isArray(positions)
+  document.getElementById('dEquitySub').textContent = deskLiveAccountSnapshot.market_data_status === 'stale'
+    ? 'Last known · market closed/data unavailable'
+    : Array.isArray(positions)
     ? positions.length ? positions.length + ' open position' + (positions.length === 1 ? '' : 's') : 'No open positions'
     : 'Position data unavailable';
   if(deskPerformanceState){
@@ -6400,11 +6427,9 @@ function applyDeskAccountMarkEvent(event,requestId,tradingAccountId){
     return;
   }
   const positionsById = new Map(deskLivePositions.map(position=>[position.id,position]));
-  event.positions.forEach(mark=>{
-    if(!mark || typeof mark.id !== 'string' || !positionsById.has(mark.id)) return;
-    positionsById.set(mark.id,{...positionsById.get(mark.id),...mark});
-  });
-  deskLivePositions = [...positionsById.values()];
+  deskLivePositions = event.positions
+    .filter(mark=>mark && typeof mark.id === 'string')
+    .map(mark=>({...positionsById.get(mark.id),...mark}));
   renderDeskPositions(deskLivePositions);
   updateDeskLiveAccountMetrics(event.account,deskLivePositions);
   const note = document.getElementById('deskPositionsNote');

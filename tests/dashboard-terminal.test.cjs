@@ -77,6 +77,12 @@ test('Crazy Funded dashboard uses its live data components without reference sam
   assert.doesNotMatch(fundingForgeHtml, /engineIdBadge|ENGINE ['"] \+ data\.tradingEngineAccountId/);
 });
 
+test('consistency objective shows percentage used against its limit', () => {
+  assert.match(fundingForgeHtml, /const limitUsage = consistencyLimit > 0 \? ratio \/ consistencyLimit \* 100 : null;/);
+  assert.match(fundingForgeHtml, /limitUsage\.toFixed\(0\) \+ '% of limit'/);
+  assert.match(fundingForgeHtml, /'is-alert',limitUsage,passed \? 'is-up' : 'is-dn'/);
+});
+
 test('dashboard controls retain working destinations and existing handlers', () => {
   assert.ok(dashboardHtml, 'expected the user dashboard section');
   assert.match(fundingForgeHtml, /const firstName = user && typeof user\.displayName === 'string'\s*\? user\.displayName\.trim\(\)\.split\(\/\\s\+\/\)\[0\]/);

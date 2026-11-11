@@ -156,6 +156,13 @@ function mockDb({
 							).length,
 						};
 					}
+					if (lower.includes("select count(*) as count")) {
+						return {
+							count: state.positions.filter((row) =>
+								row.account_id === this.values[0] && row.status === "open"
+							).length,
+						};
+					}
 					if (lower.includes("from trading_symbols")) {
 						return state.symbols.find(
 							(row) => row.symbol === this.values[0] && Number(row.trading_enabled) === 1
@@ -305,7 +312,17 @@ function mockDb({
 							? this.values.at(-2)
 							: this.values.at(-1);
 						const account = state.accounts.find((row) => row.id === accountId);
-						if (lower.includes("balance = balance + ?")) {
+						if (lower.includes("set status = 'breached'")) {
+							if (account && account.user_id === this.values[1] && account.status === "active") {
+								account.status = "breached";
+							}
+						} else if (lower.includes("equity = (")) {
+							if (account) {
+								account.equity = Number(account.balance) + state.positions
+									.filter((row) => row.account_id === accountId && row.status === "open")
+									.reduce((total, row) => total + Number(row.floating_pnl || 0), 0);
+							}
+						} else if (lower.includes("balance = balance + ?")) {
 							const previousBalance = Number(account.balance);
 							account.balance = previousBalance + Number(this.values[0]);
 							account.equity = previousBalance + Number(this.values[1]) + Number(this.values[2]);
@@ -772,6 +789,10 @@ async function closePosition(db, positionId, closePrice) {
 
 async function getAccount(db, accountId) {
 	return callTrading(db, `/accounts?account_id=${accountId}`);
+}
+
+function drawdownDay(value = new Date().toISOString()) {
+	return new Date(Date.parse(value) - 22 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function marketRecord(symbol, overrides = {}) {
@@ -1872,7 +1893,7 @@ describe("Trusted trading API authentication", () => {
 
 	it("returns live daily and static maximum drawdown usage from the active account rules", async () => {
 		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
-		const today = new Date().toISOString().slice(0, 10);
+		const today = drawdownDay();
 		Object.assign(state.accounts[0], {
 			starting_balance: 10000,
 			balance: 9400,
@@ -1890,13 +1911,14 @@ describe("Trusted trading API authentication", () => {
 		const { account } = await response.json();
 
 		expect(response.status).toBe(200);
+		expect(account.status).toBe("active");
 		expect(account.drawdown.daily_percent_used).toBeCloseTo(6, 8);
 		expect(account.drawdown.max_percent_used).toBeCloseTo(6, 8);
 	});
 
 	it("uses the tracked peak for Spark trailing loss and does not invent legacy peaks", async () => {
 		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
-		const today = new Date().toISOString().slice(0, 10);
+		const today = drawdownDay();
 		Object.assign(state.accounts[0], {
 			starting_balance: 10000,
 			balance: 11000,
@@ -1923,8 +1945,330 @@ describe("Trusted trading API authentication", () => {
 		expect(legacyAccount.drawdown.max_reason).toMatch(/historical trailing high-water mark/i);
 	});
 
+	it.each(["SPARK_1_STEP", "SPARK_INSTANT"])("keeps the %s max-loss reference fixed during the reset day", async (model) => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		const today = drawdownDay();
+		Object.assign(state.accounts[0], {
+			challenge_model: model,
+			starting_balance: 10000,
+			balance: 11000,
+			equity: 11000,
+		});
+		Object.assign(state.snapshots[0], {
+			daily_drawdown_percent: 3,
+			max_drawdown_percent: 7,
+			max_drawdown_type: "TRAILING",
+			starting_day_balance: 10000,
+			starting_day_equity: 10000,
+			starting_day_utc_date: today,
+			high_water_mark: 10000,
+			high_water_mark_tracking_complete: 1,
+		});
+
+		const upMove = await getAccount(db, "ACC_TRADE");
+		expect((await upMove.json()).account.drawdown.max_percent_used).toBe(0);
+		expect(state.snapshots[0].high_water_mark).toBe(10000);
+
+		state.accounts[0].balance = 9800;
+		state.accounts[0].equity = 9800;
+		const downMove = await getAccount(db, "ACC_TRADE");
+		const { account } = await downMove.json();
+		expect(account.drawdown.daily_percent_used).toBeCloseTo(2, 8);
+		expect(account.drawdown.max_percent_used).toBeCloseTo(2, 8);
+		expect(state.snapshots[0].high_water_mark).toBe(10000);
+	});
+
+	it("shows last-known drawdown while quotes are stale and refreshes it when live quotes return", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		const today = drawdownDay();
+		Object.assign(state.accounts[0], {
+			challenge_model: "SPARK_1_STEP",
+			starting_balance: 10000,
+			balance: 10000,
+			equity: 9700,
+		});
+		Object.assign(state.snapshots[0], {
+			daily_drawdown_percent: 3,
+			max_drawdown_percent: 7,
+			max_drawdown_type: "TRAILING",
+			starting_day_balance: 10000,
+			starting_day_equity: 10000,
+			starting_day_utc_date: today,
+			high_water_mark: 10000,
+			high_water_mark_tracking_complete: 1,
+		});
+		state.positions.push({
+			id: "POS_STALE",
+			account_id: "ACC_TRADE",
+			order_id: "ORD_STALE",
+			symbol: "EURUSD",
+			side: "BUY",
+			volume: 1,
+			open_price: 1.25,
+			current_price: 1.247,
+			floating_pnl: -300,
+			status: "open",
+			opened_at: `${today}T01:00:00.000Z`,
+		});
+		state.positionSnapshots.push({
+			position_id: "POS_STALE",
+			metadata_json: JSON.stringify(positionSymbol("EURUSD")),
+		});
+		stubTradingQuotes(1.247, { EURUSD: { bid: 1.247, ask: 1.2472, stale: true } });
+
+		const staleResponse = await getAccount(db, "ACC_TRADE");
+		const stalePayload = await staleResponse.json();
+		expect(stalePayload.account).toMatchObject({
+			status: "active",
+			equity: 9700,
+			open_pnl: -300,
+			market_data_status: "stale",
+		});
+		expect(stalePayload.account.drawdown).toMatchObject({
+			daily_percent_used: 3,
+			max_percent_used: 3,
+			market_data_status: "stale",
+		});
+		expect(stalePayload.positions[0]).toMatchObject({
+			current_price: 1.247,
+			floating_pnl: -300,
+			market_data_status: "stale",
+		});
+		expect(state.accounts[0].status).toBe("active");
+
+		stubTradingQuotes(1.249, { EURUSD: { bid: 1.249, ask: 1.2492 } });
+		const liveResponse = await getAccount(db, "ACC_TRADE");
+		const livePayload = await liveResponse.json();
+		expect(livePayload.account.equity).toBeCloseTo(9900, 8);
+		expect(livePayload.account.open_pnl).toBeCloseTo(-100, 8);
+		expect(livePayload.account.market_data_status).toBe("live");
+		expect(livePayload.account.drawdown.daily_percent_used).toBeCloseTo(1, 8);
+		expect(livePayload.positions[0].current_price).toBe(1.249);
+		expect(livePayload.positions[0].floating_pnl).toBeCloseTo(-100, 8);
+		expect(livePayload.positions[0].market_data_status).toBe("live");
+	});
+
+	it.each(["SPARK_1_STEP", "SPARK_INSTANT"])("resets the daily baseline and Spark trailing peak at 22:00 UTC for %s", async (model) => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		const beforeBoundary = "2026-11-12T21:59:59.999Z";
+		const resetBoundary = "2026-11-12T22:00:00.000Z";
+		const priorDay = drawdownDay(beforeBoundary);
+		const today = drawdownDay(resetBoundary);
+		Object.assign(state.accounts[0], {
+			challenge_model: model,
+			starting_balance: 10000,
+			balance: 10000,
+			equity: 10000,
+		});
+		Object.assign(state.snapshots[0], {
+			daily_drawdown_percent: 50,
+			max_drawdown_percent: 50,
+			max_drawdown_type: "TRAILING",
+			starting_day_balance: 10500,
+			starting_day_equity: 10500,
+			starting_day_utc_date: priorDay,
+			high_water_mark: 12000,
+			high_water_mark_tracking_complete: 1,
+		});
+
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(beforeBoundary));
+		const before = await getAccount(db, "ACC_TRADE");
+		const { account: beforeAccount } = await before.json();
+		expect(state.snapshots[0].starting_day_utc_date).toBe(priorDay);
+		expect(state.snapshots[0].high_water_mark).toBe(12000);
+		expect(beforeAccount.drawdown.max_percent_used).toBeCloseTo(100 / 6, 8);
+
+		vi.setSystemTime(new Date(resetBoundary));
+		const response = await getAccount(db, "ACC_TRADE");
+		const { account } = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(account.status).toBe("active");
+		expect(account.drawdown.daily_percent_used).toBe(0);
+		expect(account.drawdown.max_percent_used).toBe(0);
+		expect(state.snapshots[0]).toMatchObject({
+			starting_day_balance: 10000,
+			starting_day_equity: 10000,
+			starting_day_utc_date: today,
+			high_water_mark: 10000,
+		});
+	});
+
+	it("resets both Spark loss references from live equity including open-position P/L", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		const beforeBoundary = "2026-11-12T21:59:59.999Z";
+		const resetBoundary = "2026-11-12T22:00:00.000Z";
+		const priorDay = drawdownDay(beforeBoundary);
+		const today = drawdownDay(resetBoundary);
+		Object.assign(state.accounts[0], {
+			challenge_model: "SPARK_1_STEP",
+			starting_balance: 10000,
+			balance: 11000,
+			equity: 10800,
+		});
+		Object.assign(state.snapshots[0], {
+			daily_drawdown_percent: 3,
+			max_drawdown_percent: 7,
+			max_drawdown_type: "TRAILING",
+			starting_day_balance: 10500,
+			starting_day_equity: 10500,
+			starting_day_utc_date: priorDay,
+			high_water_mark: 12000,
+			high_water_mark_tracking_complete: 1,
+		});
+		state.positions.push({
+			id: "POS_RESET",
+			account_id: "ACC_TRADE",
+			order_id: "ORD_RESET",
+			symbol: "EURUSD",
+			side: "BUY",
+			volume: 1,
+			open_price: 1.25,
+			current_price: 1.247,
+			floating_pnl: -300,
+			status: "open",
+			opened_at: `${priorDay}T01:00:00.000Z`,
+		});
+		state.positionSnapshots.push({
+			position_id: "POS_RESET",
+			metadata_json: JSON.stringify(positionSymbol("EURUSD")),
+		});
+		stubTradingQuotes(1.248, { EURUSD: { bid: 1.248, ask: 1.2482 } });
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(resetBoundary));
+
+		const response = await getAccount(db, "ACC_TRADE");
+		const { account } = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(account.equity).toBeCloseTo(10800, 8);
+		expect(account.drawdown.daily_percent_used).toBe(0);
+		expect(account.drawdown.max_percent_used).toBe(0);
+		expect(state.snapshots[0]).toMatchObject({
+			starting_day_balance: 11000,
+			starting_day_equity: 10800,
+			starting_day_utc_date: today,
+			high_water_mark: 10800,
+		});
+	});
+
+	it.each([
+		["SPARK_1_STEP", "daily limit", 9700, 9700, "daily_drawdown"],
+		["SPARK_1_STEP", "trailing max limit", 10000, 12000, "max_drawdown"],
+		["SPARK_INSTANT", "daily limit", 9700, 9700, "daily_drawdown"],
+		["SPARK_INSTANT", "trailing max limit", 10000, 12000, "max_drawdown"],
+	])("permanently breaches %s at the %s", async (model, _label, equity, highWaterMark, reason) => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		const today = drawdownDay();
+		Object.assign(state.accounts[0], {
+			challenge_model: model,
+			starting_balance: 10000,
+			balance: equity,
+			equity,
+		});
+		Object.assign(state.snapshots[0], {
+			daily_drawdown_percent: 3,
+			max_drawdown_percent: 7,
+			max_drawdown_type: "TRAILING",
+			starting_day_balance: 10000,
+			starting_day_equity: 10000,
+			starting_day_utc_date: today,
+			high_water_mark: highWaterMark,
+			high_water_mark_tracking_complete: 1,
+		});
+
+		const response = await getAccount(db, "ACC_TRADE");
+		const { account } = await response.json();
+		expect(account.status).toBe("breached");
+		expect(account.drawdown.breached).toBe(true);
+		expect(account.drawdown.breach_reasons).toContain(reason);
+
+		state.accounts[0].balance = 10000;
+		const retry = await getAccount(db, "ACC_TRADE");
+		expect((await retry.json()).account.status).toBe("breached");
+	});
+
+	it.each(["SPARK_1_STEP", "SPARK_INSTANT"])("liquidates open positions on breach and blocks subsequent %s orders", async (model) => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		const today = drawdownDay();
+		Object.assign(state.accounts[0], {
+			challenge_model: model,
+			starting_balance: 10000,
+			balance: 10000,
+			equity: 10000,
+		});
+		Object.assign(state.snapshots[0], {
+			daily_drawdown_percent: 3,
+			max_drawdown_percent: 7,
+			max_drawdown_type: "TRAILING",
+			starting_day_balance: 10000,
+			starting_day_equity: 10000,
+			starting_day_utc_date: today,
+			high_water_mark: 10000,
+			high_water_mark_tracking_complete: 1,
+		});
+		state.orders.push({
+			id: "ORD_BREACH",
+			account_id: "ACC_TRADE",
+			symbol: "EURUSD",
+			side: "BUY",
+			status: "filled",
+		});
+		state.positions.push({
+			id: "POS_BREACH",
+			account_id: "ACC_TRADE",
+			order_id: "ORD_BREACH",
+			symbol: "EURUSD",
+			side: "BUY",
+			volume: 1,
+			open_price: 1.25,
+			current_price: 1.25,
+			floating_pnl: 0,
+			status: "open",
+			opened_at: `${today}T01:00:00.000Z`,
+		});
+		state.positionSnapshots.push({
+			position_id: "POS_BREACH",
+			metadata_json: JSON.stringify({
+				...positionSymbol("EURUSD"),
+			}),
+		});
+		stubTradingQuotes(1.2, { EURUSD: { bid: 1.2, ask: 1.2002 } });
+
+		const response = await getAccount(db, "ACC_TRADE");
+		const payload = await response.json();
+		expect(response.status).toBe(200);
+		expect(payload.account.status).toBe("breached");
+		expect(payload.positions).toHaveLength(0);
+		expect(state.positions[0].status).toBe("closed");
+		expect(state.trades).toHaveLength(1);
+		expect(state.accounts[0].balance).toBeCloseTo(5000, 8);
+
+		const orderResponse = await callTrading(db, "/positions", {
+			method: "POST",
+			body: {
+				account_id: "ACC_TRADE",
+				symbol: "EURUSD",
+				side: "BUY",
+				volume: 0.1,
+			},
+		});
+		expect(orderResponse.status).toBe(409);
+		expect(state.orders).toHaveLength(1);
+	});
+
 	it("derives and stores today's baseline only when today's trades can reconstruct it", async () => {
-		const today = new Date().toISOString().slice(0, 10);
+		const today = drawdownDay();
 		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
 		Object.assign(state.accounts[0], {
 			starting_balance: 10000,
@@ -1934,8 +2278,8 @@ describe("Trusted trading API authentication", () => {
 		state.trades.push({
 			account_id: "ACC_TRADE",
 			realized_pnl: -100,
-			opened_at: `${today}T01:00:00.000Z`,
-			closed_at: `${today}T01:10:00.000Z`,
+			opened_at: `${today}T23:00:00.000Z`,
+			closed_at: `${today}T23:10:00.000Z`,
 		});
 
 		const response = await getAccount(db, "ACC_TRADE");
@@ -2450,7 +2794,11 @@ describe("Flexible provisioning worker", () => {
 		};
 		vi.spyOn(console, "error").mockImplementation(() => {});
 
-		const tick = await ingestBiquoteTick(db, { bid: 1.2, ask: 1.2002 });
+		const tick = await ingestBiquoteTick(db, {
+			bid: 1.2,
+			ask: 1.2002,
+			timestamp: tickTimeFromOpen(state.positions[0], 1),
+		});
 		expect(tick.status).toBe(200);
 		expect(state.positions[0].status).toBe("open");
 		expect(feed.pendingSettlements.size).toBe(1);
@@ -2636,7 +2984,11 @@ describe("Flexible provisioning worker", () => {
 			take_profit: 1.3,
 		});
 		expect(opened.status).toBe(201);
-		const tick = await ingestBiquoteTick(db, { bid: 1.2, ask: 1.2002 });
+		const tick = await ingestBiquoteTick(db, {
+			bid: 1.2,
+			ask: 1.2002,
+			timestamp: tickTimeFromOpen(state.positions[0], 1),
+		});
 		const result = await tick.json();
 
 		expect(tick.status).toBe(200);
@@ -2685,6 +3037,7 @@ describe("Flexible provisioning worker", () => {
 			symbol: "XAUUSD",
 			bid: 1989.99,
 			ask: 1990.1,
+			timestamp: tickTimeFromOpen(state.positions[0], 1),
 		});
 		const tickResult = await tick.json();
 
@@ -2957,7 +3310,7 @@ describe("Flexible provisioning worker", () => {
 		const { db, state } = mockDb();
 		const provisioned = await provision(db, payloadFor("spark_1step"));
 		const payload = await provisioned.json();
-		const today = new Date().toISOString().slice(0, 10);
+		const today = drawdownDay();
 		const snapshot = state.snapshots[0];
 
 		expect(provisioned.status).toBe(201);
