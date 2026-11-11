@@ -315,6 +315,16 @@ function mockDb({
 							account.equity = this.values[0];
 						}
 					}
+					if (lower.includes("update account_rule_snapshots")) {
+						const [highWaterMark, startingDayBalance, startingDayEquity, startingDayUtcDate, accountId] = this.values;
+						const snapshot = state.snapshots.find((row) => row.account_id === accountId);
+						if (snapshot) Object.assign(snapshot, {
+							high_water_mark: highWaterMark,
+							starting_day_balance: startingDayBalance,
+							starting_day_equity: startingDayEquity,
+							starting_day_utc_date: startingDayUtcDate,
+						});
+					}
 					if (lower.includes("insert into market_tick_cursors")) {
 						const [symbol, timestampMs, bid, ask] = this.values;
 						const existing = state.tickCursors.find((row) => row.symbol === symbol);
@@ -1860,6 +1870,85 @@ describe("Trusted trading API authentication", () => {
 		expect(JSON.stringify(payload)).not.toContain(tradingToken);
 	});
 
+	it("returns live daily and static maximum drawdown usage from the active account rules", async () => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		const today = new Date().toISOString().slice(0, 10);
+		Object.assign(state.accounts[0], {
+			starting_balance: 10000,
+			balance: 9400,
+			equity: 9400,
+		});
+		Object.assign(state.snapshots[0], {
+			starting_day_balance: 10000,
+			starting_day_equity: 10000,
+			starting_day_utc_date: today,
+			high_water_mark: 10000,
+			high_water_mark_tracking_complete: 1,
+		});
+
+		const response = await getAccount(db, "ACC_TRADE");
+		const { account } = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(account.drawdown.daily_percent_used).toBeCloseTo(6, 8);
+		expect(account.drawdown.max_percent_used).toBeCloseTo(6, 8);
+	});
+
+	it("uses the tracked peak for Spark trailing loss and does not invent legacy peaks", async () => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		const today = new Date().toISOString().slice(0, 10);
+		Object.assign(state.accounts[0], {
+			starting_balance: 10000,
+			balance: 11000,
+			equity: 11000,
+		});
+		Object.assign(state.snapshots[0], {
+			daily_drawdown_type: "START_OF_DAY_EQUITY",
+			max_drawdown_type: "TRAILING",
+			starting_day_balance: 11000,
+			starting_day_equity: 11000,
+			starting_day_utc_date: today,
+			high_water_mark: 12000,
+			high_water_mark_tracking_complete: 1,
+		});
+
+		const response = await getAccount(db, "ACC_TRADE");
+		const { account } = await response.json();
+		expect(account.drawdown.max_percent_used).toBeCloseTo(100 / 12, 8);
+
+		state.snapshots[0].high_water_mark_tracking_complete = 0;
+		const legacyResponse = await getAccount(db, "ACC_TRADE");
+		const { account: legacyAccount } = await legacyResponse.json();
+		expect(legacyAccount.drawdown.max_percent_used).toBeNull();
+		expect(legacyAccount.drawdown.max_reason).toMatch(/historical trailing high-water mark/i);
+	});
+
+	it("derives and stores today's baseline only when today's trades can reconstruct it", async () => {
+		const today = new Date().toISOString().slice(0, 10);
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		Object.assign(state.accounts[0], {
+			starting_balance: 10000,
+			balance: 9900,
+			equity: 9900,
+		});
+		state.trades.push({
+			account_id: "ACC_TRADE",
+			realized_pnl: -100,
+			opened_at: `${today}T01:00:00.000Z`,
+			closed_at: `${today}T01:10:00.000Z`,
+		});
+
+		const response = await getAccount(db, "ACC_TRADE");
+		const { account } = await response.json();
+
+		expect(account.drawdown.daily_percent_used).toBeCloseTo(1, 8);
+		expect(state.snapshots[0]).toMatchObject({
+			starting_day_balance: 10000,
+			starting_day_equity: 10000,
+			starting_day_utc_date: today,
+		});
+	});
+
 	it("does not let a body UID override the trusted UID", async () => {
 		const { db, state } = positionHarness({
 			symbols: [positionSymbol("EURUSD")],
@@ -2949,7 +3038,7 @@ describe("Flexible provisioning worker", () => {
 		const response = await provision(db, payloadFor("1step"));
 		expect(response.status).toBe(201);
 		expect(state.snapshotBindingCounts).toEqual([
-			{ columns: 45, placeholders: 45, boundValues: 45 },
+			{ columns: 47, placeholders: 47, boundValues: 47 },
 		]);
 	});
 
@@ -3544,7 +3633,7 @@ describe("Flexible provisioning worker", () => {
 	it("loads all approved symbol metadata without adding Futures symbols", () => {
 		const database = new DatabaseSync(":memory:");
 		try {
-			for (const file of ["../schema.sql", "../migration_002.sql", "../seed_forex.sql", "../migration_005.sql", "../migration_009_spark_products.sql"]) {
+			for (const file of ["../schema.sql", "../migration_002.sql", "../seed_forex.sql", "../migration_005.sql", "../migration_009_spark_products.sql", "../migration_010_drawdown_tracking.sql"]) {
 				database.exec(readFileSync(new URL(file, import.meta.url), "utf8"));
 			}
 

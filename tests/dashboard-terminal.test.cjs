@@ -60,6 +60,8 @@ test('Crazy Funded dashboard uses its live data components without reference sam
   assert.match(fundingForgeHtml, /appendPerformanceSummary\('Max drawdown used'/);
   assert.match(fundingForgeHtml, /profitTargetBalance: profitTarget !== null/);
   assert.match(fundingForgeHtml, /maxLossBalance: maxDrawdownLimit !== null/);
+  assert.match(fundingForgeHtml, /drawdownMetrics\.daily_percent_used/);
+  assert.match(fundingForgeHtml, /drawdownMetrics\.max_percent_used/);
   assert.match(fundingForgeHtml, /desk-chart-threshold is-profit-target/);
   assert.match(fundingForgeHtml, /desk-chart-threshold is-max-loss/);
   assert.match(fundingForgeHtml, /account-status-badge is-active/);
@@ -184,6 +186,49 @@ test('dashboard amounts shorten on phones and preserve exact values elsewhere', 
   assert.match(dashboardStyles, /@media \(min-width: 1000px\) and \(max-width: 1200px\)[\s\S]*?\.account-stat-grid \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
   assert.match(dashboardStyles, /#dashboard \.account-stat b \{\s*display: block;\s*min-width: 0;\s*overflow-wrap: anywhere;/);
   assert.match(dashboardStyles, /#dashboard \.desk-chart-tooltip strong,[\s\S]*?overflow-wrap: anywhere;/);
+});
+
+test('dashboard computes live drawdown only when current-day trading history is complete', () => {
+  const numberDeclaration = fundingForgeHtml.match(/const deskNumber = [^\n]+/);
+  const dateFunction = fundingForgeHtml.match(/const deskDate = value => \{[\s\S]*?\n\};/);
+  const drawdownFunction = fundingForgeHtml.match(/function deskComputeDrawdownMetrics\(account,rules,trades,positions,today=new Date\(\)\)\{[\s\S]*?\n\}/);
+  assert.ok(numberDeclaration);
+  assert.ok(dateFunction);
+  assert.ok(drawdownFunction);
+  const calculateDrawdown = new Function(
+    `${numberDeclaration[0]}\n${dateFunction[0]}\n${drawdownFunction[0]}\nreturn deskComputeDrawdownMetrics;`
+  )();
+  const today = new Date('2026-11-11T12:00:00.000Z');
+  const account = {
+    market_data_status: 'live',
+    starting_balance: 10000,
+    balance: 9900,
+    equity: 9950,
+  };
+  const rules = {
+    daily_drawdown_type: 'START_OF_DAY_EQUITY',
+    max_drawdown_type: 'STATIC',
+  };
+  const trades = [{
+    opened_at: '2026-11-11T09:00:00.000Z',
+    closed_at: '2026-11-11T09:30:00.000Z',
+    realized_pnl: -100,
+  }];
+  const positions = [{
+    opened_at: '2026-11-11T10:00:00.000Z',
+    floating_pnl: 50,
+    market_data_status: 'live',
+  }];
+
+  const current = calculateDrawdown(account,rules,trades,positions,today);
+  assert.equal(current.daily_percent_used, 0.5);
+  assert.equal(current.max_percent_used, 0.5);
+
+  const overnight = calculateDrawdown(account,rules,trades,[{
+    ...positions[0],
+    opened_at: '2026-11-10T23:00:00.000Z',
+  }],today);
+  assert.equal(overnight.daily_percent_used, null);
 });
 
 test('calendar P/L labels fit narrow mobile day cells while retaining exact values in the title', () => {

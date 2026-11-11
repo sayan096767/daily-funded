@@ -5547,6 +5547,87 @@ function deskNumericRule(data,rules,field,pattern){
   if(!match) return null;
   return Number(match[1] !== undefined ? match[1] : match[2]);
 }
+function deskComputeDrawdownMetrics(account,rules,trades,positions,today=new Date()){
+  const metrics = account && account.drawdown && typeof account.drawdown === 'object' ? {...account.drawdown} : {};
+  const currentEquity = account && account.market_data_status === 'live' ? deskNumber(account.equity) : null;
+  const balance = account && account.market_data_status === 'live' ? deskNumber(account.balance) : null;
+  const todayDate = today.toISOString().slice(0,10);
+  const utcDate = value=>{
+    const date = deskDate(value);
+    return date ? date.toISOString().slice(0,10) : null;
+  };
+  if(deskNumber(metrics.daily_percent_used) === null){
+    const dailyType = String(rules && rules.daily_drawdown_type || '').toUpperCase();
+    let complete = currentEquity !== null &&
+      balance !== null &&
+      Array.isArray(trades) &&
+      Array.isArray(positions) &&
+      ['START_OF_DAY_BALANCE','START_OF_DAY_EQUITY'].includes(dailyType);
+    let realizedToday = 0;
+    let floatingToday = 0;
+    if(complete){
+      for(const trade of trades){
+        if(utcDate(trade.closed_at) !== todayDate) continue;
+        const pnl = deskNumber(trade.realized_pnl);
+        if(utcDate(trade.opened_at) !== todayDate || pnl === null){
+          complete = false;
+          break;
+        }
+        realizedToday += pnl;
+      }
+    }
+    if(complete){
+      for(const position of positions){
+        const pnl = deskNumber(position.floating_pnl);
+        if(position.market_data_status !== 'live' || utcDate(position.opened_at) !== todayDate || pnl === null){
+          complete = false;
+          break;
+        }
+        floatingToday += pnl;
+      }
+    }
+    const baseline = dailyType === 'START_OF_DAY_BALANCE'
+      ? balance - realizedToday
+      : currentEquity - realizedToday - floatingToday;
+    const current = dailyType === 'START_OF_DAY_BALANCE' ? balance : currentEquity;
+    if(complete && baseline > 0){
+      metrics.daily_percent_used = Math.max(0,(baseline - current) / baseline * 100);
+      metrics.daily_reason = null;
+    }else{
+      metrics.daily_percent_used = null;
+      metrics.daily_reason = currentEquity === null
+        ? 'Live equity unavailable'
+        : dailyType === 'HIGH_WATER_MARK'
+          ? 'Daily high-water reference is not tracked'
+          : 'Start-of-day reference is unavailable';
+    }
+  }
+  if(deskNumber(metrics.max_percent_used) === null){
+    const maxType = String(rules && rules.max_drawdown_type || '').toUpperCase();
+    const startingBalance = deskNumber(account && account.starting_balance);
+    if(currentEquity !== null && maxType === 'STATIC' && startingBalance > 0){
+      metrics.max_percent_used = Math.max(0,(startingBalance - currentEquity) / startingBalance * 100);
+      metrics.max_reason = null;
+    }else if(
+      currentEquity !== null &&
+      maxType === 'TRAILING' &&
+      Number(rules && rules.high_water_mark_tracking_complete) === 1 &&
+      deskNumber(rules.high_water_mark) > 0
+    ){
+      const highWaterMark = deskNumber(rules.high_water_mark);
+      metrics.max_percent_used = Math.max(0,(highWaterMark - currentEquity) / highWaterMark * 100);
+      metrics.max_reason = null;
+    }else{
+      metrics.max_percent_used = null;
+      metrics.max_reason = currentEquity === null
+        ? 'Live equity unavailable'
+        : maxType === 'TRAILING'
+          ? 'Historical trailing high-water mark was not tracked'
+          : 'Starting balance is unavailable';
+    }
+  }
+  return metrics;
+}
 function appendDeskTableCell(row,value,className=''){
   const cell = document.createElement('td');
   cell.textContent = value == null ? '—' : String(value);
@@ -5662,20 +5743,23 @@ function renderDeskObjectives(){
     addObjective('Consistency','No consistency rule','Not required','is-not-required');
   }
 
-  const dailyDrawdown = deskNumber(data.dailyDrawdown);
+  const drawdownMetrics = deskComputeDrawdownMetrics(account,rules,trades,deskLivePositions);
+  const dailyDrawdown = deskNumber(drawdownMetrics && drawdownMetrics.daily_percent_used);
   if(dailyLimit !== null && dailyDrawdown !== null && dailyDrawdown >= 0){
     const safe = dailyDrawdown <= dailyLimit;
     addObjective('Daily loss limit',dailyDrawdown.toFixed(1) + '% of ' + dailyLimit + '%',safe ? 'Safe' : 'Limit reached',safe ? 'is-safe' : 'is-alert',dailyLimit > 0 ? Math.max(0,Math.min(100,(1 - dailyDrawdown / dailyLimit) * 100)) : null,safe ? 'is-up' : 'is-dn');
   }else{
-    addObjective('Daily loss limit',dailyLimit === null ? 'Limit unavailable' : 'Current daily drawdown unavailable' + (dailyLimit !== null ? ' · limit ' + dailyLimit + '%' : ''),'Unavailable');
+    const reason = drawdownMetrics && drawdownMetrics.daily_reason;
+    addObjective('Daily loss limit',dailyLimit === null ? 'Limit unavailable' : (reason || 'Current daily drawdown unavailable') + ' · limit ' + dailyLimit + '%','Unavailable');
   }
 
-  const maxDrawdown = deskNumber(data.overallDrawdown);
+  const maxDrawdown = deskNumber(drawdownMetrics && drawdownMetrics.max_percent_used);
   if(maxLimit !== null && maxDrawdown !== null && maxDrawdown >= 0){
     const safe = maxDrawdown <= maxLimit;
     addObjective('Max loss limit',maxDrawdown.toFixed(1) + '% of ' + maxLimit + '%',safe ? 'Safe' : 'Limit reached',safe ? 'is-safe' : 'is-alert',maxLimit > 0 ? Math.max(0,Math.min(100,(1 - maxDrawdown / maxLimit) * 100)) : null,safe ? 'is-up' : 'is-dn');
   }else{
-    addObjective('Max loss limit',maxLimit === null ? 'Limit unavailable' : 'Current maximum drawdown unavailable' + (maxLimit !== null ? ' · limit ' + maxLimit + '%' : ''),'Unavailable');
+    const reason = drawdownMetrics && drawdownMetrics.max_reason;
+    addObjective('Max loss limit',maxLimit === null ? 'Limit unavailable' : (reason || 'Current maximum drawdown unavailable') + ' · limit ' + maxLimit + '%','Unavailable');
   }
 
   container.appendChild(shell);

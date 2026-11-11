@@ -639,6 +639,160 @@ async function getAccountRuleContext(env, accountId, ownerUserId = null) {
   return { account, snapshot, rules };
 }
 
+function drawdownDate(value) {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toISOString().slice(0, 10)
+    : null;
+}
+
+async function updateAccountDrawdownMetrics(
+  env,
+  account,
+  rules,
+  positions,
+  equity,
+  observedAt = new Date().toISOString()
+) {
+  const today = drawdownDate(observedAt);
+  const balance = account.balance === null || account.balance === undefined || account.balance === ""
+    ? NaN
+    : Number(account.balance);
+  const liveEquity = equity === null || equity === undefined || equity === ""
+    ? NaN
+    : Number(equity);
+  const drawdown = {
+    daily_percent_used: null,
+    daily_reason: "Live equity unavailable",
+    max_percent_used: null,
+    max_reason: "Live equity unavailable",
+  };
+  if (!today || !Number.isFinite(balance) || !Number.isFinite(liveEquity)) {
+    return drawdown;
+  }
+
+  let startingDayBalance = Number(rules.starting_day_balance);
+  let startingDayEquity = Number(rules.starting_day_equity);
+  let startingDayDate = rules.starting_day_utc_date;
+  let snapshotChanged = false;
+  if (
+    startingDayDate !== today ||
+    !Number.isFinite(startingDayBalance) ||
+    startingDayBalance <= 0 ||
+    !Number.isFinite(startingDayEquity) ||
+    startingDayEquity <= 0
+  ) {
+    let historyComplete = true;
+    let realizedToday = 0;
+    let floatingToday = 0;
+    try {
+      const trades = await env.daily_funded_trading_db
+        .prepare(`
+          SELECT realized_pnl, opened_at, closed_at
+          FROM trades
+          WHERE account_id = ?
+            AND substr(closed_at, 1, 10) = ?
+        `)
+        .bind(account.id, today)
+        .all();
+      for (const trade of trades.results || []) {
+        if (drawdownDate(trade.closed_at) !== today) continue;
+        const pnl = Number(trade.realized_pnl);
+        if (drawdownDate(trade.opened_at) !== today || !Number.isFinite(pnl)) {
+          historyComplete = false;
+          break;
+        }
+        realizedToday += pnl;
+      }
+    } catch (error) {
+      console.error(`Unable to load daily drawdown history for account ${account.id}:`, error);
+      historyComplete = false;
+    }
+
+    for (const position of positions) {
+      const pnl = Number(position.floating_pnl);
+      if (drawdownDate(position.opened_at) !== today || !Number.isFinite(pnl)) {
+        historyComplete = false;
+        break;
+      }
+      floatingToday += pnl;
+    }
+
+    if (historyComplete) {
+      const derivedBalance = balance - realizedToday;
+      const derivedEquity = liveEquity - realizedToday - floatingToday;
+      if (derivedBalance > 0 && derivedEquity > 0) {
+        startingDayBalance = derivedBalance;
+        startingDayEquity = derivedEquity;
+        startingDayDate = today;
+        snapshotChanged = true;
+      }
+    }
+  }
+
+  const dailyType = String(rules.daily_drawdown_type || "").toUpperCase();
+  const dailyReference = dailyType === "START_OF_DAY_BALANCE"
+    ? startingDayBalance
+    : dailyType === "START_OF_DAY_EQUITY"
+      ? startingDayEquity
+      : null;
+  if (startingDayDate === today && dailyReference > 0) {
+    const dailyCurrent = dailyType === "START_OF_DAY_BALANCE" ? balance : liveEquity;
+    drawdown.daily_percent_used = Math.max(0, (dailyReference - dailyCurrent) / dailyReference * 100);
+    drawdown.daily_reason = null;
+  } else {
+    drawdown.daily_reason = dailyType === "HIGH_WATER_MARK"
+      ? "Daily high-water reference is not tracked"
+      : "Start-of-day reference is unavailable";
+  }
+
+  const maxType = String(rules.max_drawdown_type || "").toUpperCase();
+  const startingBalance = Number(account.starting_balance);
+  let highWaterMark = Number(rules.high_water_mark);
+  if (!Number.isFinite(highWaterMark) || highWaterMark <= 0) {
+    highWaterMark = startingBalance;
+  }
+  if (Number.isFinite(startingBalance) && startingBalance > 0) {
+    highWaterMark = Math.max(highWaterMark, startingBalance, balance, liveEquity);
+    if (highWaterMark !== Number(rules.high_water_mark)) snapshotChanged = true;
+  }
+  if (maxType === "STATIC" && startingBalance > 0) {
+    drawdown.max_percent_used = Math.max(0, (startingBalance - liveEquity) / startingBalance * 100);
+    drawdown.max_reason = null;
+  } else if (
+    maxType === "TRAILING" &&
+    Number(rules.high_water_mark_tracking_complete) === 1 &&
+    highWaterMark > 0
+  ) {
+    drawdown.max_percent_used = Math.max(0, (highWaterMark - liveEquity) / highWaterMark * 100);
+    drawdown.max_reason = null;
+  } else {
+    drawdown.max_reason = maxType === "TRAILING"
+      ? "Historical trailing high-water mark was not tracked"
+      : "Starting balance is unavailable";
+  }
+
+  if (snapshotChanged) {
+    await env.daily_funded_trading_db
+      .prepare(`
+        UPDATE account_rule_snapshots
+        SET high_water_mark = ?,
+            starting_day_balance = ?,
+            starting_day_equity = ?,
+            starting_day_utc_date = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE account_id = ?
+      `)
+      .bind(highWaterMark, startingDayBalance, startingDayEquity, startingDayDate, account.id)
+      .run();
+    rules.high_water_mark = highWaterMark;
+    rules.starting_day_balance = startingDayBalance;
+    rules.starting_day_equity = startingDayEquity;
+    rules.starting_day_utc_date = startingDayDate;
+  }
+  return drawdown;
+}
+
 async function timingSafeTokenMatches(received, expected) {
   const encoder = new TextEncoder();
   const [receivedDigest, expectedDigest] = await Promise.all([
@@ -945,10 +1099,12 @@ async function createAccountAndRuleSnapshot(
         custom_rules_json,
         high_water_mark,
         starting_day_balance,
-        starting_day_equity
+        starting_day_equity,
+        starting_day_utc_date,
+        high_water_mark_tracking_complete
       )
       VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       )
     `)
     .bind(
@@ -1003,7 +1159,9 @@ async function createAccountAndRuleSnapshot(
       }),
       size.size,
       size.size,
-      size.size
+      size.size,
+      new Date().toISOString().slice(0, 10),
+      1
     );
 
   try {
@@ -2140,6 +2298,27 @@ export class MarketFeedDO {
       ? NaN
       : Number(balanceValue);
     const accountIsLive = completeMarketData && Number.isFinite(balance);
+    let drawdown = null;
+    try {
+      const context = await getAccountRuleContext(
+        this.env,
+        accountId,
+        accountPositions[0].user_id
+      );
+      if (context.error) {
+        throw new Error(context.error);
+      }
+      drawdown = await updateAccountDrawdownMetrics(
+        this.env,
+        context.account,
+        context.rules,
+        accountPositions,
+        accountIsLive ? balance + totalFloatingPnl : null,
+        new Date(timestampMs).toISOString()
+      );
+    } catch (error) {
+      console.error(`Unable to update live drawdown metrics for account ${accountId}:`, error);
+    }
     await publishPositionEvent(this.env, accountPositions[0].user_id, accountId, {
       type: "ACCOUNT_MARK_UPDATED",
       account_id: accountId,
@@ -2150,6 +2329,7 @@ export class MarketFeedDO {
         open_pnl: accountIsLive ? totalFloatingPnl : null,
         equity: accountIsLive ? balance + totalFloatingPnl : null,
         market_data_status: accountIsLive ? "live" : "unavailable",
+        drawdown,
       },
     });
   }
@@ -4538,6 +4718,13 @@ export default {
             : null,
           market_data_status: completeMarketData ? "live" : "unavailable",
         };
+        account.drawdown = await updateAccountDrawdownMetrics(
+          env,
+          context.account,
+          context.rules,
+          markedPositions,
+          account.equity
+        );
 
         if (completeMarketData) {
           positionUpdates.push(env.daily_funded_trading_db.prepare(`
