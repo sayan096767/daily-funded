@@ -198,6 +198,68 @@ test('checkout highlights the supplied payment and account activation message', 
   assert.match(checkoutHtml, /\.hosted-crypto-note strong\{display:block;[^}]*color:#67e6ab/);
 });
 
+test('free purchase confirmation animates, stays accurate, and dismisses automatically', () => {
+  const start = checkoutHtml.indexOf('let checkoutPurchaseToastTimer = null;');
+  const end = checkoutHtml.indexOf('\nfunction getPendingSubmissionId', start);
+  assert.ok(start >= 0 && end > start);
+  const source = checkoutHtml.slice(start, end);
+  const classes = new Set();
+  const timers = [];
+  const toast = {
+    hidden: true,
+    classList: {
+      add(name) { classes.add(name); },
+      remove(name) { classes.delete(name); },
+      toggle(name, enabled) {
+        if (enabled) classes.add(name);
+        else classes.delete(name);
+      }
+    }
+  };
+  const title = {textContent: ''};
+  const message = {textContent: ''};
+  const closeButton = {addEventListener() {}};
+  const context = vm.createContext({
+    document: {
+      getElementById(id) {
+        return {
+          checkoutPurchaseToast: toast,
+          checkoutPurchaseToastTitle: title,
+          checkoutPurchaseToastMessage: message,
+          checkoutPurchaseToastClose: closeButton
+        }[id] || null;
+      }
+    },
+    setTimeout(callback, delay) {
+      timers.push({callback, delay});
+      return timers.length;
+    },
+    clearTimeout() {}
+  });
+  vm.runInContext(
+    `${source}\nthis.showCheckoutPurchaseToast = showCheckoutPurchaseToast;`,
+    context
+  );
+
+  context.showCheckoutPurchaseToast(true);
+  assert.equal(title.textContent, 'Purchase complete!');
+  assert.equal(message.textContent, 'Your account is ready. You can trade now.');
+  assert.equal(toast.hidden, false);
+  assert.ok(classes.has('is-ready'));
+  assert.equal(timers[0].delay, 6650);
+  timers[0].callback();
+  assert.ok(classes.has('is-closing'));
+  timers[1].callback();
+  assert.equal(toast.hidden, true);
+  assert.ok(!classes.has('is-closing'));
+
+  context.showCheckoutPurchaseToast(false);
+  assert.equal(title.textContent, 'Free purchase complete');
+  assert.match(message.textContent, /Trading will be available when setup is complete/);
+  assert.ok(classes.has('is-pending'));
+  assert.match(checkoutHtml, /@media\(prefers-reduced-motion:reduce\)\{\.checkout-purchase-toast/);
+});
+
 test('secure checkout button displays one decorative lock icon', () => {
   const paymentButton = checkoutHtml.match(/<button type="submit" class="btn btn-primary checkout-submit" id="coPayBtn"[\s\S]*?<\/button>/)?.[0];
   assert.ok(paymentButton, 'secure checkout button should exist');
@@ -826,6 +888,15 @@ test('hosted checkout uses the provider URL and keeps coin selection off-site', 
   assert.match(requestSource, /invoiceUrl\.hostname !== 'nowpayments\.io'/);
   assert.match(checkoutHtml, /window\.location\.assign\(purchase\.invoiceUrl\)/);
   assert.doesNotMatch(checkoutHtml, /cryptoCurrencySelect|id="curTabs"|id="netTabs"/);
+});
+
+test('zero-dollar checkout completes locally without redirecting to NOWPayments', () => {
+  const freeBranchStart = checkoutHtml.indexOf('if(purchase.requiresPayment === false){');
+  const redirectIndex = checkoutHtml.indexOf('window.location.assign(purchase.invoiceUrl)');
+  const freeBranchEnd = checkoutHtml.indexOf('\n      clearPendingSubmissionId();', freeBranchStart);
+  assert.ok(freeBranchStart >= 0 && freeBranchEnd > freeBranchStart);
+  assert.ok(redirectIndex > freeBranchEnd);
+  assert.match(checkoutHtml.slice(freeBranchStart, freeBranchEnd), /return;/);
 });
 
 test('dashboard retries paid pending provisioning and reloads the actual engine account', async () => {

@@ -39,6 +39,10 @@ services:
         sync: false
       - key: NOWPAYMENTS_RETURN_URL
         sync: false
+      - key: CLOUDFLARE_TRADING_WORKER_URL
+        sync: false
+      - key: CLOUDFLARE_PROVISIONING_TOKEN
+        sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY

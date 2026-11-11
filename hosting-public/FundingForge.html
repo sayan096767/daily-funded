@@ -616,12 +616,25 @@ try{
   .coupon-status{min-height:15px; margin-top:6px; color:var(--sub-dim); font-size:10px;}
   .coupon-status.success{color:var(--green);}
   .coupon-status.error{color:#ef8c7d;}
-  .checkout-purchase-toast{position:fixed;right:24px;bottom:24px;z-index:10000;display:flex;align-items:flex-start;gap:14px;width:min(440px,calc(100vw - 32px));padding:18px;border:1px solid rgba(85,219,141,.38);border-radius:16px;background:linear-gradient(145deg,#17271e,#111a15);box-shadow:0 20px 60px rgba(0,0,0,.4);color:var(--text);}
+  .checkout-purchase-toast{position:fixed;right:24px;bottom:24px;z-index:10000;display:flex;align-items:flex-start;gap:14px;width:min(440px,calc(100vw - 32px));padding:18px;border:1px solid rgba(85,219,141,.48);border-radius:16px;background:radial-gradient(circle at 0 0,rgba(85,219,141,.16),transparent 58%),linear-gradient(145deg,#17271e,#111a15);box-shadow:0 20px 60px rgba(0,0,0,.4),0 0 32px rgba(85,219,141,.12);color:var(--text);overflow:hidden;animation:checkoutToastIn .45s cubic-bezier(.2,.8,.2,1) both;}
   .checkout-purchase-toast[hidden]{display:none;}
-  .checkout-purchase-toast-icon{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border-radius:50%;background:rgba(85,219,141,.14);color:#55db8d;font-size:20px;font-weight:800;}
+  .checkout-purchase-toast.is-pending{border-color:rgba(230,195,77,.45);background:radial-gradient(circle at 0 0,rgba(230,195,77,.14),transparent 58%),linear-gradient(145deg,#282519,#15140f);}
+  .checkout-purchase-toast.is-closing{animation:checkoutToastOut .35s ease-in forwards;}
+  .checkout-purchase-toast-icon{position:relative;display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;border:1px solid rgba(85,219,141,.35);border-radius:50%;background:rgba(85,219,141,.14);color:#55db8d;font-size:23px;font-weight:800;box-shadow:0 0 22px rgba(85,219,141,.18);animation:checkoutToastCheck .55s cubic-bezier(.2,.9,.3,1.3) both;}
+  .checkout-purchase-toast-icon::after{position:absolute;inset:-5px;border:1px solid rgba(85,219,141,.38);border-radius:50%;content:"";animation:checkoutToastRing .75s ease-out both;}
+  .checkout-purchase-toast.is-pending .checkout-purchase-toast-icon{border-color:rgba(230,195,77,.35);background:rgba(230,195,77,.12);color:#e6c34d;box-shadow:none;animation:none;}
+  .checkout-purchase-toast.is-pending .checkout-purchase-toast-icon::after{display:none;}
   .checkout-purchase-toast strong{display:block;margin:1px 0 5px;font-size:15px;}
   .checkout-purchase-toast p{margin:0;color:var(--sub);font-size:13px;line-height:1.5;}
   .checkout-purchase-toast button{margin-left:auto;border:0;background:transparent;color:var(--sub);font-size:20px;line-height:1;cursor:pointer;}
+  .checkout-purchase-toast::after{position:absolute;right:0;bottom:0;left:0;height:3px;background:linear-gradient(90deg,#55db8d,#b6f6c9);content:"";transform-origin:left;animation:checkoutToastProgress 7s linear both;}
+  .checkout-purchase-toast.is-pending::after{background:linear-gradient(90deg,#e6c34d,#f6e5a5);}
+  @keyframes checkoutToastIn{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}
+  @keyframes checkoutToastOut{to{opacity:0;transform:translateY(10px) scale(.98)}}
+  @keyframes checkoutToastCheck{from{opacity:0;transform:scale(.45) rotate(-18deg)}to{opacity:1;transform:scale(1) rotate(0)}}
+  @keyframes checkoutToastRing{to{opacity:0;transform:scale(1.5)}}
+  @keyframes checkoutToastProgress{to{transform:scaleX(0)}}
+  @media(prefers-reduced-motion:reduce){.checkout-purchase-toast,.checkout-purchase-toast-icon,.checkout-purchase-toast-icon::after,.checkout-purchase-toast::after{animation:none!important}.checkout-purchase-toast.is-closing{opacity:0;}}
   @media(max-width:520px){.checkout-purchase-toast{right:16px;bottom:16px;padding:15px}}
   .coupon-discount-row b{color:#e5484d!important;}
   .co-total{display:flex; justify-content:space-between; font-size:16px; font-weight:800; padding-top:14px; margin-top:6px; border-top:1px solid var(--panel-b);}
@@ -4554,14 +4567,24 @@ function showCheckoutPurchaseToast(readyToTrade){
   const toast = document.getElementById('checkoutPurchaseToast');
   if(!toast) return;
   document.getElementById('checkoutPurchaseToastTitle').textContent = readyToTrade
-    ? 'Purchase complete'
-    : 'Purchase received';
+    ? 'Purchase complete!'
+    : 'Free purchase complete';
   document.getElementById('checkoutPurchaseToastMessage').textContent = readyToTrade
     ? 'Your account is ready. You can trade now.'
-    : 'Your order is recorded, but account activation is still in progress.';
+    : 'Account activation is still in progress. Trading will be available when setup is complete.';
+  toast.classList.toggle('is-ready',readyToTrade);
+  toast.classList.toggle('is-pending',!readyToTrade);
+  toast.classList.remove('is-closing');
+  toast.hidden = true;
   toast.hidden = false;
   clearTimeout(checkoutPurchaseToastTimer);
-  checkoutPurchaseToastTimer = setTimeout(()=>{toast.hidden = true;},7000);
+  checkoutPurchaseToastTimer = setTimeout(()=>{
+    toast.classList.add('is-closing');
+    checkoutPurchaseToastTimer = setTimeout(()=>{
+      toast.hidden = true;
+      toast.classList.remove('is-closing');
+    },350);
+  },6650);
 }
 document.getElementById('checkoutPurchaseToastClose').addEventListener('click',()=>{
   const toast = document.getElementById('checkoutPurchaseToast');
