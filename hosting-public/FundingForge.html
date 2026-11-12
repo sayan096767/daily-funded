@@ -1237,7 +1237,7 @@ try{
   @media(max-width:700px){.payout-mission-banner iframe{height:680px;}}
 </style>
 <script>
-var dashboardThemeStylesheetPath = (window.location.protocol === 'file:' ? './dashboard-theme.css' : '/dashboard-theme.css') + '?v=20261112-calendar-trade-counts';
+var dashboardThemeStylesheetPath = (window.location.protocol === 'file:' ? './dashboard-theme.css' : '/dashboard-theme.css') + '?v=20261112-settings-menu';
 document.write('<link rel="stylesheet" href="' + dashboardThemeStylesheetPath + '">');
 </script>
 <noscript><link rel="stylesheet" href="/dashboard-theme.css"></noscript>
@@ -2002,7 +2002,14 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
     <div class="dashboard-sidebar-foot">
       <div class="dashboard-sidebar-status">TRADING WORKSPACE</div>
       <a href="#pricing" class="open-dash-close">← Back to Crazy Funded</a>
-      <a href="#pricing" class="open-dash-close" id="dashboardAccountAction">Sign out</a>
+      <details class="dashboard-settings">
+        <summary class="dashboard-settings-trigger" aria-label="Settings" aria-controls="dashboardSettingsPanel">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.3 2.5h5.4l.6 2.3c1 .3 1.8.7 2.6 1.2l2.3-1.2 2.1 3.4-1.9 1.8c.3.8.4 1.7.4 2.5l2 1-1 3.8-2.7-.1c-.5.8-1 1.4-1.8 2l.4 1.2-3.5 1.1-1.4-2c-.8.2-1.6.2-2.4 0l-1.4 2-3.5-1.1.4-1.2c-.8-.6-1.3-1.2-1.8-2l-2.7.1-1-3.8 2-1c0-.8.1-1.7.4-2.5l-1.9-1.8 2.1-3.4 2.3 1.2c.8-.5 1.6-.9 2.6-1.2z"/><circle cx="12" cy="12" r="3.3"/></svg>
+        </summary>
+        <div class="dashboard-settings-panel" id="dashboardSettingsPanel" role="group" aria-label="Settings">
+          <a href="#pricing" class="open-dash-close" id="dashboardAccountAction">Sign out</a>
+        </div>
+      </details>
     </div>
   </aside>
   <div class="wrap dashboard-main" id="traderDeskView">
@@ -3656,6 +3663,18 @@ function closeRegistration(){
 }
 const firebaseHeaderAccountLink = document.querySelector('.navright .open-dash');
 const dashboardAccountAction = document.getElementById('dashboardAccountAction');
+const dashboardSettings = document.querySelector('.dashboard-settings');
+document.addEventListener('click',event=>{
+  if(dashboardSettings && dashboardSettings.open && !dashboardSettings.contains(event.target)){
+    dashboardSettings.open = false;
+  }
+});
+document.addEventListener('keydown',event=>{
+  if(event.key === 'Escape' && dashboardSettings && dashboardSettings.open){
+    dashboardSettings.open = false;
+    dashboardSettings.querySelector('summary').focus();
+  }
+});
 function updateFirebaseAccountControls(user){
   if(firebaseHeaderAccountLink) firebaseHeaderAccountLink.textContent = user ? 'Sign out' : 'Sign in';
   if(dashboardAccountAction) dashboardAccountAction.textContent = user ? 'Sign out' : '← Back to Crazy Funded';

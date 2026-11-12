@@ -220,6 +220,88 @@
   display: none;
 }
 
+#dashboard .dashboard-settings {
+  position: relative;
+}
+
+#dashboard .dashboard-settings-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ac);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  list-style: none;
+}
+
+#dashboard .dashboard-settings-trigger::-webkit-details-marker {
+  display: none;
+}
+
+#dashboard .dashboard-settings-trigger::marker {
+  content: "";
+}
+
+#dashboard .dashboard-settings-trigger svg {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#dashboard .dashboard-settings-trigger:hover,
+#dashboard .dashboard-settings[open] > .dashboard-settings-trigger {
+  background: var(--panel2);
+  color: var(--tx);
+}
+
+#dashboard .dashboard-settings-trigger:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 2px;
+}
+
+#dashboard .dashboard-settings-panel {
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  min-width: 160px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--menu-shadow);
+}
+
+#dashboard .dashboard-settings-panel a {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 7px;
+  color: var(--dn);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+#dashboard .dashboard-settings-panel a:hover,
+#dashboard .dashboard-settings-panel a:focus-visible {
+  background: var(--dnbg);
+  color: var(--dn);
+}
+
 #dashboard .dashboard-main.wrap {
   grid-column: 2;
   width: 100%;
@@ -1782,6 +1864,18 @@
     margin-top: 7px;
     padding: 7px 4px 0;
     border-top: 0;
+  }
+
+  #dashboard .dashboard-settings {
+    margin-left: auto;
+  }
+
+  #dashboard .dashboard-settings-panel {
+    top: calc(100% + 8px);
+    right: 0;
+    bottom: auto;
+    left: auto;
+    width: 180px;
   }
 
   #dashboard .dashboard-main.wrap {

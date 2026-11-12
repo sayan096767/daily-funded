@@ -139,7 +139,7 @@ test('dashboard controls retain working destinations and existing handlers', () 
   assert.doesNotMatch(sidebarNavigation || '', /dashboard-trade-link/);
   assert.match(fundingForgeHtml, /const tradingActive = data\.status === 'active' && data\.tradingEnabled === true;/);
   assert.match(fundingForgeHtml, /tradeButton\.hidden = !tradingActive;/);
-  assert.match(fundingForgeHtml, /dashboard-theme\.css'\) \+ '\?v=20261112-calendar-trade-counts'/);
+  assert.match(fundingForgeHtml, /dashboard-theme\.css'\) \+ '\?v=20261112-settings-menu'/);
   assert.match(dashboardStyles, /#dashboard \.dashboard-theme-toggle > span:last-child \{\s*min-width: 12px;\s*color: var\(--tx\);/);
   assert.match(dashboardStyles, /#dashboard \.dashboard-theme-toggle\[aria-checked="true"\] \.dashboard-theme-switch-thumb \{\s*background: var\(--tx\);/);
   assert.match(dashboardHtml, />TRADE<\/a>/);
@@ -166,6 +166,25 @@ test('dashboard controls retain working destinations and existing handlers', () 
   assert.match(fundingForgeHtml, /const deskSignedMoney = value =>/);
   assert.match(fundingForgeHtml, /number > 0 \? '\+\$' : number < 0 \? '−\$'/);
   assert.doesNotMatch(fundingForgeHtml, /data-dashboard-theme/);
+});
+
+test('sidebar settings menu contains the existing sign-out action', () => {
+  const settings = dashboardHtml?.match(
+    /<details class="dashboard-settings">([\s\S]*?)<\/details>/
+  )?.[1];
+  assert.ok(settings, 'expected an accessible settings control');
+  assert.match(settings, /<summary class="dashboard-settings-trigger" aria-label="Settings"/);
+  assert.doesNotMatch(settings, /<span>Settings<\/span>/);
+  assert.match(settings, /<path d="M9\.3 2\.5h5\.4/);
+  assert.match(settings, /<circle cx="12" cy="12" r="3\.3"\/>/);
+  assert.match(dashboardStyles, /#dashboard \.dashboard-settings-trigger \{\s*display: flex;\s*align-items: center;\s*justify-content: center;\s*width: 44px;\s*min-height: 44px;/);
+  assert.match(dashboardStyles, /#dashboard \.dashboard-settings-trigger svg \{\s*width: 24px;\s*height: 24px;\s*flex: 0 0 24px;\s*fill: none;\s*stroke: currentColor;\s*stroke-width: 2\.1;/);
+  assert.match(settings, /id="dashboardAccountAction">Sign out<\/a>/);
+  assert.match(dashboardStyles, /#dashboard \.dashboard-settings-panel \{\s*position: absolute;/);
+  assert.match(dashboardStyles, /#dashboard \.dashboard-settings-panel a \{\s*display: block;\s*padding: 8px 10px;\s*border-radius: 7px;\s*color: var\(--dn\);\s*font-size: 14px;\s*font-weight: 600;/);
+  assert.match(fundingForgeHtml, /dashboardSettings\.open && !dashboardSettings\.contains\(event\.target\)/);
+  assert.match(fundingForgeHtml, /event\.key === 'Escape' && dashboardSettings && dashboardSettings\.open/);
+  assert.match(fundingForgeHtml, /dashboardSettings\.querySelector\('summary'\)\.focus\(\)/);
 });
 
 test('dashboard greeting uses morning, afternoon, and evening at local-hour boundaries', () => {
