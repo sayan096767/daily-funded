@@ -1,6 +1,17 @@
 {
   "hosting": {
     "public": "hosting-public",
+    "headers": [
+      {
+        "source": "/FundingForge.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, max-age=0, must-revalidate"
+          }
+        ]
+      }
+    ],
     "rewrites": [
       {
         "source": "/ref/**",

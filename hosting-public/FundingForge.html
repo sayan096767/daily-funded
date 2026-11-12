@@ -3629,7 +3629,7 @@ window.addEventListener('resize',()=>{if(!accountSelectList.hidden) closeDashboa
 window.addEventListener('scroll',()=>{if(!accountSelectList.hidden) closeDashboardAccountPicker();},true);
 
 function openDashboard(preferredAccountId, pushHistory=true){
-  if(!dashboard.classList.contains('active') && pushHistory && !window.history.state?.crazyFundedDashboard){
+  if(!dashboard.classList.contains('active') && pushHistory){
     const currentState = window.history.state && typeof window.history.state === 'object'
       ? window.history.state
       : {};

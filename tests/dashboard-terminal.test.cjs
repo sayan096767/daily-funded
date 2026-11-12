@@ -187,7 +187,13 @@ test('sidebar settings menu contains the existing sign-out action', () => {
   assert.match(fundingForgeHtml, /dashboardSettings\.querySelector\('summary'\)\.focus\(\)/);
 });
 
-test('browser back returns from the dashboard to the homepage', () => {
+test('browser back returns from the dashboard to the homepage after reloads', () => {
+  const dashboardPageHeaders = firebaseConfig.hosting.headers.find(
+    ({ source }) => source === '/FundingForge.html'
+  )?.headers;
+  assert.ok(dashboardPageHeaders?.some(
+    ({ key, value }) => key === 'Cache-Control' && value === 'no-cache, max-age=0, must-revalidate'
+  ));
   const sidebarFoot = dashboardHtml?.match(
     /<div class="dashboard-sidebar-foot">([\s\S]*?)<\/div>\s*<\/aside>/
   )?.[1];
@@ -195,7 +201,8 @@ test('browser back returns from the dashboard to the homepage', () => {
   assert.ok(sidebarFoot.indexOf('class="dashboard-settings"') < sidebarFoot.indexOf('← Back to Crazy Funded'));
   assert.match(dashboardStyles, /#dashboard \.dashboard-sidebar-foot > \.open-dash-close \{\s*order: 1;/);
   assert.match(dashboardStyles, /#dashboard \.dashboard-settings \{\s*margin-left: auto;\s*order: 2;/);
-  assert.match(fundingForgeHtml, /if\(!dashboard\.classList\.contains\('active'\) && pushHistory && !window\.history\.state\?\.crazyFundedDashboard\)\{[\s\S]*?window\.history\.pushState\(\{\.\.\.currentState,crazyFundedDashboard:true\}/);
+  assert.match(fundingForgeHtml, /if\(!dashboard\.classList\.contains\('active'\) && pushHistory\)\{[\s\S]*?window\.history\.pushState\(\{\.\.\.currentState,crazyFundedDashboard:true\}/);
+  assert.doesNotMatch(fundingForgeHtml, /pushHistory && !window\.history\.state\?\.crazyFundedDashboard/);
   assert.match(fundingForgeHtml, /window\.addEventListener\('popstate',event=>\{\s*if\(dashboard\.classList\.contains\('active'\)\) closeDashboard\(\);\s*else if\(event\.state\?\.crazyFundedDashboard\) openDashboard\(undefined,false\);/);
 });
 
