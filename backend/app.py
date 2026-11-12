@@ -75,8 +75,8 @@ CATALOG = {
         "consistency_rule_percent": 30,
         "reward_cycle": "On demand",
         "rules": [
-            "6% profit target", "3% of initial balance daily loss; resets at 22:00 UTC",
-            "7% end-of-day trailing max loss; updates at 22:00 UTC",
+            "6% profit target", "3% [EOD] daily loss",
+            "7% [EOD] max loss",
             "5 min trading days", "70% profit split", "30% consistency rule",
             "On-demand reward cycle",
         ],
@@ -95,8 +95,8 @@ CATALOG = {
         "consistency_rule_percent": 30,
         "reward_cycle": "On demand",
         "rules": [
-            "3% of initial balance daily loss; resets at 22:00 UTC",
-            "7% end-of-day trailing max loss; updates at 22:00 UTC",
+            "3% [EOD] daily loss",
+            "7% [EOD] max loss",
             "5 min trading days", "70% profit split", "30% consistency rule",
             "On-demand reward cycle",
         ],

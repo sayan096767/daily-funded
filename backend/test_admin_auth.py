@@ -325,6 +325,10 @@ class PurchaseApiTests(unittest.TestCase):
         self.assertNotIn("profit target", " ".join(instant["rules"]).lower())
         self.assertEqual(one_step["prices"], {25000: 39, 50000: 59, 100000: 79})
         self.assertEqual(instant["prices"], {25000: 59, 50000: 79, 100000: 99})
+        for plan in (one_step, instant):
+            self.assertIn("3% [EOD] daily loss", plan["rules"])
+            self.assertIn("7% [EOD] max loss", plan["rules"])
+            self.assertNotIn("resets at 22:00 UTC", " ".join(plan["rules"]))
 
     def test_spark_rejects_unsupported_size_and_wrong_product_identifier(self):
         for product_id, size in (("MODEL_FX_SPARK_1STEP", 5000), ("wrong-id", 25000)):

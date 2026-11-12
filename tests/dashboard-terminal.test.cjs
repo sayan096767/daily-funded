@@ -364,7 +364,7 @@ test('Spark and Classic loss objectives show floor amounts and color-coded remai
   assert.match(renderer, /deskClassicMaxLossFloor\(startingBalance,rules,maxLimit\)/);
   assert.match(renderer, /if\(isSparkOrClassic && threshold !== null && remaining\)/);
   assert.match(renderer, /else if\(isClassic && maxThreshold !== null/);
-  assert.equal((fundingForgeHtml.match(/extra:\['3% \[EOD\] trailing daily loss','7% \[EOD\] trailing max loss'/g) || []).length, 2);
+  assert.equal((fundingForgeHtml.match(/extra:\['3% \[EOD\] daily loss','7% \[EOD\] max loss'/g) || []).length, 2);
   assert.match(renderer, /deskLossLimitProgress\(\(1 - dailyDrawdown \/ effectiveDailyLimit\) \* 100\)/);
   assert.match(renderer, /deskMoney\(threshold\) \+ ' floor · ' \+ remaining\.progress\.toFixed\(1\) \+ '% remaining'/);
   assert.match(renderer, /deskSparkMaxLossBuffer\(currentEquity,maxThreshold,lossAllowance\)/);

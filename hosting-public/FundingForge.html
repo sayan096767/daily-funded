@@ -2579,8 +2579,8 @@ const pricing = {
   '1step': {prices:{5000:32,10000:64,25000:160,50000:320,100000:640,200000:1280}, label:'1-Step', target:'10% profit target', extra:['5% daily drawdown','10% max drawdown','3 min trading days','5 day reward cycle','80% profit split','No consistency rules']},
   '2step': {prices:{5000:27,10000:52,25000:130,50000:260,100000:520,200000:1040}, label:'2-Step', target:'Ph 1: 6% / Ph 2: 6%', extra:['5% daily drawdown','10% max drawdown','5 min trading days','7 day reward cycle','90% profit split','No consistency rules']},
   'instant': {prices:{2500:20,5000:39,10000:78,25000:190,50000:349,100000:689,200000:1299}, label:'Instant', target:'No profit target', extra:['5% daily drawdown','10% max drawdown','0 min trading days','Daily reward cycle','80% profit split','No consistency rules']},
-  'spark_1step': {prices:{25000:39,50000:59,100000:79}, label:'Spark 1-Step', target:'6% profit target', extra:['3% [EOD] trailing daily loss','7% [EOD] trailing max loss','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_1STEP'},
-  'spark_instant': {prices:{25000:59,50000:79,100000:99}, label:'Spark Instant', target:null, extra:['3% [EOD] trailing daily loss','7% [EOD] trailing max loss','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_INSTANT'}
+  'spark_1step': {prices:{25000:39,50000:59,100000:79}, label:'Spark 1-Step', target:'6% profit target', extra:['3% [EOD] daily loss','7% [EOD] max loss','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_1STEP'},
+  'spark_instant': {prices:{25000:59,50000:79,100000:99}, label:'Spark Instant', target:null, extra:['3% [EOD] daily loss','7% [EOD] max loss','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_INSTANT'}
 };
 function renderPlans(tab){
   const checkoutNotice = document.getElementById('checkoutSelectionNotice');
