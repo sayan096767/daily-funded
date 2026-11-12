@@ -152,10 +152,18 @@ function mockDb({
 				},
 				async first() {
 					const lower = this.sql.toLowerCase();
-					if (lower.includes("from trading_day_qualifications") && lower.includes("count(*) as qualifying_days")) {
+					if (lower.includes("from trades") && lower.includes("count(*) as qualifying_days")) {
+						const [accountId, requiredProfit] = this.values;
+						const dailyNet = new Map();
+						for (const trade of state.trades) {
+							const closedAt = Date.parse(trade.closed_at);
+							if (trade.account_id !== accountId || !Number.isFinite(closedAt)) continue;
+							const tradingDay = new Date(closedAt - 22 * 60 * 60 * 1000).toISOString().slice(0, 10);
+							dailyNet.set(tradingDay, (dailyNet.get(tradingDay) || 0) + Number(trade.realized_pnl));
+						}
 						return {
-							qualifying_days: state.tradingDayQualifications.filter((row) =>
-								row.account_id === this.values[0] && row.qualified === 1
+							qualifying_days: [...dailyNet.values()].filter((net) =>
+								Math.round(net * 1e10) / 1e10 >= requiredProfit
 							).length,
 						};
 					}
@@ -766,7 +774,14 @@ function positionSymbol(symbol, overrides = {}) {
 	};
 }
 
-function positionHarness({ symbols, allowedSymbols, accountPhase = 1, rulesPhase = accountPhase, maxLotSize = null }) {
+function positionHarness({
+	symbols,
+	allowedSymbols,
+	accountPhase = 1,
+	rulesPhase = accountPhase,
+	maxLotSize = null,
+	existingTrades = [],
+}) {
 	return mockDb({
 		existingAccounts: [{
 			id: "ACC_TRADE",
@@ -802,6 +817,7 @@ function positionHarness({ symbols, allowedSymbols, accountPhase = 1, rulesPhase
 			market_data_enabled: 1,
 			...symbol,
 		})),
+		existingTrades,
 	});
 }
 
@@ -2689,6 +2705,36 @@ describe("Profitable trading-day qualification", () => {
 		expect(state.tradingDayQualifications[0].required_profit).toBe(125);
 		expect(state.tradingDayQualifications[0].qualified).toBe(expectedDays);
 		expect(await qualifyingDayCount(db)).toBe(expectedDays);
+	});
+
+	it("counts existing closed trades as one day across UTC midnight after the 22:00 reset", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+			existingTrades: [
+				{
+					id: "TRD_EXISTING_1",
+					account_id: "ACC_TRADE",
+					realized_pnl: 150,
+					closed_at: "2026-03-03T22:00:00.000Z",
+				},
+				{
+					id: "TRD_EXISTING_2",
+					account_id: "ACC_TRADE",
+					realized_pnl: -25,
+					closed_at: "2026-03-04T00:00:00.000Z",
+				},
+			],
+		});
+		Object.assign(state.accounts[0], {
+			challenge_size: 25000,
+			starting_balance: 25000,
+			balance: 25125,
+			equity: 25125,
+		});
+
+		expect(state.tradingDayQualifications).toHaveLength(0);
+		expect(await qualifyingDayCount(db)).toBe(1);
 	});
 
 	it.each([

@@ -5526,13 +5526,22 @@ export default {
           }
         }
 
+        const requiredProfit = Number(context.account.starting_balance) * 0.005;
+        if (!Number.isFinite(requiredProfit) || requiredProfit <= 0) {
+          return json({ success: false, error: "Unable to load qualifying trading days" }, 500);
+        }
         const qualificationResult = await env.daily_funded_trading_db
           .prepare(`
             SELECT COUNT(*) AS qualifying_days
-            FROM trading_day_qualifications
-            WHERE account_id = ? AND qualified = 1
+            FROM (
+              SELECT DATE(closed_at, '-22 hours') AS trading_day
+              FROM trades
+              WHERE account_id = ? AND DATE(closed_at, '-22 hours') IS NOT NULL
+              GROUP BY DATE(closed_at, '-22 hours')
+              HAVING ROUND(SUM(realized_pnl), 10) >= ?
+            )
           `)
-          .bind(accountId)
+          .bind(accountId, requiredProfit)
           .first();
         const qualifyingDays = Number(qualificationResult?.qualifying_days);
         if (!Number.isInteger(qualifyingDays) || qualifyingDays < 0) {
