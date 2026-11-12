@@ -5830,7 +5830,7 @@ function deskComputeDrawdownMetrics(account,rules,trades,positions,today=new Dat
       metrics.max_loss_threshold = sparkThresholdCents > 0 ? sparkThresholdCents / 100 : null;
       metrics.max_reason = currentEquity === null
         ? 'Live equity unavailable'
-        : 'Verified end-of-day maximum-loss reference is unavailable';
+        : metrics.max_reason || 'Verified end-of-day maximum-loss reference is unavailable';
     }else if(currentEquity !== null && maxType === 'STATIC' && startingBalance > 0){
       metrics.max_percent_used = Math.max(0,(startingBalance - currentEquity) / startingBalance * 100);
       metrics.max_reason = null;
@@ -5991,7 +5991,8 @@ function renderDeskObjectives(){
     addObjective('Max loss limit',maxDrawdown.toFixed(1) + '% of ' + effectiveMaxLimit.toFixed(1) + '%' + (threshold !== null ? ' · floor ' + deskMoney(threshold) : '') + (drawdownIsStale ? ' · last known (market closed/data unavailable)' : ''),drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',effectiveMaxLimit > 0 ? Math.max(0,Math.min(100,(1 - maxDrawdown / effectiveMaxLimit) * 100)) : null,drawdownIsStale ? '' : safe ? 'is-up' : 'is-dn');
   }else{
     const reason = drawdownMetrics && drawdownMetrics.max_reason;
-    addObjective('Max loss limit',maxLimit === null ? 'Limit unavailable' : (reason || 'Current maximum drawdown unavailable') + ' · limit ' + maxLimit + '%','Unavailable');
+    const threshold = deskNumber(drawdownMetrics && drawdownMetrics.max_loss_threshold);
+    addObjective('Max loss limit',maxLimit === null ? 'Limit unavailable' : (reason || 'Current maximum drawdown unavailable') + (threshold !== null ? ' · enforced floor ' + deskMoney(threshold) : '') + ' · limit ' + maxLimit + '%','Unavailable');
   }
 
   container.appendChild(shell);
@@ -6820,6 +6821,15 @@ function renderDeskPerformance(accountSnapshot,trades,accountId){
   const tradingAccountId = accountSnapshot && accountSnapshot.id;
   const profitTarget = deskNumericRule(deskObjectivesState && deskObjectivesState.data,deskObjectivesState && deskObjectivesState.rules,'profit_target_percent',/(\d+(?:\.\d+)?)%\s+profit target/i);
   const maxDrawdownLimit = deskNumericRule(deskObjectivesState && deskObjectivesState.data,deskObjectivesState && deskObjectivesState.rules,'max_drawdown_percent',/(\d+(?:\.\d+)?)%\s+max drawdown/i);
+  const accountRules = deskObjectivesState && deskObjectivesState.rules;
+  const isSpark = ['SPARK_1_STEP','SPARK_INSTANT'].includes(String(accountSnapshot && accountSnapshot.challenge_model || accountRules && accountRules.model_code || '').toUpperCase());
+  const sparkThresholdCents = deskNumber(accountRules && accountRules.spark_max_loss_threshold_cents);
+  const sparkDrawdown = accountSnapshot && accountSnapshot.drawdown;
+  const maxLossBalance = isSpark
+    ? deskNumber(sparkDrawdown && sparkDrawdown.max_loss_threshold) ?? (sparkThresholdCents > 0 ? sparkThresholdCents / 100 : null)
+    : maxDrawdownLimit !== null && maxDrawdownLimit > 0 && maxDrawdownLimit <= 100
+      ? startingBalance * (1 - maxDrawdownLimit / 100)
+      : null;
   if(startingBalance === null || startingBalance <= 0 || !createdAt){
     setDeskPerformanceEmpty('Balance history unavailable: authoritative starting balance or account creation time is missing.',true);
     return;
@@ -6868,9 +6878,7 @@ function renderDeskPerformance(accountSnapshot,trades,accountId){
     profitTargetBalance: profitTarget !== null && profitTarget > 0
       ? startingBalance * (1 + profitTarget / 100)
       : null,
-    maxLossBalance: maxDrawdownLimit !== null && maxDrawdownLimit > 0 && maxDrawdownLimit <= 100
-      ? startingBalance * (1 - maxDrawdownLimit / 100)
-      : null,
+    maxLossBalance,
     createdAt:createdAt.getTime(),
     trades:normalizedTrades,
     realizedPnl,
