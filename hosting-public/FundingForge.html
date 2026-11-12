@@ -2054,7 +2054,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
         <div class="account-stat"><span>Balance</span><b id="dBalance">$0</b><small id="dBalanceSub">Since account start</small></div>
         <div class="account-stat"><span>Equity</span><b id="dEquity">$0</b><small id="dEquitySub">Position data unavailable</small></div>
         <div class="account-stat"><span>Eligible payout</span><b class="up" id="dWithdraw">Unavailable</b><small id="dWithdrawSub">Complete the objectives to unlock</small></div>
-        <div class="account-stat"><span>Qualifying days</span><b id="dDays">0</b><small id="dDaysSub">0.5% net realized profit</small></div>
+        <div class="account-stat"><span>Qualifying days</span><b id="dDays">0</b><small id="dDaysSub">0.5% net realized per IST calendar day</small></div>
       </div>
 
       <section class="dashboard-rules-panel" id="dashboardRulesPanel" aria-labelledby="dashboardRulesHeading" hidden>
@@ -5608,8 +5608,8 @@ function renderAccount(){
   document.getElementById('dDays').textContent = '—';
   const minimumDays = deskNumericRule(data,null,'minimum_trading_days',/^(\d+)\s+min trading days$/i);
   document.getElementById('dDaysSub').textContent = minimumDays === null
-    ? '0.5% net realized profit'
-    : '0.5% net realized · minimum ' + minimumDays;
+    ? '0.5% net realized per IST calendar day'
+    : '0.5% net realized per IST calendar day · minimum ' + minimumDays;
 
   const rulesPanel = document.getElementById('dashboardRulesPanel');
   const ruleList = document.getElementById('dashboardRuleList');

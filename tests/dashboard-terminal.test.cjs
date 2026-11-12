@@ -85,6 +85,7 @@ test('consistency objective shows percentage used against its limit', () => {
 
 test('qualifying trading days come from the authoritative Worker account result', () => {
   assert.match(dashboardHtml || '', /<span>Qualifying days<\/span>/);
+  assert.match(fundingForgeHtml, /0\.5% net realized per IST calendar day/);
   assert.match(fundingForgeHtml, /deskLiveAccountSnapshot\.qualifying_trading_days/);
   assert.match(fundingForgeHtml, /deskNumber\(account && account\.qualifying_trading_days\)/);
   assert.match(fundingForgeHtml, /0\.5% net realized/);

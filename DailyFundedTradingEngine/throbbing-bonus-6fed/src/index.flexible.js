@@ -640,6 +640,7 @@ async function getAccountRuleContext(env, accountId, ownerUserId = null) {
 }
 
 const DRAWDOWN_RESET_UTC_HOUR = 22;
+const PROFITABLE_DAY_IST_OFFSET_MINUTES = 330;
 const SPARK_DAILY_LOSS_PERCENT = 3;
 const SPARK_MAX_LOSS_PERCENT = 7;
 
@@ -665,6 +666,13 @@ function drawdownDate(value) {
   const timestamp = parseUtcTimestamp(value);
   return timestamp !== null
     ? new Date(timestamp - DRAWDOWN_RESET_UTC_HOUR * 60 * 60 * 1000).toISOString().slice(0, 10)
+    : null;
+}
+
+function profitableCalendarDate(value) {
+  const timestamp = parseUtcTimestamp(value);
+  return timestamp !== null
+    ? new Date(timestamp + PROFITABLE_DAY_IST_OFFSET_MINUTES * 60 * 1000).toISOString().slice(0, 10)
     : null;
 }
 
@@ -2251,7 +2259,7 @@ async function settlePosition(env, positionId, userId, {
 
   const tradeId = generateId("TRD");
   const closedAt = new Date().toISOString();
-  const tradingDay = drawdownDate(closedAt);
+  const tradingDay = profitableCalendarDate(closedAt);
   const startingBalance = Number(accountContext.account.starting_balance);
   const requiredProfit = startingBalance * 0.005;
   if (
@@ -5534,10 +5542,10 @@ export default {
           .prepare(`
             SELECT COUNT(*) AS qualifying_days
             FROM (
-              SELECT DATE(closed_at, '-22 hours') AS trading_day
+              SELECT DATE(closed_at, '+330 minutes') AS trading_day
               FROM trades
-              WHERE account_id = ? AND DATE(closed_at, '-22 hours') IS NOT NULL
-              GROUP BY DATE(closed_at, '-22 hours')
+              WHERE account_id = ? AND DATE(closed_at, '+330 minutes') IS NOT NULL
+              GROUP BY DATE(closed_at, '+330 minutes')
               HAVING ROUND(SUM(realized_pnl), 10) >= ?
             )
           `)

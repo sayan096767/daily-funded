@@ -158,7 +158,7 @@ function mockDb({
 						for (const trade of state.trades) {
 							const closedAt = Date.parse(trade.closed_at);
 							if (trade.account_id !== accountId || !Number.isFinite(closedAt)) continue;
-							const tradingDay = new Date(closedAt - 22 * 60 * 60 * 1000).toISOString().slice(0, 10);
+							const tradingDay = new Date(closedAt + 330 * 60 * 1000).toISOString().slice(0, 10);
 							dailyNet.set(tradingDay, (dailyNet.get(tradingDay) || 0) + Number(trade.realized_pnl));
 						}
 						return {
@@ -2707,7 +2707,7 @@ describe("Profitable trading-day qualification", () => {
 		expect(await qualifyingDayCount(db)).toBe(expectedDays);
 	});
 
-	it("counts existing closed trades as one day across UTC midnight after the 22:00 reset", async () => {
+	it("counts existing closed trades on the same IST date across the 22:00 UTC reset", async () => {
 		const { db, state } = positionHarness({
 			symbols: [positionSymbol("EURUSD")],
 			allowedSymbols: ["EURUSD"],
@@ -2716,13 +2716,13 @@ describe("Profitable trading-day qualification", () => {
 					id: "TRD_EXISTING_1",
 					account_id: "ACC_TRADE",
 					realized_pnl: 150,
-					closed_at: "2026-03-03T22:00:00.000Z",
+					closed_at: "2026-03-03T21:42:00.000Z",
 				},
 				{
 					id: "TRD_EXISTING_2",
 					account_id: "ACC_TRADE",
 					realized_pnl: -25,
-					closed_at: "2026-03-04T00:00:00.000Z",
+					closed_at: "2026-03-03T23:03:00.000Z",
 				},
 			],
 		});
@@ -2831,25 +2831,25 @@ describe("Profitable trading-day qualification", () => {
 		expect(await qualifyingDayCount(db)).toBe(1);
 	});
 
-	it("assigns closes before and exactly at 22:00 UTC to the correct trading days", async () => {
+	it("assigns closes before and exactly at midnight IST to the correct calendar days", async () => {
 		const { db, state } = positionHarness({
 			symbols: [positionSymbol("EURUSD")],
 			allowedSymbols: ["EURUSD"],
 		});
 		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2026-11-12T21:59:59.999Z"));
+		vi.setSystemTime(new Date("2026-11-12T18:29:59.999Z"));
 		await closeTradeWithPnl(db, state, 125);
-		vi.setSystemTime(new Date("2026-11-12T22:00:00.000Z"));
+		vi.setSystemTime(new Date("2026-11-12T18:30:00.000Z"));
 		await closeTradeWithPnl(db, state, 125);
 
 		expect(state.tradingDayQualifications.map((row) => row.trading_day)).toEqual([
-			"2026-11-11",
 			"2026-11-12",
+			"2026-11-13",
 		]);
 		expect(await qualifyingDayCount(db)).toBe(2);
 	});
 
-	it("does not carry one trading day's profit into the next", async () => {
+	it("does not carry one calendar day's profit into the next", async () => {
 		const { db, state } = positionHarness({
 			symbols: [positionSymbol("EURUSD")],
 			allowedSymbols: ["EURUSD"],
@@ -2861,9 +2861,9 @@ describe("Profitable trading-day qualification", () => {
 			equity: 25000,
 		});
 		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2026-11-12T21:59:59.999Z"));
+		vi.setSystemTime(new Date("2026-11-12T18:29:59.999Z"));
 		await closeTradeWithPnl(db, state, 100);
-		vi.setSystemTime(new Date("2026-11-12T22:00:00.000Z"));
+		vi.setSystemTime(new Date("2026-11-12T18:30:00.000Z"));
 		await closeTradeWithPnl(db, state, 25);
 
 		expect(state.tradingDayQualifications).toHaveLength(2);
