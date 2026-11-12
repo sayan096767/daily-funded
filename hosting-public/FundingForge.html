@@ -2579,8 +2579,8 @@ const pricing = {
   '1step': {prices:{5000:32,10000:64,25000:160,50000:320,100000:640,200000:1280}, label:'1-Step', target:'10% profit target', extra:['5% daily drawdown','10% max drawdown','3 min trading days','5 day reward cycle','80% profit split','No consistency rules']},
   '2step': {prices:{5000:27,10000:52,25000:130,50000:260,100000:520,200000:1040}, label:'2-Step', target:'Ph 1: 6% / Ph 2: 6%', extra:['5% daily drawdown','10% max drawdown','5 min trading days','7 day reward cycle','90% profit split','No consistency rules']},
   'instant': {prices:{2500:20,5000:39,10000:78,25000:190,50000:349,100000:689,200000:1299}, label:'Instant', target:'No profit target', extra:['5% daily drawdown','10% max drawdown','0 min trading days','Daily reward cycle','80% profit split','No consistency rules']},
-  'spark_1step': {prices:{25000:39,50000:59,100000:79}, label:'Spark 1-Step', target:'6% profit target', extra:['3% daily drawdown','7% trailing max drawdown','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_1STEP'},
-  'spark_instant': {prices:{25000:59,50000:79,100000:99}, label:'Spark Instant', target:null, extra:['3% daily drawdown','7% trailing max drawdown','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_INSTANT'}
+  'spark_1step': {prices:{25000:39,50000:59,100000:79}, label:'Spark 1-Step', target:'6% profit target', extra:['3% of initial balance daily loss · 22:00 UTC reset','7% end-of-day trailing max loss · 22:00 UTC','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_1STEP'},
+  'spark_instant': {prices:{25000:59,50000:79,100000:99}, label:'Spark Instant', target:null, extra:['3% of initial balance daily loss · 22:00 UTC reset','7% end-of-day trailing max loss · 22:00 UTC','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_INSTANT'}
 };
 function renderPlans(tab){
   const checkoutNotice = document.getElementById('checkoutSelectionNotice');
@@ -2779,23 +2779,23 @@ const faqs = [
   {q:'What is the difference between the challenge types?', a:'The <strong class="challenge-step-number">1</strong>-Step challenge has a <strong>10%</strong> profit target. The <strong class="challenge-step-number challenge-step-two">2</strong>-Step challenge has targets of <strong>6%</strong> in Phase <strong class="challenge-step-number">1</strong> and <strong>6%</strong> in Phase <strong class="challenge-step-number challenge-step-two">2</strong>. Instant Funding has no profit target. Daily and overall drawdown limits are shown with each plan.'},
   {q:'What account sizes are available?', a:'Evaluation accounts range from <strong>$5,000</strong> to <strong>$200,000</strong>. Instant Funding starts at <strong>$2,500</strong>. Prices are listed under each challenge type.'},
   {q:'Which payment methods can I use?', a:'Checkout redirects to NOWPayments, where you can choose a cryptocurrency and network currently available from the provider. Payment is independently verified before account provisioning. UPI is unavailable and is not offered in checkout.'},
-  {q:'What is Spark 1-Step?', model:'spark_1step', a:'Spark 1-Step is a Forex challenge with a <strong>6% profit target</strong>, <strong>3% daily drawdown</strong>, <strong>7% trailing maximum drawdown</strong>, and <strong>5 minimum trading days</strong>. The profit split is <strong>70%</strong>, the consistency rule is <strong>30%</strong>, and rewards may be requested on demand according to the applicable program terms.'},
-  {q:'What is Spark Instant Funding?', model:'spark_instant', a:'Spark Instant Funding is a Forex account with <strong>no profit target</strong>. It has <strong>3% daily drawdown</strong>, <strong>7% trailing maximum drawdown</strong>, and <strong>5 minimum trading days</strong>. The profit split is <strong>70%</strong>, the consistency rule is <strong>30%</strong>, and rewards may be requested on demand according to the applicable program terms.'},
-  {q:'What is the difference between Spark 1-Step and Spark Instant Funding?', model:'spark', a:'Spark 1-Step has a <strong>6% profit target</strong>; Spark Instant Funding has <strong>no profit target</strong>. Both have 3% daily drawdown, 7% trailing maximum drawdown, 5 minimum trading days, a 70% profit split, a 30% consistency rule, and on-demand rewards according to the applicable program terms. Spark 1-Step costs $39 / $59 / $79 for $25,000 / $50,000 / $100,000. Spark Instant Funding costs $59 / $79 / $99 for those sizes.'},
+  {q:'What is Spark 1-Step?', model:'spark_1step', a:'Spark 1-Step is a Forex challenge with a <strong>6% profit target</strong>, a daily loss limit of <strong>3% of initial balance</strong> resetting at <strong>22:00 UTC</strong>, a <strong>7% end-of-day trailing maximum loss</strong> updated at 22:00 UTC, and <strong>5 minimum trading days</strong>. The profit split is <strong>70%</strong>, the consistency rule is <strong>30%</strong>, and rewards may be requested on demand according to the applicable program terms.'},
+  {q:'What is Spark Instant Funding?', model:'spark_instant', a:'Spark Instant Funding is a Forex account with <strong>no profit target</strong>. Its daily loss limit is <strong>3% of initial balance</strong>, resetting at <strong>22:00 UTC</strong>; its <strong>7% end-of-day trailing maximum loss</strong> updates at 22:00 UTC. It also requires <strong>5 minimum trading days</strong>. The profit split is <strong>70%</strong>, the consistency rule is <strong>30%</strong>, and rewards may be requested on demand according to the applicable program terms.'},
+  {q:'What is the difference between Spark 1-Step and Spark Instant Funding?', model:'spark', a:'Spark 1-Step has a <strong>6% profit target</strong>; Spark Instant Funding has <strong>no profit target</strong>. Both use a 3% of initial balance daily loss limit resetting at 22:00 UTC and a 7% end-of-day trailing maximum loss updated only at 22:00 UTC. Both require 5 minimum trading days, have a 70% profit split, a 30% consistency rule, and on-demand rewards according to the applicable program terms. Spark 1-Step costs $39 / $59 / $79 for $25,000 / $50,000 / $100,000. Spark Instant Funding costs $59 / $79 / $99 for those sizes.'},
   {q:'Which account sizes are available for Spark?', model:'spark', a:'Spark accounts are available in <strong>$25,000</strong>, <strong>$50,000</strong>, and <strong>$100,000</strong> sizes.'},
   {q:'How much does each Spark account cost?', model:'spark', keywords:['spark price','spark prices','spark cost','spark 25k price','spark 50k price','spark 100k price','spark 25,000 price','spark 50,000 price','spark 100,000 price'], a:'Spark 1-Step: <strong>$25,000 — $39</strong>, <strong>$50,000 — $59</strong>, and <strong>$100,000 — $79</strong>. Spark Instant Funding: <strong>$25,000 — $59</strong>, <strong>$50,000 — $79</strong>, and <strong>$100,000 — $99</strong>.'},
   {q:'How do I select a Spark challenge?', model:'spark', a:'In Pricing, select <strong>Forex Accounts</strong>, then <strong>Spark</strong>, then choose <strong>1-Step Challenge</strong> or <strong>Instant Funding</strong>. Select an available account size from the pricing cards. Spark does not offer a 2-Step challenge.'},
   {q:'Can I purchase Spark without logging in?', model:'spark', a:'No. You need to sign in or create an account before checkout. After authentication, continue to checkout for the Spark account you selected.'},
   {q:'How do I access checkout after signing in?', model:'spark', a:'Choose a Spark account and select Get Started. Sign in or create an account when prompted; the selected account is carried through authentication and checkout resumes for that selection. Complete the embedded checkout and pay through the NOWPayments redirect. Payment is verified server-side before account provisioning.'},
   {q:'What is the Spark 1-Step profit target?', model:'spark_1step', a:'Spark 1-Step has a <strong>6% profit target</strong>.'},
-  {q:'What is the Spark 1-Step daily drawdown?', model:'spark_1step', a:'Spark 1-Step has a <strong>3% daily drawdown</strong>.'},
-  {q:'What is the Spark 1-Step maximum drawdown?', model:'spark_1step', a:'Spark 1-Step has a <strong>7% trailing maximum drawdown</strong>.'},
+  {q:'What is the Spark 1-Step daily drawdown?', model:'spark_1step', a:'Spark 1-Step daily loss is capped at <strong>3% of the account’s initial balance</strong> and resets at <strong>22:00 UTC</strong>.'},
+  {q:'What is the Spark 1-Step maximum drawdown?', model:'spark_1step', a:'Spark 1-Step has a <strong>7% end-of-day trailing maximum loss</strong>. Its threshold can rise only at the 22:00 UTC evaluation when eligible closing equity sets a new high; it never moves down.'},
   {q:'How many minimum trading days are required for Spark 1-Step?', model:'spark_1step', a:'Spark 1-Step requires <strong>5 minimum trading days</strong>.'},
   {q:'What is the Spark 1-Step profit split?', model:'spark_1step', a:'The Spark 1-Step profit split is <strong>70%</strong>.'},
   {q:'Does Spark 1-Step have a consistency rule?', model:'spark_1step', a:'Yes. Spark 1-Step has a <strong>30% consistency rule</strong>.'},
   {q:'When can I request Spark 1-Step rewards?', model:'spark_1step', a:'Spark 1-Step rewards may be requested <strong>on demand</strong>, according to the applicable program terms.'},
   {q:'Does Spark Instant Funding have a profit target?', model:'spark_instant', a:'No. Spark Instant Funding has <strong>no profit target</strong>.'},
-  {q:'What are the Spark Instant Funding drawdown rules?', model:'spark_instant', a:'Spark Instant Funding has a <strong>3% daily drawdown</strong> and a <strong>7% trailing maximum drawdown</strong>.'},
+  {q:'What are the Spark Instant Funding drawdown rules?', model:'spark_instant', a:'Spark Instant Funding has a daily loss limit of <strong>3% of initial balance</strong> resetting at <strong>22:00 UTC</strong> and a <strong>7% end-of-day trailing maximum loss</strong> updated only at 22:00 UTC when closing equity sets a new high.'},
   {q:'What is the Spark Instant Funding minimum trading-days requirement?', model:'spark_instant', a:'Spark Instant Funding requires <strong>5 minimum trading days</strong>.'},
   {q:'What is the Spark Instant Funding profit split?', model:'spark_instant', a:'The Spark Instant Funding profit split is <strong>70%</strong>.'},
   {q:'Does Spark Instant Funding have a consistency rule?', model:'spark_instant', a:'Yes. Spark Instant Funding has a <strong>30% consistency rule</strong>.'},
@@ -5743,12 +5743,32 @@ function deskComputeDrawdownMetrics(account,rules,trades,positions,today=new Dat
   const currentEquity = hasEquity ? deskNumber(account.equity) : null;
   const balance = hasEquity ? deskNumber(account.balance) : null;
   const todayDate = today.toISOString().slice(0,10);
+  const sparkTodayDate = new Date(today.getTime() - 22 * 60 * 60 * 1000).toISOString().slice(0,10);
+  const isSpark = ['SPARK_1_STEP','SPARK_INSTANT'].includes(String(account && account.challenge_model || rules && rules.model_code || '').toUpperCase());
   const utcDate = value=>{
     const date = deskDate(value);
     return date ? date.toISOString().slice(0,10) : null;
   };
   if(deskNumber(metrics.daily_percent_used) === null){
     const dailyType = String(rules && rules.daily_drawdown_type || '').toUpperCase();
+    if(isSpark){
+      const startingBalance = deskNumber(account && account.starting_balance);
+      const dailyReference = deskNumber(rules && rules.spark_daily_reference_equity_cents) !== null
+        ? deskNumber(rules.spark_daily_reference_equity_cents) / 100
+        : deskNumber(rules && rules.starting_day_equity);
+      if(currentEquity !== null && startingBalance > 0 && dailyReference > 0 && rules && rules.starting_day_utc_date === sparkTodayDate){
+        const loss = Math.max(0,dailyReference - currentEquity);
+        metrics.daily_percent_used = loss / startingBalance * 100;
+        metrics.daily_percent_limit = 3;
+        metrics.daily_loss_amount = loss;
+        metrics.daily_loss_limit_amount = startingBalance * .03;
+        metrics.daily_threshold_equity = dailyReference - metrics.daily_loss_limit_amount;
+        metrics.daily_reason = null;
+      }else{
+        metrics.daily_percent_used = null;
+        metrics.daily_reason = currentEquity === null ? 'Live equity unavailable' : '22:00 UTC daily reference is unavailable';
+      }
+    }else{
     let complete = currentEquity !== null &&
       balance !== null &&
       Array.isArray(trades) &&
@@ -5792,11 +5812,26 @@ function deskComputeDrawdownMetrics(account,rules,trades,positions,today=new Dat
           ? 'Daily high-water reference is not tracked'
           : 'Start-of-day reference is unavailable';
     }
+    }
   }
   if(deskNumber(metrics.max_percent_used) === null){
     const maxType = String(rules && rules.max_drawdown_type || '').toUpperCase();
     const startingBalance = deskNumber(account && account.starting_balance);
-    if(currentEquity !== null && maxType === 'STATIC' && startingBalance > 0){
+    const sparkHighCents = deskNumber(rules && rules.spark_eod_high_equity_cents);
+    const sparkThresholdCents = deskNumber(rules && rules.spark_max_loss_threshold_cents);
+    if(isSpark && currentEquity !== null && sparkHighCents > 0 && sparkThresholdCents > 0 && sparkHighCents > sparkThresholdCents){
+      const high = sparkHighCents / 100;
+      metrics.max_percent_used = Math.max(0,(high - currentEquity) / high * 100);
+      metrics.max_percent_limit = (high - sparkThresholdCents / 100) / high * 100;
+      metrics.max_loss_threshold = sparkThresholdCents / 100;
+      metrics.max_reason = null;
+    }else if(isSpark){
+      metrics.max_percent_used = null;
+      metrics.max_loss_threshold = sparkThresholdCents > 0 ? sparkThresholdCents / 100 : null;
+      metrics.max_reason = currentEquity === null
+        ? 'Live equity unavailable'
+        : 'Verified end-of-day maximum-loss reference is unavailable';
+    }else if(currentEquity !== null && maxType === 'STATIC' && startingBalance > 0){
       metrics.max_percent_used = Math.max(0,(startingBalance - currentEquity) / startingBalance * 100);
       metrics.max_reason = null;
     }else if(
@@ -5937,19 +5972,23 @@ function renderDeskObjectives(){
 
   const drawdownMetrics = deskComputeDrawdownMetrics(account,rules,trades,deskLivePositions);
   const drawdownIsStale = account && account.market_data_status === 'stale';
+  const effectiveDailyLimit = deskNumber(drawdownMetrics && drawdownMetrics.daily_percent_limit) ?? dailyLimit;
   const dailyDrawdown = deskNumber(drawdownMetrics && drawdownMetrics.daily_percent_used);
-  if(dailyLimit !== null && dailyDrawdown !== null && dailyDrawdown >= 0){
-    const safe = dailyDrawdown <= dailyLimit;
-    addObjective('Daily loss limit',dailyDrawdown.toFixed(1) + '% of ' + dailyLimit + '%' + (drawdownIsStale ? ' · last known (market closed/data unavailable)' : ''),drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',dailyLimit > 0 ? Math.max(0,Math.min(100,(1 - dailyDrawdown / dailyLimit) * 100)) : null,drawdownIsStale ? '' : safe ? 'is-up' : 'is-dn');
+  if(effectiveDailyLimit !== null && dailyDrawdown !== null && dailyDrawdown >= 0){
+    const safe = dailyDrawdown < effectiveDailyLimit;
+    const threshold = deskNumber(drawdownMetrics && drawdownMetrics.daily_threshold_equity);
+    addObjective('Daily loss limit',dailyDrawdown.toFixed(1) + '% of ' + effectiveDailyLimit + '%' + (threshold !== null ? ' · floor ' + deskMoney(threshold) : '') + (drawdownIsStale ? ' · last known (market closed/data unavailable)' : ''),drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',effectiveDailyLimit > 0 ? Math.max(0,Math.min(100,(1 - dailyDrawdown / effectiveDailyLimit) * 100)) : null,drawdownIsStale ? '' : safe ? 'is-up' : 'is-dn');
   }else{
     const reason = drawdownMetrics && drawdownMetrics.daily_reason;
     addObjective('Daily loss limit',dailyLimit === null ? 'Limit unavailable' : (reason || 'Current daily drawdown unavailable') + ' · limit ' + dailyLimit + '%','Unavailable');
   }
 
+  const effectiveMaxLimit = deskNumber(drawdownMetrics && drawdownMetrics.max_percent_limit) ?? maxLimit;
   const maxDrawdown = deskNumber(drawdownMetrics && drawdownMetrics.max_percent_used);
-  if(maxLimit !== null && maxDrawdown !== null && maxDrawdown >= 0){
-    const safe = maxDrawdown <= maxLimit;
-    addObjective('Max loss limit',maxDrawdown.toFixed(1) + '% of ' + maxLimit + '%' + (drawdownIsStale ? ' · last known (market closed/data unavailable)' : ''),drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',maxLimit > 0 ? Math.max(0,Math.min(100,(1 - maxDrawdown / maxLimit) * 100)) : null,drawdownIsStale ? '' : safe ? 'is-up' : 'is-dn');
+  if(effectiveMaxLimit !== null && maxDrawdown !== null && maxDrawdown >= 0){
+    const safe = maxDrawdown < effectiveMaxLimit;
+    const threshold = deskNumber(drawdownMetrics && drawdownMetrics.max_loss_threshold);
+    addObjective('Max loss limit',maxDrawdown.toFixed(1) + '% of ' + effectiveMaxLimit.toFixed(1) + '%' + (threshold !== null ? ' · floor ' + deskMoney(threshold) : '') + (drawdownIsStale ? ' · last known (market closed/data unavailable)' : ''),drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',effectiveMaxLimit > 0 ? Math.max(0,Math.min(100,(1 - maxDrawdown / effectiveMaxLimit) * 100)) : null,drawdownIsStale ? '' : safe ? 'is-up' : 'is-dn');
   }else{
     const reason = drawdownMetrics && drawdownMetrics.max_reason;
     addObjective('Max loss limit',maxLimit === null ? 'Limit unavailable' : (reason || 'Current maximum drawdown unavailable') + ' · limit ' + maxLimit + '%','Unavailable');

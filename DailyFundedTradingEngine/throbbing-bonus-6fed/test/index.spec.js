@@ -120,6 +120,8 @@ function mockDb({
 		candles: [],
 		snapshotBindingCounts: [],
 		tickCursors: [],
+		eodQuoteCandidates: [],
+		eodSnapshots: [],
 		positionQueryCount: 0,
 		positionEvents: [],
 	};
@@ -149,6 +151,15 @@ function mockDb({
 				},
 				async first() {
 					const lower = this.sql.toLowerCase();
+					if (lower.includes("from trades") && lower.includes("count(*) as count")) {
+						const [accountId, boundaryAt] = this.values;
+						return {
+							count: state.trades.filter((row) =>
+								row.account_id === accountId &&
+								Date.parse(row.closed_at) >= Date.parse(boundaryAt)
+							).length,
+						};
+					}
 					if (lower.includes("select count(*) as open_position_count")) {
 						return {
 							open_position_count: state.positions.filter((row) =>
@@ -221,6 +232,21 @@ function mockDb({
 							results: state.symbols.filter((row) => Number(row.market_data_enabled) === 1),
 						};
 					}
+					if (lower.includes("from trading_accounts")) {
+						return {
+							results: state.accounts.filter((row) =>
+								row.status === "active" &&
+								["SPARK_1_STEP", "SPARK_INSTANT"].includes(row.challenge_model)
+							),
+						};
+					}
+					if (lower.includes("from spark_eod_quote_candidates")) {
+						return {
+							results: state.eodQuoteCandidates.filter((row) =>
+								row.boundary_at === this.values[0]
+							),
+						};
+					}
 					if (lower.includes("from market_candles")) {
 						const [symbol, interval, limit] = this.values;
 						return {
@@ -240,7 +266,7 @@ function mockDb({
 					if (lower.includes("from positions")) {
 						let positions = lower.includes("p.symbol = ?")
 							? state.positions.filter((row) => row.symbol === this.values[0])
-							: lower.includes("p.account_id = ?")
+							: lower.includes("p.account_id = ?") || lower.includes("where account_id = ?")
 								? state.positions.filter((row) => row.account_id === this.values[0])
 								: [...state.positions];
 						state.positionQueryCount += 1;
@@ -255,6 +281,7 @@ function mockDb({
 								...row,
 								user_id: state.accounts.find((account) => account.id === row.account_id)?.user_id,
 								account_balance: state.accounts.find((account) => account.id === row.account_id)?.balance,
+								challenge_model: state.accounts.find((account) => account.id === row.account_id)?.challenge_model,
 							})),
 						};
 					}
@@ -333,14 +360,35 @@ function mockDb({
 						}
 					}
 					if (lower.includes("update account_rule_snapshots")) {
-						const [highWaterMark, startingDayBalance, startingDayEquity, startingDayUtcDate, accountId] = this.values;
-						const snapshot = state.snapshots.find((row) => row.account_id === accountId);
-						if (snapshot) Object.assign(snapshot, {
-							high_water_mark: highWaterMark,
-							starting_day_balance: startingDayBalance,
-							starting_day_equity: startingDayEquity,
-							starting_day_utc_date: startingDayUtcDate,
-						});
+						if (lower.includes("spark_eod_high_equity_cents = max")) {
+							const [startingCents, , initialThresholdCents, seededThresholdCents, dailyReferenceCents, dailyBalance, dailyEquity, dayDate, accountId] = this.values;
+							const snapshot = state.snapshots.find((row) => row.account_id === accountId);
+							if (snapshot) Object.assign(snapshot, {
+								spark_eod_high_equity_cents: Math.max(snapshot.spark_eod_high_equity_cents ?? startingCents, startingCents),
+								spark_max_loss_threshold_cents: Math.max(snapshot.spark_max_loss_threshold_cents ?? initialThresholdCents, seededThresholdCents),
+								spark_daily_reference_equity_cents: snapshot.spark_daily_reference_equity_cents ?? dailyReferenceCents,
+								starting_day_balance: snapshot.starting_day_balance ?? dailyBalance,
+								starting_day_equity: snapshot.starting_day_equity ?? dailyEquity,
+								starting_day_utc_date: snapshot.starting_day_utc_date ?? dayDate,
+							});
+						} else {
+							const [highWaterMark, startingDayBalance, startingDayEquity, startingDayUtcDate, accountId] = this.values;
+							const snapshot = state.snapshots.find((row) => row.account_id === accountId);
+							if (snapshot) Object.assign(snapshot, {
+								high_water_mark: highWaterMark,
+								starting_day_balance: startingDayBalance,
+								starting_day_equity: startingDayEquity,
+								starting_day_utc_date: startingDayUtcDate,
+							});
+						}
+					}
+					if (lower.includes("insert into spark_eod_quote_candidates")) {
+						const [symbol, boundaryAt, timestampMs, bid, ask] = this.values;
+						const existing = state.eodQuoteCandidates.find((row) =>
+							row.symbol === symbol && row.boundary_at === boundaryAt
+						);
+						if (!existing) state.eodQuoteCandidates.push({ symbol, boundary_at: boundaryAt, timestamp_ms: timestampMs, bid, ask });
+						else if (timestampMs > existing.timestamp_ms) Object.assign(existing, { timestamp_ms: timestampMs, bid, ask });
 					}
 					if (lower.includes("insert into market_tick_cursors")) {
 						const [symbol, timestampMs, bid, ask] = this.values;
@@ -375,11 +423,39 @@ function mockDb({
 			for (const statement of statements) {
 				const lower = statement.sql.toLowerCase();
 				let changes = 0;
-				if (
-					lower.includes("insert into orders") ||
+				if (lower.includes("insert or ignore into spark_drawdown_eod_snapshots")) {
+					const [accountId, boundaryAt, closingEquityCents, quoteTimestampsJson] = statement.values;
+					if (!state.eodSnapshots.some((row) => row.account_id === accountId && row.boundary_at === boundaryAt)) {
+						state.eodSnapshots.push({ account_id: accountId, boundary_at: boundaryAt, closing_equity_cents: closingEquityCents, quote_timestamps_json: quoteTimestampsJson });
+						changes = 1;
+					}
+				} else if (lower.includes("update account_rule_snapshots") && lower.includes("spark_eod_high_equity_cents = max")) {
+					const values = statement.values;
+					const snapshotAccountId = values[13];
+					const boundaryAt = values[11];
+					const snapshot = state.snapshots.find((row) => row.account_id === snapshotAccountId);
+					const account = state.accounts.find((row) => row.id === snapshotAccountId && row.status === "active");
+					if (snapshot && account &&
+						(!snapshot.spark_last_eod_boundary_at || snapshot.spark_last_eod_boundary_at < boundaryAt)) {
+						const initialThresholdCents = values[3];
+						const highFallbackCents = values[4];
+						const high = Math.max(snapshot.spark_eod_high_equity_cents ?? highFallbackCents, values[5], values[6]);
+						const candidateThreshold = Math.floor((high * 93 + 50) / 100);
+						Object.assign(snapshot, {
+							spark_eod_high_equity_cents: high,
+							spark_max_loss_threshold_cents: Math.max(snapshot.spark_max_loss_threshold_cents ?? initialThresholdCents, candidateThreshold),
+							spark_daily_reference_equity_cents: values[7],
+							starting_day_balance: values[8],
+							starting_day_equity: values[9],
+							starting_day_utc_date: values[10],
+							spark_last_eod_boundary_at: values[11],
+							spark_last_eod_quote_timestamps_json: values[12],
+						});
+						changes = 1;
+					}
+				} else if (lower.includes("insert into orders") ||
 					lower.includes("insert into positions") ||
-					lower.includes("insert into position_calculation_snapshots")
-				) {
+					lower.includes("insert into position_calculation_snapshots")) {
 					const result = await statement.run();
 					changes = Number(result?.meta?.changes || 1);
 				} else if (lower.includes("update positions") && lower.includes("set status = 'closing'")) {
@@ -789,6 +865,20 @@ async function closePosition(db, positionId, closePrice) {
 
 async function getAccount(db, accountId) {
 	return callTrading(db, `/accounts?account_id=${accountId}`);
+}
+
+async function evaluateSparkEod(db, boundaryAt) {
+	const env = {
+		daily_funded_trading_db: db,
+		POSITION_EVENTS: mockPositionEventsNamespace({ daily_funded_trading_db: db }),
+	};
+	const instance = mockMarketFeedNamespace(env).get("biquote-market-feed").instance;
+	await instance.initialized;
+	return instance.fetch(new Request("https://market-feed/spark-eod", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ boundary_at: boundaryAt }),
+	}));
 }
 
 function drawdownDay(value = new Date().toISOString()) {
@@ -1945,7 +2035,7 @@ describe("Trusted trading API authentication", () => {
 		expect(legacyAccount.drawdown.max_reason).toMatch(/historical trailing high-water mark/i);
 	});
 
-	it.each(["SPARK_1_STEP", "SPARK_INSTANT"])("keeps the %s max-loss reference fixed during the reset day", async (model) => {
+	it.each(["SPARK_1_STEP", "SPARK_INSTANT"])("keeps the %s max-loss reference fixed intraday", async (model) => {
 		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
 		const today = drawdownDay();
 		Object.assign(state.accounts[0], {
@@ -1976,6 +2066,195 @@ describe("Trusted trading API authentication", () => {
 		expect(account.drawdown.daily_percent_used).toBeCloseTo(2, 8);
 		expect(account.drawdown.max_percent_used).toBeCloseTo(2, 8);
 		expect(state.snapshots[0].high_water_mark).toBe(10000);
+	});
+
+	it.each(["SPARK_1_STEP", "SPARK_INSTANT"])("initializes the exact 7% threshold for supported %s sizes", async (model) => {
+		for (const size of [25000, 50000, 100000]) {
+			const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+			const today = drawdownDay("2026-11-12T12:00:00.000Z");
+			Object.assign(state.accounts[0], {
+				challenge_model: model,
+				starting_balance: size,
+				balance: size,
+				equity: size,
+			});
+			Object.assign(state.snapshots[0], {
+				daily_drawdown_percent: 3,
+				max_drawdown_percent: 7,
+				max_drawdown_type: "TRAILING",
+				starting_day_equity: size,
+				starting_day_utc_date: today,
+				high_water_mark: size,
+				high_water_mark_tracking_complete: 1,
+			});
+
+			const response = await getAccount(db, "ACC_TRADE");
+			const { account, rules } = await response.json();
+
+			expect(response.status).toBe(200);
+			expect(account.drawdown.max_loss_threshold).toBe(size * 0.93);
+			expect(rules.spark_eod_high_equity_cents).toBe(size * 100);
+			expect(rules.spark_max_loss_threshold_cents).toBe(size * 93);
+			expect(state.snapshots[0].spark_max_loss_threshold_cents).toBe(size * 93);
+		}
+	});
+
+	it("keeps the initial Spark threshold through intraday gains and trails only on verified EOD highs", async () => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		const firstBoundary = "2026-11-12T22:00:00.000Z";
+		Object.assign(state.accounts[0], {
+			challenge_model: "SPARK_1_STEP",
+			starting_balance: 25000,
+			balance: 28000,
+			equity: 28000,
+		});
+		Object.assign(state.snapshots[0], {
+			daily_drawdown_percent: 3,
+			max_drawdown_percent: 7,
+			max_drawdown_type: "TRAILING",
+			starting_day_equity: 25000,
+			starting_day_utc_date: drawdownDay("2026-11-12T12:00:00.000Z"),
+			high_water_mark: 25000,
+			high_water_mark_tracking_complete: 1,
+		});
+
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-11-12T12:00:00.000Z"));
+		const intraday = await getAccount(db, "ACC_TRADE");
+		const { account: intradayAccount } = await intraday.json();
+		expect(intradayAccount.drawdown.max_loss_threshold).toBe(23250);
+		expect(state.snapshots[0].spark_eod_high_equity_cents).toBe(2500000);
+
+		vi.setSystemTime(new Date(firstBoundary));
+		state.accounts[0].balance = 27000;
+		state.accounts[0].equity = 27000;
+		const firstEod = await evaluateSparkEod(db, firstBoundary);
+		expect(await firstEod.json()).toMatchObject({ success: true, evaluated: 1 });
+		expect(state.snapshots[0]).toMatchObject({
+			spark_eod_high_equity_cents: 2700000,
+			spark_max_loss_threshold_cents: 2511000,
+			spark_last_eod_boundary_at: firstBoundary,
+		});
+
+		const restartState = {
+			storage: { get: async () => null, put: async () => {}, setAlarm: async () => {} },
+			blockConcurrencyWhile(callback) { return callback(); },
+		};
+		const restartedFeed = new MarketFeedDO(restartState, {
+			daily_funded_trading_db: db,
+		});
+		await restartedFeed.initialized;
+		const retry = await restartedFeed.fetch(new Request("https://market-feed/spark-eod", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ boundary_at: firstBoundary }),
+		}));
+		expect(await retry.json()).toMatchObject({ success: true, duplicates: 1 });
+		expect(state.eodSnapshots).toHaveLength(1);
+		expect(state.snapshots[0].spark_max_loss_threshold_cents).toBe(2511000);
+
+		const lowerBoundary = "2026-11-13T22:00:00.000Z";
+		vi.setSystemTime(new Date(lowerBoundary));
+		state.accounts[0].balance = 26500;
+		state.accounts[0].equity = 26500;
+		const lowerEod = await evaluateSparkEod(db, lowerBoundary);
+		expect(await lowerEod.json()).toMatchObject({ success: true, evaluated: 1 });
+		expect(state.snapshots[0]).toMatchObject({
+			spark_eod_high_equity_cents: 2700000,
+			spark_max_loss_threshold_cents: 2511000,
+			spark_last_eod_boundary_at: lowerBoundary,
+		});
+	});
+
+	it.each([
+		[26251, "active"],
+		[26250, "breached"],
+		[26249, "breached"],
+	])("uses a fixed 3%% of initial balance for the daily limit at equity %s", async (equity, expectedStatus) => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		Object.assign(state.accounts[0], {
+			challenge_model: "SPARK_INSTANT",
+			starting_balance: 25000,
+			balance: equity,
+			equity,
+		});
+		Object.assign(state.snapshots[0], {
+			daily_drawdown_percent: 3,
+			max_drawdown_percent: 7,
+			max_drawdown_type: "TRAILING",
+			starting_day_equity: 27000,
+			starting_day_utc_date: drawdownDay(),
+			high_water_mark: 27000,
+			high_water_mark_tracking_complete: 1,
+		});
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-11-12T12:00:00.000Z"));
+		state.snapshots[0].starting_day_utc_date = drawdownDay("2026-11-12T12:00:00.000Z");
+
+		const response = await getAccount(db, "ACC_TRADE");
+		const { account } = await response.json();
+		expect(account.status).toBe(expectedStatus);
+		expect(account.drawdown.daily_loss_limit_amount).toBe(750);
+		expect(account.drawdown.daily_percent_used).toBeCloseTo((27000 - equity) / 25000 * 100, 8);
+	});
+
+	it.each([
+		[25111, "active"],
+		[25110, "breached"],
+		[25109, "breached"],
+	])("enforces the persisted Spark max-loss threshold inclusively at equity %s", async (equity, expectedStatus) => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-11-12T12:00:00.000Z"));
+		Object.assign(state.accounts[0], {
+			challenge_model: "SPARK_1_STEP",
+			starting_balance: 25000,
+			balance: equity,
+			equity,
+		});
+		Object.assign(state.snapshots[0], {
+			daily_drawdown_percent: 3,
+			max_drawdown_percent: 7,
+			max_drawdown_type: "TRAILING",
+			starting_day_equity: 25860,
+			starting_day_utc_date: drawdownDay("2026-11-12T12:00:00.000Z"),
+			high_water_mark: 27000,
+			high_water_mark_tracking_complete: 1,
+			spark_eod_high_equity_cents: 2700000,
+			spark_max_loss_threshold_cents: 2511000,
+			spark_daily_reference_equity_cents: 2586000,
+		});
+
+		const response = await getAccount(db, "ACC_TRADE");
+		const { account } = await response.json();
+		expect(account.status).toBe(expectedStatus);
+		expect(account.drawdown.max_loss_threshold).toBe(25110);
+	});
+
+	it("accepts only an exact UTC 22:00 boundary, including an equivalent offset timestamp", async () => {
+		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
+		Object.assign(state.accounts[0], {
+			challenge_model: "SPARK_INSTANT",
+			starting_balance: 25000,
+			balance: 25000,
+			equity: 25000,
+		});
+		Object.assign(state.snapshots[0], {
+			starting_day_equity: 25000,
+			starting_day_utc_date: "2026-11-11",
+			high_water_mark: 25000,
+			high_water_mark_tracking_complete: 1,
+		});
+
+		const invalid = await evaluateSparkEod(db, "2026-11-12T21:59:59.999Z");
+		expect(invalid.status).toBe(400);
+		const offsetBoundary = await evaluateSparkEod(db, "2026-11-13T03:30:00+05:30");
+		expect(offsetBoundary.status).toBe(200);
+		expect(await offsetBoundary.json()).toMatchObject({
+			success: true,
+			boundary_at: "2026-11-12T22:00:00.000Z",
+			evaluated: 1,
+		});
 	});
 
 	it("shows last-known drawdown while quotes are stale and refreshes it when live quotes return", async () => {
@@ -2051,7 +2330,7 @@ describe("Trusted trading API authentication", () => {
 		expect(livePayload.positions[0].market_data_status).toBe("live");
 	});
 
-	it.each(["SPARK_1_STEP", "SPARK_INSTANT"])("resets the daily baseline and Spark trailing peak at 22:00 UTC for %s", async (model) => {
+	it.each(["SPARK_1_STEP", "SPARK_INSTANT"])("resets %s references only after the 22:00 UTC EOD evaluation", async (model) => {
 		const { db, state } = positionHarness({ symbols: [], allowedSymbols: [] });
 		const beforeBoundary = "2026-11-12T21:59:59.999Z";
 		const resetBoundary = "2026-11-12T22:00:00.000Z";
@@ -2067,10 +2346,10 @@ describe("Trusted trading API authentication", () => {
 			daily_drawdown_percent: 50,
 			max_drawdown_percent: 50,
 			max_drawdown_type: "TRAILING",
-			starting_day_balance: 10500,
-			starting_day_equity: 10500,
+			starting_day_balance: 10000,
+			starting_day_equity: 10000,
 			starting_day_utc_date: priorDay,
-			high_water_mark: 12000,
+			high_water_mark: 10000,
 			high_water_mark_tracking_complete: 1,
 		});
 
@@ -2079,22 +2358,28 @@ describe("Trusted trading API authentication", () => {
 		const before = await getAccount(db, "ACC_TRADE");
 		const { account: beforeAccount } = await before.json();
 		expect(state.snapshots[0].starting_day_utc_date).toBe(priorDay);
-		expect(state.snapshots[0].high_water_mark).toBe(12000);
-		expect(beforeAccount.drawdown.max_percent_used).toBeCloseTo(100 / 6, 8);
+		expect(state.snapshots[0].high_water_mark).toBe(10000);
+		expect(beforeAccount.drawdown.max_percent_used).toBe(0);
 
 		vi.setSystemTime(new Date(resetBoundary));
 		const response = await getAccount(db, "ACC_TRADE");
-		const { account } = await response.json();
+		const { account: beforeEodAccount } = await response.json();
 
 		expect(response.status).toBe(200);
-		expect(account.status).toBe("active");
-		expect(account.drawdown.daily_percent_used).toBe(0);
-		expect(account.drawdown.max_percent_used).toBe(0);
+		expect(beforeEodAccount.status).toBe("active");
+		expect(beforeEodAccount.drawdown.daily_reset_pending).toBe(true);
+		expect(state.snapshots[0].starting_day_utc_date).toBe(priorDay);
+
+		const eodResponse = await evaluateSparkEod(db, resetBoundary);
+		const eodResult = await eodResponse.json();
+		expect(eodResponse.status).toBe(200);
+		expect(eodResult).toMatchObject({ success: true, evaluated: 1, failed: 0 });
 		expect(state.snapshots[0]).toMatchObject({
 			starting_day_balance: 10000,
 			starting_day_equity: 10000,
 			starting_day_utc_date: today,
-			high_water_mark: 10000,
+			spark_eod_high_equity_cents: 1000000,
+			spark_max_loss_threshold_cents: 930000,
 		});
 	});
 
@@ -2120,7 +2405,7 @@ describe("Trusted trading API authentication", () => {
 			starting_day_balance: 10500,
 			starting_day_equity: 10500,
 			starting_day_utc_date: priorDay,
-			high_water_mark: 12000,
+			high_water_mark: 10000,
 			high_water_mark_tracking_complete: 1,
 		});
 		state.positions.push({
@@ -2144,18 +2429,30 @@ describe("Trusted trading API authentication", () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date(resetBoundary));
 
-		const response = await getAccount(db, "ACC_TRADE");
-		const { account } = await response.json();
-
+		const tickResponse = await ingestBiquoteTick(db, {
+			bid: 1.248,
+			ask: 1.2482,
+			timestamp: new Date(Date.parse(resetBoundary) - 1000).toISOString(),
+		});
+		expect(tickResponse.status).toBe(200);
+		expect(state.eodQuoteCandidates).toMatchObject([{
+			symbol: "EURUSD",
+			boundary_at: resetBoundary,
+			timestamp_ms: Date.parse(resetBoundary) - 1000,
+		}]);
+		const response = await evaluateSparkEod(db, resetBoundary);
+		const result = await response.json();
 		expect(response.status).toBe(200);
-		expect(account.equity).toBeCloseTo(10800, 8);
-		expect(account.drawdown.daily_percent_used).toBe(0);
-		expect(account.drawdown.max_percent_used).toBe(0);
+		expect(result).toMatchObject({ success: true, evaluated: 1, failed: 0 });
 		expect(state.snapshots[0]).toMatchObject({
 			starting_day_balance: 11000,
 			starting_day_equity: 10800,
 			starting_day_utc_date: today,
-			high_water_mark: 10800,
+			spark_eod_high_equity_cents: 1080000,
+			spark_max_loss_threshold_cents: 1004400,
+		});
+		expect(JSON.parse(state.snapshots[0].spark_last_eod_quote_timestamps_json)).toEqual({
+			EURUSD: new Date(Date.parse(resetBoundary) - 1000).toISOString(),
 		});
 	});
 
@@ -3415,7 +3712,7 @@ describe("Flexible provisioning worker", () => {
 		const response = await provision(db, payloadFor("1step"));
 		expect(response.status).toBe(201);
 		expect(state.snapshotBindingCounts).toEqual([
-			{ columns: 47, placeholders: 47, boundValues: 47 },
+			{ columns: 50, placeholders: 50, boundValues: 50 },
 		]);
 	});
 

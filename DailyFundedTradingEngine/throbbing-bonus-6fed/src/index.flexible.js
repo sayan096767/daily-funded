@@ -640,16 +640,136 @@ async function getAccountRuleContext(env, accountId, ownerUserId = null) {
 }
 
 const DRAWDOWN_RESET_UTC_HOUR = 22;
+const SPARK_DAILY_LOSS_PERCENT = 3;
+const SPARK_MAX_LOSS_PERCENT = 7;
 
 function isSparkAccount(account) {
-  return String(account.challenge_model || "").toUpperCase().startsWith("SPARK_");
+  return ["SPARK_1_STEP", "SPARK_INSTANT"].includes(
+    String(account?.challenge_model || "").toUpperCase()
+  );
+}
+
+function parseUtcTimestamp(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string" || !value.trim()) return null;
+  const normalized = value.trim().replace(" ", "T");
+  const timestamp = Date.parse(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(normalized)
+      ? `${normalized}Z`
+      : normalized
+  );
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 function drawdownDate(value) {
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp)
+  const timestamp = parseUtcTimestamp(value);
+  return timestamp !== null
     ? new Date(timestamp - DRAWDOWN_RESET_UTC_HOUR * 60 * 60 * 1000).toISOString().slice(0, 10)
     : null;
+}
+
+function moneyToCents(value) {
+  if (value === null || value === undefined || value === "" || typeof value === "boolean") {
+    return null;
+  }
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || Math.abs(amount) > Number.MAX_SAFE_INTEGER / 100) {
+    return null;
+  }
+  return Math.sign(amount) * Math.round(Math.abs(amount) * 100 + Number.EPSILON);
+}
+
+function centsToMoney(value) {
+  return Number.isSafeInteger(value) ? value / 100 : null;
+}
+
+function percentageOfCents(amountCents, percent) {
+  return Number((BigInt(amountCents) * BigInt(percent) + 50n) / 100n);
+}
+
+async function ensureSparkDrawdownState(env, account, rules, today) {
+  const startingBalanceCents = moneyToCents(account.starting_balance);
+  if (startingBalanceCents === null || startingBalanceCents <= 0) {
+    return null;
+  }
+
+  const initialThresholdCents = percentageOfCents(
+    startingBalanceCents,
+    100 - SPARK_MAX_LOSS_PERCENT
+  );
+  const legacyHighWaterMarkCents = moneyToCents(rules.high_water_mark);
+  const legacyThresholdCents =
+    Number(rules.high_water_mark_tracking_complete) === 1 &&
+    legacyHighWaterMarkCents !== null &&
+    legacyHighWaterMarkCents > 0
+      ? percentageOfCents(
+        legacyHighWaterMarkCents,
+        100 - SPARK_MAX_LOSS_PERCENT
+      )
+      : initialThresholdCents;
+  const dailyReferenceCents =
+    moneyToCents(rules.spark_daily_reference_equity_cents) ??
+    moneyToCents(rules.starting_day_equity) ??
+    startingBalanceCents;
+  const startingDayDate =
+    rules.starting_day_utc_date ||
+    drawdownDate(account.created_at) ||
+    today;
+
+  await env.daily_funded_trading_db.prepare(`
+    UPDATE account_rule_snapshots
+    SET spark_eod_high_equity_cents = MAX(
+          COALESCE(spark_eod_high_equity_cents, ?),
+          ?
+        ),
+        spark_max_loss_threshold_cents = MAX(
+          COALESCE(spark_max_loss_threshold_cents, ?),
+          ?
+        ),
+        spark_daily_reference_equity_cents = COALESCE(
+          spark_daily_reference_equity_cents,
+          ?
+        ),
+        starting_day_balance = COALESCE(starting_day_balance, ?),
+        starting_day_equity = COALESCE(starting_day_equity, ?),
+        starting_day_utc_date = COALESCE(starting_day_utc_date, ?)
+    WHERE account_id = ?
+  `).bind(
+    startingBalanceCents,
+    startingBalanceCents,
+    initialThresholdCents,
+    Math.max(initialThresholdCents, legacyThresholdCents),
+    dailyReferenceCents,
+    centsToMoney(dailyReferenceCents),
+    centsToMoney(dailyReferenceCents),
+    startingDayDate,
+    account.id
+  ).run();
+
+  const snapshot = await env.daily_funded_trading_db.prepare(`
+    SELECT spark_eod_high_equity_cents,
+           spark_max_loss_threshold_cents,
+           spark_daily_reference_equity_cents,
+           spark_last_eod_boundary_at,
+           spark_last_eod_quote_timestamps_json,
+           starting_day_balance,
+           starting_day_equity,
+           starting_day_utc_date
+    FROM account_rule_snapshots
+    WHERE account_id = ?
+  `).bind(account.id).first();
+  if (!snapshot) {
+    throw new Error(`Spark risk snapshot is missing for account ${account.id}`);
+  }
+
+  Object.assign(rules, snapshot);
+  return {
+    startingBalanceCents,
+    highEquityCents: Number(snapshot.spark_eod_high_equity_cents),
+    maxLossThresholdCents: Number(snapshot.spark_max_loss_threshold_cents),
+    dailyReferenceCents: Number(snapshot.spark_daily_reference_equity_cents),
+    lastEodBoundaryAt: snapshot.spark_last_eod_boundary_at,
+  };
 }
 
 async function updateAccountDrawdownMetrics(
@@ -679,28 +799,49 @@ async function updateAccountDrawdownMetrics(
     return drawdown;
   }
 
+  const isSpark = isSparkAccount(account);
   let startingDayBalance = Number(rules.starting_day_balance);
   let startingDayEquity = Number(rules.starting_day_equity);
   let startingDayDate = rules.starting_day_utc_date;
-  const isSpark = isSparkAccount(account);
   const maxType = String(rules.max_drawdown_type || "").toUpperCase();
   const startingBalance = Number(account.starting_balance);
   let highWaterMark = Number(rules.high_water_mark);
   let snapshotChanged = false;
-  const utcDayChanged = Boolean(startingDayDate) && startingDayDate !== today;
-  if (utcDayChanged && isSpark) {
-    startingDayBalance = balance;
-    startingDayEquity = liveEquity;
-    startingDayDate = today;
-    snapshotChanged = true;
-    if (maxType === "TRAILING") highWaterMark = liveEquity;
-  } else if (
+  let sparkState = null;
+  let sparkDailyLossCents = null;
+  let sparkDailyLossLimitCents = null;
+  let sparkEquityCents = null;
+  if (isSpark) {
+    sparkState = await ensureSparkDrawdownState(env, account, rules, today);
+    if (!sparkState ||
+      !Number.isSafeInteger(sparkState.highEquityCents) ||
+      !Number.isSafeInteger(sparkState.maxLossThresholdCents) ||
+      !Number.isSafeInteger(sparkState.dailyReferenceCents)) {
+      drawdown.daily_reason = "Spark loss-limit state is unavailable";
+      drawdown.max_reason = "Spark loss-limit state is unavailable";
+      return drawdown;
+    }
+    startingDayEquity = centsToMoney(sparkState.dailyReferenceCents);
+    startingDayBalance = startingDayEquity;
+    startingDayDate = rules.starting_day_utc_date;
+    highWaterMark = centsToMoney(sparkState.highEquityCents);
+    sparkEquityCents = moneyToCents(liveEquity);
+    sparkDailyLossLimitCents = percentageOfCents(
+      sparkState.startingBalanceCents,
+      SPARK_DAILY_LOSS_PERCENT
+    );
+    if (sparkEquityCents !== null) {
+      sparkDailyLossCents = sparkState.dailyReferenceCents - sparkEquityCents;
+    }
+  }
+
+  if (!isSpark && (
     startingDayDate !== today ||
     !Number.isFinite(startingDayBalance) ||
     startingDayBalance <= 0 ||
     !Number.isFinite(startingDayEquity) ||
     startingDayEquity <= 0
-  ) {
+  )) {
     let historyComplete = true;
     let realizedToday = 0;
     let floatingToday = 0;
@@ -761,36 +902,64 @@ async function updateAccountDrawdownMetrics(
     : dailyType === "START_OF_DAY_EQUITY"
       ? startingDayEquity
       : null;
-  if (startingDayDate === today && dailyReference > 0) {
+  if (isSpark && sparkDailyLossCents !== null && sparkEquityCents !== null) {
+    drawdown.daily_percent_used = Math.max(
+      0,
+      sparkDailyLossCents / sparkState.startingBalanceCents * 100
+    );
+    drawdown.daily_percent_limit = SPARK_DAILY_LOSS_PERCENT;
+    drawdown.daily_loss_amount = centsToMoney(Math.max(0, sparkDailyLossCents));
+    drawdown.daily_loss_limit_amount = centsToMoney(sparkDailyLossLimitCents);
+    drawdown.daily_threshold_equity = centsToMoney(
+      sparkState.dailyReferenceCents - sparkDailyLossLimitCents
+    );
+    drawdown.daily_reason = null;
+    if (startingDayDate !== today) drawdown.daily_reset_pending = true;
+  } else if (!isSpark && startingDayDate === today && dailyReference > 0) {
     const dailyCurrent = dailyType === "START_OF_DAY_BALANCE" ? balance : liveEquity;
     drawdown.daily_percent_used = Math.max(0, (dailyReference - dailyCurrent) / dailyReference * 100);
     drawdown.daily_reason = null;
-  } else {
+  } else if (!isSpark) {
     drawdown.daily_reason = dailyType === "HIGH_WATER_MARK"
       ? "Daily high-water reference is not tracked"
       : "Start-of-day reference is unavailable";
   }
 
-  if (!Number.isFinite(highWaterMark) || highWaterMark <= 0) {
+  if (!isSpark && (!Number.isFinite(highWaterMark) || highWaterMark <= 0)) {
     highWaterMark = startingBalance;
   }
-  if (
-    (maxType !== "TRAILING" || !isSpark) &&
+  if (!isSpark &&
     Number.isFinite(startingBalance) &&
     startingBalance > 0
   ) {
     highWaterMark = Math.max(highWaterMark, startingBalance, balance, liveEquity);
   }
-  if (
+  if (!isSpark &&
     Number.isFinite(highWaterMark) &&
     highWaterMark !== Number(rules.high_water_mark)
   ) {
     snapshotChanged = true;
   }
-  if (maxType === "STATIC" && startingBalance > 0) {
+  if (isSpark && maxType === "TRAILING" && sparkEquityCents !== null) {
+    const allowedLossCents = sparkState.highEquityCents - sparkState.maxLossThresholdCents;
+    drawdown.max_loss_threshold = centsToMoney(sparkState.maxLossThresholdCents);
+    if (allowedLossCents > 0) {
+      drawdown.max_percent_limit =
+        allowedLossCents / sparkState.highEquityCents * 100;
+      drawdown.max_percent_used = Math.max(
+        0,
+        (sparkState.highEquityCents - sparkEquityCents) /
+          sparkState.highEquityCents * 100
+      );
+      drawdown.max_reason = null;
+    } else {
+      drawdown.max_reason =
+        "Legacy maximum-loss threshold requires review against verified end-of-day equity";
+    }
+  } else if (!isSpark && maxType === "STATIC" && startingBalance > 0) {
     drawdown.max_percent_used = Math.max(0, (startingBalance - liveEquity) / startingBalance * 100);
     drawdown.max_reason = null;
-  } else if (
+  } else if (!isSpark &&
     maxType === "TRAILING" &&
     Number(rules.high_water_mark_tracking_complete) === 1 &&
     highWaterMark > 0
@@ -798,12 +967,12 @@ async function updateAccountDrawdownMetrics(
     drawdown.max_percent_used = Math.max(0, (highWaterMark - liveEquity) / highWaterMark * 100);
     drawdown.max_reason = null;
   } else {
-    drawdown.max_reason = maxType === "TRAILING"
+    drawdown.max_reason = !isSpark && maxType === "TRAILING"
       ? "Historical trailing high-water mark was not tracked"
       : "Starting balance is unavailable";
   }
 
-  if (snapshotChanged) {
+  if (!isSpark && snapshotChanged) {
     const persistedHighWaterMark = Number.isFinite(highWaterMark) ? highWaterMark : null;
     await env.daily_funded_trading_db
       .prepare(`
@@ -824,23 +993,26 @@ async function updateAccountDrawdownMetrics(
   }
 
   const breachReasons = [];
-  const dailyLimit = Number(rules.daily_drawdown_percent);
-  const maxLimit = Number(rules.max_drawdown_percent);
+  const dailyLimit = isSpark
+    ? SPARK_DAILY_LOSS_PERCENT
+    : Number(rules.daily_drawdown_percent);
+  const maxLimit = isSpark
+    ? SPARK_MAX_LOSS_PERCENT
+    : Number(rules.max_drawdown_percent);
   if (
     enforceBreach &&
     isSpark &&
-    Number.isFinite(dailyLimit) && dailyLimit > 0 &&
-    drawdown.daily_percent_used !== null &&
-    drawdown.daily_percent_used >= dailyLimit
+    sparkDailyLossCents !== null &&
+    sparkDailyLossLimitCents !== null &&
+    sparkDailyLossCents >= sparkDailyLossLimitCents
   ) {
     breachReasons.push("daily_drawdown");
   }
   if (
     enforceBreach &&
     isSpark &&
-    Number.isFinite(maxLimit) && maxLimit > 0 &&
-    drawdown.max_percent_used !== null &&
-    drawdown.max_percent_used >= maxLimit
+    sparkEquityCents !== null &&
+    sparkEquityCents <= sparkState.maxLossThresholdCents
   ) {
     breachReasons.push("max_drawdown");
   }
@@ -1176,10 +1348,13 @@ async function createAccountAndRuleSnapshot(
         starting_day_balance,
         starting_day_equity,
         starting_day_utc_date,
-        high_water_mark_tracking_complete
+        high_water_mark_tracking_complete,
+        spark_eod_high_equity_cents,
+        spark_max_loss_threshold_cents,
+        spark_daily_reference_equity_cents
       )
       VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       )
     `)
     .bind(
@@ -1236,7 +1411,10 @@ async function createAccountAndRuleSnapshot(
       size.size,
       size.size,
       drawdownDate(new Date().toISOString()),
-      1
+      1,
+      moneyToCents(size.size),
+      percentageOfCents(moneyToCents(size.size), 100 - SPARK_MAX_LOSS_PERCENT),
+      moneyToCents(size.size)
     );
 
   try {
@@ -2191,6 +2369,43 @@ function freshProviderTick(tick, now = Date.now()) {
     Number.isFinite(Number(tick.ask)) && Number(tick.ask) >= Number(tick.bid);
 }
 
+function sparkBoundaryForTick(timestampMs) {
+  const date = new Date(timestampMs);
+  const sameDayBoundary = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+    DRAWDOWN_RESET_UTC_HOUR
+  );
+  return timestampMs <= sameDayBoundary
+    ? sameDayBoundary
+    : sameDayBoundary + 24 * 60 * 60 * 1000;
+}
+
+async function storeSparkEodQuoteCandidate(env, tick, boundaryMs) {
+  await env.daily_funded_trading_db.prepare(`
+    INSERT INTO spark_eod_quote_candidates (
+      symbol,
+      boundary_at,
+      timestamp_ms,
+      bid,
+      ask
+    )
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(symbol, boundary_at) DO UPDATE SET
+      timestamp_ms = excluded.timestamp_ms,
+      bid = excluded.bid,
+      ask = excluded.ask
+    WHERE excluded.timestamp_ms > spark_eod_quote_candidates.timestamp_ms
+  `).bind(
+    tick.symbol,
+    new Date(boundaryMs).toISOString(),
+    Number(tick.timestamp_ms),
+    Number(tick.bid),
+    Number(tick.ask)
+  ).run();
+}
+
 function feedTickFromSignalR(message, providerToCanonical) {
   if (!message || typeof message !== "object") return null;
   const providerSymbol = normalizeText(message.symbol ?? message.Symbol).toUpperCase();
@@ -2258,7 +2473,7 @@ export class MarketFeedDO {
       }
     }
     const openPositions = await this.env.daily_funded_trading_db.prepare(`
-      SELECT p.*, a.user_id, a.balance AS account_balance
+      SELECT p.*, a.user_id, a.balance AS account_balance, a.challenge_model
       FROM positions p
       INNER JOIN trading_accounts a ON a.id = p.account_id
       WHERE p.status = 'open'
@@ -2291,7 +2506,7 @@ export class MarketFeedDO {
 
   async refreshAccountPositions(accountId) {
     const result = await this.env.daily_funded_trading_db.prepare(`
-      SELECT p.*, a.user_id, a.balance AS account_balance
+      SELECT p.*, a.user_id, a.balance AS account_balance, a.challenge_model
       FROM positions p
       INNER JOIN trading_accounts a ON a.id = p.account_id
       WHERE p.account_id = ? AND p.status = 'open'
@@ -2449,6 +2664,228 @@ export class MarketFeedDO {
         drawdown,
       },
     });
+  }
+
+  async evaluateSparkEodBoundary(boundaryAt) {
+    const boundaryMs = parseUtcTimestamp(boundaryAt);
+    if (boundaryMs === null) {
+      return json({ success: false, error: "A valid UTC boundary is required" }, 400);
+    }
+    const boundaryDate = new Date(boundaryMs);
+    if (
+      boundaryDate.getUTCHours() !== DRAWDOWN_RESET_UTC_HOUR ||
+      boundaryDate.getUTCMinutes() !== 0 ||
+      boundaryDate.getUTCSeconds() !== 0 ||
+      boundaryDate.getUTCMilliseconds() !== 0
+    ) {
+      return json({ success: false, error: "The boundary must be exactly 22:00:00 UTC" }, 400);
+    }
+    const boundaryIso = boundaryDate.toISOString();
+    const nextDay = drawdownDate(boundaryIso);
+    const db = this.env.daily_funded_trading_db;
+    const accounts = await db.prepare(`
+      SELECT id, user_id
+      FROM trading_accounts
+      WHERE status = 'active'
+        AND challenge_model IN ('SPARK_1_STEP', 'SPARK_INSTANT')
+      ORDER BY id
+    `).all();
+    const candidateResult = await db.prepare(`
+      SELECT symbol, timestamp_ms, bid, ask
+      FROM spark_eod_quote_candidates
+      WHERE boundary_at = ?
+    `).bind(boundaryIso).all();
+    const quotesBySymbol = new Map(
+      (candidateResult.results || []).map((quote) => [quote.symbol, quote])
+    );
+    const result = { evaluated: 0, breached: 0, duplicates: 0, failed: 0 };
+
+    for (const row of accounts.results || []) {
+      try {
+        const accountResult = await withAccountQueue(this, row.id, async () => {
+          const context = await getAccountRuleContext(this.env, row.id, row.user_id);
+          if (context.error) throw new Error(context.error);
+          if (!isSparkAccount(context.account) || context.account.status !== "active") {
+            return "skipped";
+          }
+          const riskState = await ensureSparkDrawdownState(
+            this.env,
+            context.account,
+            context.rules,
+            nextDay
+          );
+          if (parseUtcTimestamp(riskState.lastEodBoundaryAt) >= boundaryMs) {
+            return "duplicate";
+          }
+
+          const positionResult = await db.prepare(`
+            SELECT *
+            FROM positions
+            WHERE account_id = ? AND status = 'open'
+          `).bind(row.id).all();
+          const positions = positionResult.results || [];
+          if (positions.some((position) => {
+            const openedAt = parseUtcTimestamp(position.opened_at);
+            return openedAt === null || openedAt >= boundaryMs;
+          })) {
+            throw new Error("Open-position activity occurred after the EOD boundary");
+          }
+          const tradeActivity = await db.prepare(`
+            SELECT COUNT(*) AS count
+            FROM trades
+            WHERE account_id = ? AND datetime(closed_at) >= datetime(?)
+          `).bind(row.id, boundaryIso).first();
+          if (Number(tradeActivity?.count || 0) > 0) {
+            throw new Error("Closed-trade activity occurred at or after the EOD boundary");
+          }
+
+          let floatingPnl = 0;
+          const quoteTimestamps = {};
+          for (const position of positions) {
+            const quote = quotesBySymbol.get(position.symbol);
+            const tick = quote && {
+              symbol: quote.symbol,
+              timestamp_ms: Number(quote.timestamp_ms),
+              bid: Number(quote.bid),
+              ask: Number(quote.ask),
+            };
+            const openedAt = parseUtcTimestamp(position.opened_at);
+            if (
+              !tick ||
+              Number(tick.timestamp_ms) > boundaryMs ||
+              !freshProviderTick(tick, boundaryMs) ||
+              Number(tick.timestamp_ms) < openedAt
+            ) {
+              throw new Error(`A fresh pre-boundary quote is unavailable for ${position.symbol}`);
+            }
+            const price = position.side === "BUY" ? tick.bid : tick.ask;
+            const metadata = await this.getPositionMetadata(position);
+            floatingPnl += calculatePnlUsd(position, price, metadata);
+            quoteTimestamps[position.symbol] = new Date(tick.timestamp_ms).toISOString();
+          }
+
+          const balanceCents = moneyToCents(context.account.balance);
+          const closingEquityCents = moneyToCents(
+            centsToMoney(balanceCents) + floatingPnl
+          );
+          if (balanceCents === null || closingEquityCents === null) {
+            throw new Error("Account balance or EOD equity is invalid");
+          }
+          const closingEquity = centsToMoney(closingEquityCents);
+          const drawdown = await updateAccountDrawdownMetrics(
+            this.env,
+            context.account,
+            context.rules,
+            positions,
+            closingEquity,
+            boundaryIso
+          );
+          if (drawdown.breached || context.account.status === "breached") {
+            if (positions.length) {
+              await requestAccountBreachLiquidation(
+                this.env,
+                row.id,
+                context.account.user_id
+              );
+            }
+            return "breached";
+          }
+
+          const startingBalanceCents = riskState.startingBalanceCents;
+          const initialThresholdCents = percentageOfCents(
+            startingBalanceCents,
+            100 - SPARK_MAX_LOSS_PERCENT
+          );
+          const quoteTimestampsJson = JSON.stringify(
+            Object.fromEntries(Object.entries(quoteTimestamps).sort(([left], [right]) =>
+              left.localeCompare(right)
+            ))
+          );
+          const statements = [
+            db.prepare(`
+              INSERT OR IGNORE INTO spark_drawdown_eod_snapshots (
+                account_id, boundary_at, closing_equity_cents, quote_timestamps_json
+              )
+              SELECT ?, ?, ?, ?
+              WHERE EXISTS (
+                SELECT 1 FROM trading_accounts
+                WHERE id = ? AND status = 'active'
+              )
+            `).bind(row.id, boundaryIso, closingEquityCents, quoteTimestampsJson, row.id),
+            db.prepare(`
+              UPDATE account_rule_snapshots
+              SET spark_eod_high_equity_cents = MAX(
+                    COALESCE(spark_eod_high_equity_cents, ?),
+                    ?,
+                    ?
+                  ),
+                  spark_max_loss_threshold_cents = MAX(
+                    COALESCE(spark_max_loss_threshold_cents, ?),
+                    (MAX(COALESCE(spark_eod_high_equity_cents, ?), ?, ?) * 93 + 50) / 100
+                  ),
+                  spark_daily_reference_equity_cents = ?,
+                  starting_day_balance = ?,
+                  starting_day_equity = ?,
+                  starting_day_utc_date = ?,
+                  spark_last_eod_boundary_at = ?,
+                  spark_last_eod_quote_timestamps_json = ?
+              WHERE account_id = ?
+                AND (
+                  spark_last_eod_boundary_at IS NULL
+                  OR spark_last_eod_boundary_at < ?
+                )
+                AND EXISTS (
+                  SELECT 1 FROM trading_accounts
+                  WHERE id = ? AND status = 'active'
+                )
+            `).bind(
+              startingBalanceCents,
+              startingBalanceCents,
+              closingEquityCents,
+              initialThresholdCents,
+              startingBalanceCents,
+              startingBalanceCents,
+              closingEquityCents,
+              closingEquityCents,
+              centsToMoney(balanceCents),
+              closingEquity,
+              nextDay,
+              boundaryIso,
+              quoteTimestampsJson,
+              row.id,
+              boundaryIso,
+              row.id
+            ),
+          ];
+          const batchResult = await db.batch(statements);
+          if (Number(batchResult[1]?.meta?.changes || 0) !== 1) {
+            const current = await db.prepare(`
+              SELECT spark_last_eod_boundary_at
+              FROM account_rule_snapshots
+              WHERE account_id = ?
+            `).bind(row.id).first();
+            if (parseUtcTimestamp(current?.spark_last_eod_boundary_at) >= boundaryMs) {
+              return "duplicate";
+            }
+            throw new Error("The EOD risk snapshot was not persisted");
+          }
+          return "evaluated";
+        });
+
+        if (accountResult === "evaluated") result.evaluated += 1;
+        if (accountResult === "breached") result.breached += 1;
+        if (accountResult === "duplicate") result.duplicates += 1;
+      } catch (error) {
+        result.failed += 1;
+        console.error(JSON.stringify({
+          event: "spark_eod_evaluation_failed",
+          account_id: row.id,
+          boundary_at: boundaryIso,
+          reason: error.message,
+        }));
+      }
+    }
+    return json({ success: result.failed === 0, boundary_at: boundaryIso, ...result });
   }
 
   async refreshProviderBaselines() {
@@ -2698,6 +3135,18 @@ export class MarketFeedDO {
     this.safeAfterTimestamp.set(tick.symbol, Number(tick.timestamp_ms));
     this.latestTicks.set(tick.symbol, tick);
     this.recordTick(tick);
+    const symbolPositionIds = this.positionIdsBySymbol.get(tick.symbol);
+    if (symbolPositionIds && [...symbolPositionIds].some((positionId) =>
+      isSparkAccount(this.positionsById.get(positionId))
+    )) {
+      const eodBoundaryMs = sparkBoundaryForTick(Number(tick.timestamp_ms));
+      if (
+        eodBoundaryMs - Number(tick.timestamp_ms) >= 0 &&
+        eodBoundaryMs - Number(tick.timestamp_ms) <= MARKET_DATA_MAX_AGE_MS
+      ) {
+        await storeSparkEodQuoteCandidate(this.env, tick, eodBoundaryMs);
+      }
+    }
     for (const onTick of this.symbolReadinessWaiters.get(tick.symbol) || []) onTick();
 
     const positionIds = [...(this.positionIdsBySymbol.get(tick.symbol) || [])];
@@ -2945,6 +3394,10 @@ export class MarketFeedDO {
       const tick = await readJson(request);
       const result = await this.acceptTick(tick);
       return json({ success: true, ...result });
+    }
+    if (request.method === "POST" && url.pathname === "/spark-eod") {
+      const body = await readJson(request);
+      return this.evaluateSparkEodBoundary(body.boundary_at);
     }
     if (request.method === "GET" && url.pathname === "/metrics") {
       return json({ success: true, ...this.metricsSnapshot() });
@@ -6095,7 +6548,7 @@ export default {
       ), request);
     }
   },
-  async scheduled(_controller, env, context) {
+  async scheduled(controller, env, context) {
     context.waitUntil((async () => {
       try {
         const response = await marketFeedStub(env).fetch("https://market-feed/ensure", {
@@ -6106,6 +6559,43 @@ export default {
         }
       } catch (error) {
         console.error("Scheduled Biquote feed activation failed:", error);
+      }
+
+      const scheduledTime = Number(controller.scheduledTime);
+      if (!Number.isFinite(scheduledTime)) {
+        console.error("Spark EOD evaluation skipped: scheduled UTC time is invalid");
+        return;
+      }
+      const scheduledDate = new Date(scheduledTime);
+      if (
+        scheduledDate.getUTCHours() !== DRAWDOWN_RESET_UTC_HOUR ||
+        ![0, 5].includes(scheduledDate.getUTCMinutes())
+      ) {
+        return;
+      }
+      const boundary = new Date(Date.UTC(
+        scheduledDate.getUTCFullYear(),
+        scheduledDate.getUTCMonth(),
+        scheduledDate.getUTCDate(),
+        DRAWDOWN_RESET_UTC_HOUR
+      )).toISOString();
+      try {
+        const response = await marketFeedStub(env).fetch("https://market-feed/spark-eod", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ boundary_at: boundary }),
+        });
+        const result = await response.json();
+        if (!response.ok || result.success !== true) {
+          console.error(JSON.stringify({
+            event: "spark_eod_scheduled_evaluation_incomplete",
+            boundary_at: boundary,
+            status: response.status,
+            result,
+          }));
+        }
+      } catch (error) {
+        console.error(`Spark EOD evaluation failed for ${boundary}:`, error);
       }
     })());
   },

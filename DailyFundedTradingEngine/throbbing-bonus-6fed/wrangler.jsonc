@@ -41,6 +41,7 @@
 		}
 	],
 	"triggers": {
+		// The every-five-minute schedule includes 22:00 UTC; the Worker gates EOD evaluation by scheduledTime.
 		"crons": ["*/5 * * * *"]
 	}
 	/**

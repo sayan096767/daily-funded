@@ -107,6 +107,25 @@ CREATE TABLE IF NOT EXISTS market_tick_cursors (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS spark_drawdown_eod_snapshots (
+    account_id TEXT NOT NULL,
+    boundary_at TEXT NOT NULL,
+    closing_equity_cents INTEGER NOT NULL,
+    quote_timestamps_json TEXT NOT NULL,
+    recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (account_id, boundary_at),
+    FOREIGN KEY (account_id) REFERENCES trading_accounts(id)
+);
+
+CREATE TABLE IF NOT EXISTS spark_eod_quote_candidates (
+    symbol TEXT NOT NULL,
+    boundary_at TEXT NOT NULL,
+    timestamp_ms INTEGER NOT NULL,
+    bid REAL NOT NULL,
+    ask REAL NOT NULL,
+    PRIMARY KEY (symbol, boundary_at)
+);
+
 CREATE INDEX IF NOT EXISTS idx_trades_account
 ON trades(account_id);
 
