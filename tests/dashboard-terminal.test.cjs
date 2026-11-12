@@ -195,8 +195,8 @@ test('browser back returns from the dashboard to the homepage', () => {
   assert.ok(sidebarFoot.indexOf('class="dashboard-settings"') < sidebarFoot.indexOf('← Back to Crazy Funded'));
   assert.match(dashboardStyles, /#dashboard \.dashboard-sidebar-foot > \.open-dash-close \{\s*order: 1;/);
   assert.match(dashboardStyles, /#dashboard \.dashboard-settings \{\s*margin-left: auto;\s*order: 2;/);
-  assert.match(fundingForgeHtml, /window\.history\.pushState\(\{\.\.\.currentState,crazyFundedDashboard:true\}/);
-  assert.match(fundingForgeHtml, /window\.addEventListener\('popstate',event=>\{[\s\S]*?closeDashboard\(true\)/);
+  assert.match(fundingForgeHtml, /if\(!dashboard\.classList\.contains\('active'\) && pushHistory && !window\.history\.state\?\.crazyFundedDashboard\)\{[\s\S]*?window\.history\.pushState\(\{\.\.\.currentState,crazyFundedDashboard:true\}/);
+  assert.match(fundingForgeHtml, /window\.addEventListener\('popstate',event=>\{\s*if\(dashboard\.classList\.contains\('active'\)\) closeDashboard\(\);\s*else if\(event\.state\?\.crazyFundedDashboard\) openDashboard\(undefined,false\);/);
 });
 
 test('dashboard greeting uses morning, afternoon, and evening at local-hour boundaries', () => {

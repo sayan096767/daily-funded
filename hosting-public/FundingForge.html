@@ -3629,7 +3629,7 @@ window.addEventListener('resize',()=>{if(!accountSelectList.hidden) closeDashboa
 window.addEventListener('scroll',()=>{if(!accountSelectList.hidden) closeDashboardAccountPicker();},true);
 
 function openDashboard(preferredAccountId, pushHistory=true){
-  if(!dashboard.classList.contains('active') && pushHistory){
+  if(!dashboard.classList.contains('active') && pushHistory && !window.history.state?.crazyFundedDashboard){
     const currentState = window.history.state && typeof window.history.state === 'object'
       ? window.history.state
       : {};
@@ -3659,11 +3659,8 @@ function closeDashboard(fromHistory=false){
   dashboard.classList.remove('active');
 }
 window.addEventListener('popstate',event=>{
-  if(event.state?.crazyFundedDashboard){
-    if(!dashboard.classList.contains('active')) openDashboard(undefined,false);
-  }else if(dashboard.classList.contains('active')){
-    closeDashboard(true);
-  }
+  if(dashboard.classList.contains('active')) closeDashboard();
+  else if(event.state?.crazyFundedDashboard) openDashboard(undefined,false);
 });
 function openRegistration(){
   if(dashboard.classList.contains('active')) closeDashboard();
