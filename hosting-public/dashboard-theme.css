@@ -1868,6 +1868,11 @@
 
   #dashboard .dashboard-settings {
     margin-left: auto;
+    order: 2;
+  }
+
+  #dashboard .dashboard-sidebar-foot > .open-dash-close {
+    order: 1;
   }
 
   #dashboard .dashboard-settings-panel {

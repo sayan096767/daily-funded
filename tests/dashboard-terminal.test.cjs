@@ -139,7 +139,7 @@ test('dashboard controls retain working destinations and existing handlers', () 
   assert.doesNotMatch(sidebarNavigation || '', /dashboard-trade-link/);
   assert.match(fundingForgeHtml, /const tradingActive = data\.status === 'active' && data\.tradingEnabled === true;/);
   assert.match(fundingForgeHtml, /tradeButton\.hidden = !tradingActive;/);
-  assert.match(fundingForgeHtml, /dashboard-theme\.css'\) \+ '\?v=20261112-settings-menu'/);
+  assert.match(fundingForgeHtml, /dashboard-theme\.css'\) \+ '\?v=20261112-dashboard-back-home'/);
   assert.match(dashboardStyles, /#dashboard \.dashboard-theme-toggle > span:last-child \{\s*min-width: 12px;\s*color: var\(--tx\);/);
   assert.match(dashboardStyles, /#dashboard \.dashboard-theme-toggle\[aria-checked="true"\] \.dashboard-theme-switch-thumb \{\s*background: var\(--tx\);/);
   assert.match(dashboardHtml, />TRADE<\/a>/);
@@ -185,6 +185,18 @@ test('sidebar settings menu contains the existing sign-out action', () => {
   assert.match(fundingForgeHtml, /dashboardSettings\.open && !dashboardSettings\.contains\(event\.target\)/);
   assert.match(fundingForgeHtml, /event\.key === 'Escape' && dashboardSettings && dashboardSettings\.open/);
   assert.match(fundingForgeHtml, /dashboardSettings\.querySelector\('summary'\)\.focus\(\)/);
+});
+
+test('browser back returns from the dashboard to the homepage', () => {
+  const sidebarFoot = dashboardHtml?.match(
+    /<div class="dashboard-sidebar-foot">([\s\S]*?)<\/div>\s*<\/aside>/
+  )?.[1];
+  assert.ok(sidebarFoot, 'expected dashboard sidebar actions');
+  assert.ok(sidebarFoot.indexOf('class="dashboard-settings"') < sidebarFoot.indexOf('← Back to Crazy Funded'));
+  assert.match(dashboardStyles, /#dashboard \.dashboard-sidebar-foot > \.open-dash-close \{\s*order: 1;/);
+  assert.match(dashboardStyles, /#dashboard \.dashboard-settings \{\s*margin-left: auto;\s*order: 2;/);
+  assert.match(fundingForgeHtml, /window\.history\.pushState\(\{\.\.\.currentState,crazyFundedDashboard:true\}/);
+  assert.match(fundingForgeHtml, /window\.addEventListener\('popstate',event=>\{[\s\S]*?closeDashboard\(true\)/);
 });
 
 test('dashboard greeting uses morning, afternoon, and evening at local-hour boundaries', () => {

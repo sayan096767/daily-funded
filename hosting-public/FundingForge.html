@@ -1237,7 +1237,7 @@ try{
   @media(max-width:700px){.payout-mission-banner iframe{height:680px;}}
 </style>
 <script>
-var dashboardThemeStylesheetPath = (window.location.protocol === 'file:' ? './dashboard-theme.css' : '/dashboard-theme.css') + '?v=20261112-settings-menu';
+var dashboardThemeStylesheetPath = (window.location.protocol === 'file:' ? './dashboard-theme.css' : '/dashboard-theme.css') + '?v=20261112-dashboard-back-home';
 document.write('<link rel="stylesheet" href="' + dashboardThemeStylesheetPath + '">');
 </script>
 <noscript><link rel="stylesheet" href="/dashboard-theme.css"></noscript>
@@ -2001,7 +2001,6 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
     </nav>
     <div class="dashboard-sidebar-foot">
       <div class="dashboard-sidebar-status">TRADING WORKSPACE</div>
-      <a href="#pricing" class="open-dash-close">← Back to Crazy Funded</a>
       <details class="dashboard-settings">
         <summary class="dashboard-settings-trigger" aria-label="Settings" aria-controls="dashboardSettingsPanel">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.3 2.5h5.4l.6 2.3c1 .3 1.8.7 2.6 1.2l2.3-1.2 2.1 3.4-1.9 1.8c.3.8.4 1.7.4 2.5l2 1-1 3.8-2.7-.1c-.5.8-1 1.4-1.8 2l.4 1.2-3.5 1.1-1.4-2c-.8.2-1.6.2-2.4 0l-1.4 2-3.5-1.1.4-1.2c-.8-.6-1.3-1.2-1.8-2l-2.7.1-1-3.8 2-1c0-.8.1-1.7.4-2.5l-1.9-1.8 2.1-3.4 2.3 1.2c.8-.5 1.6-.9 2.6-1.2z"/><circle cx="12" cy="12" r="3.3"/></svg>
@@ -2010,6 +2009,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
           <a href="#pricing" class="open-dash-close" id="dashboardAccountAction">Sign out</a>
         </div>
       </details>
+      <a href="#pricing" class="open-dash-close">← Back to Crazy Funded</a>
     </div>
   </aside>
   <div class="wrap dashboard-main" id="traderDeskView">
@@ -3628,7 +3628,13 @@ document.addEventListener('click',event=>{
 window.addEventListener('resize',()=>{if(!accountSelectList.hidden) closeDashboardAccountPicker();});
 window.addEventListener('scroll',()=>{if(!accountSelectList.hidden) closeDashboardAccountPicker();},true);
 
-function openDashboard(preferredAccountId){
+function openDashboard(preferredAccountId, pushHistory=true){
+  if(!dashboard.classList.contains('active') && pushHistory){
+    const currentState = window.history.state && typeof window.history.state === 'object'
+      ? window.history.state
+      : {};
+    window.history.pushState({...currentState,crazyFundedDashboard:true},'',window.location.href);
+  }
   closeRegistration();
   document.body.classList.add('dashboard-open');
   setDashboardView('desk',document.querySelector('.dashboard-side-nav a[data-dashboard-view="desk"]'));
@@ -3638,7 +3644,12 @@ function openDashboard(preferredAccountId){
   window.scrollTo({top:0, behavior:'instant'});
   refreshDashboard(preferredAccountId);
 }
-function closeDashboard(){
+function closeDashboard(fromHistory=false){
+  if(!fromHistory && window.history.state?.crazyFundedDashboard){
+    const currentState = {...window.history.state};
+    delete currentState.crazyFundedDashboard;
+    window.history.replaceState(currentState,'',window.location.href);
+  }
   closeDashboardAccountPicker();
   ++deskTradingRequestId;
   stopDeskPositionsPolling();
@@ -3647,6 +3658,13 @@ function closeDashboard(){
   document.querySelector('footer').style.display = '';
   dashboard.classList.remove('active');
 }
+window.addEventListener('popstate',event=>{
+  if(event.state?.crazyFundedDashboard){
+    if(!dashboard.classList.contains('active')) openDashboard(undefined,false);
+  }else if(dashboard.classList.contains('active')){
+    closeDashboard(true);
+  }
+});
 function openRegistration(){
   if(dashboard.classList.contains('active')) closeDashboard();
   mainSections.forEach(sel=>{ const el = document.querySelector(sel); if(el) el.style.display = 'none'; });
