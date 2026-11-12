@@ -130,7 +130,7 @@ test('dashboard controls retain working destinations and existing handlers', () 
   assert.doesNotMatch(sidebarNavigation || '', /dashboard-trade-link/);
   assert.match(fundingForgeHtml, /const tradingActive = data\.status === 'active' && data\.tradingEnabled === true;/);
   assert.match(fundingForgeHtml, /tradeButton\.hidden = !tradingActive;/);
-  assert.match(fundingForgeHtml, /dashboard-theme\.css'\) \+ '\?v=20261109-session-analytics-cards'/);
+  assert.match(fundingForgeHtml, /dashboard-theme\.css'\) \+ '\?v=20261112-calendar-trade-counts'/);
   assert.match(dashboardStyles, /#dashboard \.dashboard-theme-toggle > span:last-child \{\s*min-width: 12px;\s*color: var\(--tx\);/);
   assert.match(dashboardStyles, /#dashboard \.dashboard-theme-toggle\[aria-checked="true"\] \.dashboard-theme-switch-thumb \{\s*background: var\(--tx\);/);
   assert.match(dashboardHtml, />TRADE<\/a>/);
@@ -267,8 +267,12 @@ test('dashboard computes live drawdown only when current-day trading history is 
   assert.equal(legacySpark.max_percent_used, null);
 });
 
-test('calendar P/L labels fit narrow mobile day cells while retaining exact values in the title', () => {
+test('calendar day cells show trade counts beside compact P/L on narrow screens', () => {
+  const calendarRenderer = fundingForgeHtml.match(
+    /function renderDeskActivity\(trades\)\{([\s\S]*?)\r?\n\}\r?\nfunction renderDeskSessionAnalytics/
+  )?.[1];
   const calendarFormatter = fundingForgeHtml.match(/function formatDeskCalendarPnl\(value\)\{[\s\S]*?\n\}/);
+  assert.ok(calendarRenderer);
   assert.ok(calendarFormatter);
   const formatCalendarPnl = new Function(
     'deskCompactMoneyQuery',
@@ -283,8 +287,13 @@ test('calendar P/L labels fit narrow mobile day cells while retaining exact valu
   assert.match(fundingForgeHtml, /deskSetCalendarPnl\(pnl,activity\.pnl\)/);
   assert.match(fundingForgeHtml, /data-desk-calendar-pnl/);
   assert.match(fundingForgeHtml, /element\.title = deskSignedMoney\(number\)/);
-  assert.match(dashboardStyles, /#dashboard \.desk-calendar-pnl \{\s*display: block;\s*width: 100%;\s*min-width: 0;\s*overflow: hidden;/);
+  assert.match(calendarRenderer, /count\.textContent = String\(activity\.count\)/);
+  assert.match(calendarRenderer, /detail\.append\(pnl,count\)/);
+  assert.match(dashboardStyles, /#dashboard \.desk-calendar-detail \{\s*display: flex;\s*align-items: center;\s*justify-content: space-between;/);
+  assert.match(dashboardStyles, /#dashboard \.desk-calendar-count \{\s*flex: none;/);
+  assert.match(dashboardStyles, /#dashboard \.desk-calendar-pnl \{\s*display: block;\s*flex: 1;\s*width: auto;\s*min-width: 0;\s*overflow: hidden;/);
   assert.match(dashboardStyles, /@media \(max-width: 420px\) \{[\s\S]*?#dashboard \.desk-calendar-pnl \{\s*font-size: 7px;/);
+  assert.match(dashboardStyles, /@media \(max-width: 420px\) \{[\s\S]*?#dashboard \.desk-calendar-count \{\s*font-size: 8px;/);
 });
 
 test('session analytics no longer includes the win-rate flip side or stray text', () => {
@@ -329,7 +338,7 @@ test('trading statistics highlight shows only win rate', () => {
 });
 
 test('dashboard theme stylesheet is scoped and contains both requested token palettes', () => {
-  assert.match(fundingForgeHtml, /dashboardThemeStylesheetPath = \(window\.location\.protocol === 'file:' \? '\.\/dashboard-theme\.css' : '\/dashboard-theme\.css'\) \+ '\?v=20261109-session-analytics-cards'/);
+  assert.match(fundingForgeHtml, /dashboardThemeStylesheetPath = \(window\.location\.protocol === 'file:' \? '\.\/dashboard-theme\.css' : '\/dashboard-theme\.css'\) \+ '\?v=20261112-calendar-trade-counts'/);
   for (const token of [
     '--bg: #0F1013',
     '--panel: #181A1F',

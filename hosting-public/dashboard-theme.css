@@ -1374,14 +1374,34 @@
   font-size: 11px;
 }
 
+#dashboard .desk-calendar-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
+  margin-top: auto;
+}
+
 #dashboard .desk-calendar-pnl {
   display: block;
-  width: 100%;
+  flex: 1;
+  width: auto;
   min-width: 0;
   overflow: hidden;
   color: var(--mu);
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+#dashboard .desk-calendar-count {
+  flex: none;
+  color: var(--mu);
+  font-size: 9px;
+  font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -1865,6 +1885,10 @@
   #dashboard .desk-calendar-pnl {
     font-size: 7px;
     letter-spacing: -.03em;
+  }
+
+  #dashboard .desk-calendar-count {
+    font-size: 8px;
   }
 
   #dashboard .dashboard-main.wrap {

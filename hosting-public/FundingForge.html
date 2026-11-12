@@ -1237,7 +1237,7 @@ try{
   @media(max-width:700px){.payout-mission-banner iframe{height:680px;}}
 </style>
 <script>
-var dashboardThemeStylesheetPath = (window.location.protocol === 'file:' ? './dashboard-theme.css' : '/dashboard-theme.css') + '?v=20261109-session-analytics-cards';
+var dashboardThemeStylesheetPath = (window.location.protocol === 'file:' ? './dashboard-theme.css' : '/dashboard-theme.css') + '?v=20261112-calendar-trade-counts';
 document.write('<link rel="stylesheet" href="' + dashboardThemeStylesheetPath + '">');
 </script>
 <noscript><link rel="stylesheet" href="/dashboard-theme.css"></noscript>
@@ -6209,11 +6209,18 @@ function renderDeskActivity(trades){
       }else{
         item.classList.add('has-mixed');
       }
+      const detail = document.createElement('div');
+      detail.className = 'desk-calendar-detail';
       const pnl = document.createElement('span');
       pnl.className = 'desk-calendar-pnl';
       if(activity.pnlComplete) deskSetCalendarPnl(pnl,activity.pnl);
       else pnl.textContent = 'P/L n/a';
-      item.appendChild(pnl);
+      const count = document.createElement('span');
+      count.className = 'desk-calendar-count';
+      count.setAttribute('aria-hidden','true');
+      count.textContent = String(activity.count);
+      detail.append(pnl,count);
+      item.appendChild(detail);
       const pnlLabel = activity.pnlComplete ? deskSignedMoney(activity.pnl) : 'P/L n/a';
       item.setAttribute('aria-label',day + ' ' + monthLabel + ': ' + pnlLabel + ' from ' + activity.count + ' closed trade' + (activity.count === 1 ? '' : 's'));
       item.title = pnlLabel + ' · ' + activity.count + ' closed trade' + (activity.count === 1 ? '' : 's');
