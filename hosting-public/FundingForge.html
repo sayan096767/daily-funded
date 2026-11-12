@@ -2054,7 +2054,7 @@ if(!reducedMotion)setInterval(function(){root.querySelectorAll('.tk').forEach(fu
         <div class="account-stat"><span>Balance</span><b id="dBalance">$0</b><small id="dBalanceSub">Since account start</small></div>
         <div class="account-stat"><span>Equity</span><b id="dEquity">$0</b><small id="dEquitySub">Position data unavailable</small></div>
         <div class="account-stat"><span>Eligible payout</span><b class="up" id="dWithdraw">Unavailable</b><small id="dWithdrawSub">Complete the objectives to unlock</small></div>
-        <div class="account-stat"><span>Trading days</span><b id="dDays">0</b><small id="dDaysSub">Minimum trading days per plan</small></div>
+        <div class="account-stat"><span>Qualifying days</span><b id="dDays">0</b><small id="dDaysSub">0.5% net realized profit</small></div>
       </div>
 
       <section class="dashboard-rules-panel" id="dashboardRulesPanel" aria-labelledby="dashboardRulesHeading" hidden>
@@ -5605,11 +5605,11 @@ function renderAccount(){
   }
   document.getElementById('dEquitySub').textContent = tradingActive ? 'Position data loading…' : 'Position data unavailable';
   deskSetMoney(document.getElementById('dWithdraw'),null,false,'','Unavailable');
-  document.getElementById('dDays').textContent = Number.isInteger(data.tradingDays) ? data.tradingDays : '—';
+  document.getElementById('dDays').textContent = '—';
   const minimumDays = deskNumericRule(data,null,'minimum_trading_days',/^(\d+)\s+min trading days$/i);
   document.getElementById('dDaysSub').textContent = minimumDays === null
-    ? 'Minimum trading days per plan'
-    : 'Minimum ' + minimumDays + ' required';
+    ? '0.5% net realized profit'
+    : '0.5% net realized · minimum ' + minimumDays;
 
   const rulesPanel = document.getElementById('dashboardRulesPanel');
   const ruleList = document.getElementById('dashboardRuleList');
@@ -5961,14 +5961,14 @@ function renderDeskObjectives(){
     addObjective('Profit target',profitTarget === null ? 'Target unavailable' : 'Waiting for account balance','Unavailable');
   }
 
-  const tradingDays = deskNumber(data.tradingDays);
+  const tradingDays = deskNumber(account && account.qualifying_trading_days);
   if(minimumDays === 0){
     addObjective('Minimum trading days','Not required','Not required','is-not-required');
   }else if(minimumDays !== null && tradingDays !== null){
     const passed = tradingDays >= minimumDays;
-    addObjective('Minimum trading days',Math.floor(tradingDays) + ' / ' + Math.floor(minimumDays),passed ? 'Passed' : 'In progress',passed ? 'is-passed' : 'is-in-progress',Math.min(100,tradingDays / minimumDays * 100));
+    addObjective('Minimum qualifying days',Math.floor(tradingDays) + ' / ' + Math.floor(minimumDays),passed ? 'Passed' : 'In progress',passed ? 'is-passed' : 'is-in-progress',Math.min(100,tradingDays / minimumDays * 100));
   }else{
-    addObjective('Minimum trading days',minimumDays === null ? 'Requirement unavailable' : 'Trading-day data unavailable','Unavailable');
+    addObjective('Minimum qualifying days',minimumDays === null ? 'Requirement unavailable' : 'Trading-day data unavailable','Unavailable');
   }
 
   const consistencyLimit = deskNumericRule(data,rules,'consistency_percent',/(?:(\d+(?:\.\d+)?)%\s+(?:max(?:imum)?\s+)?consistency|consistency\s*\(?(?:max(?:imum)?\s*)?(\d+(?:\.\d+)?)%)/i);
@@ -6486,6 +6486,8 @@ function updateDeskLiveAccountMetrics(account,positions){
     : Array.isArray(positions)
     ? positions.length ? positions.length + ' open position' + (positions.length === 1 ? '' : 's') : 'No open positions'
     : 'Position data unavailable';
+  const qualifyingDays = deskNumber(deskLiveAccountSnapshot.qualifying_trading_days);
+  document.getElementById('dDays').textContent = Number.isInteger(qualifyingDays) ? qualifyingDays : '—';
   if(deskPerformanceState){
     if(balance !== null) deskPerformanceState.currentBalance = balance;
     deskPerformanceState.currentEquity = equity;

@@ -83,6 +83,14 @@ test('consistency objective shows percentage used against its limit', () => {
   assert.match(fundingForgeHtml, /'is-alert',limitUsage,passed \? 'is-up' : 'is-dn'/);
 });
 
+test('qualifying trading days come from the authoritative Worker account result', () => {
+  assert.match(dashboardHtml || '', /<span>Qualifying days<\/span>/);
+  assert.match(fundingForgeHtml, /deskLiveAccountSnapshot\.qualifying_trading_days/);
+  assert.match(fundingForgeHtml, /deskNumber\(account && account\.qualifying_trading_days\)/);
+  assert.match(fundingForgeHtml, /0\.5% net realized/);
+  assert.doesNotMatch(fundingForgeHtml, /data\.tradingDays/);
+});
+
 test('dashboard controls retain working destinations and existing handlers', () => {
   assert.ok(dashboardHtml, 'expected the user dashboard section');
   assert.match(fundingForgeHtml, /const firstName = user && typeof user\.displayName === 'string'\s*\? user\.displayName\.trim\(\)\.split\(\/\\s\+\/\)\[0\]/);

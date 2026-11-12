@@ -2250,6 +2250,23 @@ async function settlePosition(env, positionId, userId, {
   }
 
   const tradeId = generateId("TRD");
+  const closedAt = new Date().toISOString();
+  const tradingDay = drawdownDate(closedAt);
+  const startingBalance = Number(accountContext.account.starting_balance);
+  const requiredProfit = startingBalance * 0.005;
+  if (
+    tradingDay === null ||
+    !Number.isFinite(startingBalance) ||
+    startingBalance <= 0 ||
+    !Number.isFinite(requiredProfit)
+  ) {
+    return {
+      error: "server_error",
+      message: "The account's initial balance is unavailable",
+      status: 500,
+    };
+  }
+
   const settlementStatements = [
     db.prepare(`
       UPDATE positions SET status = 'closing'
@@ -2259,17 +2276,42 @@ async function settlePosition(env, positionId, userId, {
     ...remainingPositionMarkUpdates,
     db.prepare(`
       INSERT INTO trades (
-        id, account_id, order_id, symbol, side, volume, open_price, close_price, realized_pnl, opened_at
+        id, account_id, order_id, symbol, side, volume, open_price, close_price, realized_pnl, opened_at, closed_at
       )
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       WHERE EXISTS (
         SELECT 1 FROM positions WHERE id = ? AND account_id = ? AND status = 'closing'
       )
     `).bind(
       tradeId, position.account_id, position.order_id, position.symbol, position.side,
       Number(position.volume), Number(position.open_price), closePrice, realizedPnl, position.opened_at,
-      position.id, position.account_id
+      closedAt, position.id, position.account_id
     ),
+    // Keep raw P/L in the ledger; round only binary noise when comparing the threshold.
+    db.prepare(`
+      INSERT INTO trading_day_qualifications (
+        account_id, trading_day, required_profit, net_realized_profit, qualified, updated_at
+      )
+      SELECT
+        t.account_id,
+        ?,
+        ?,
+        t.realized_pnl,
+        CASE WHEN ROUND(t.realized_pnl, 10) >= ? THEN 1 ELSE 0 END,
+        t.closed_at
+      FROM trades t
+      WHERE t.id = ? AND t.account_id = ?
+      ON CONFLICT(account_id, trading_day) DO UPDATE SET
+        net_realized_profit = trading_day_qualifications.net_realized_profit + excluded.net_realized_profit,
+        qualified = CASE
+          WHEN ROUND(
+            trading_day_qualifications.net_realized_profit + excluded.net_realized_profit,
+            10
+          ) >= trading_day_qualifications.required_profit THEN 1
+          ELSE 0
+        END,
+        updated_at = excluded.updated_at
+    `).bind(tradingDay, requiredProfit, requiredProfit, tradeId, position.account_id),
     db.prepare(`
       UPDATE trading_accounts
       SET balance = balance + ?,
@@ -2295,9 +2337,9 @@ async function settlePosition(env, positionId, userId, {
           floating_pnl = 0,
           close_price = ?,
           realized_pnl = ?,
-          closed_at = CURRENT_TIMESTAMP
+          closed_at = ?
       WHERE id = ? AND account_id = ? AND status = 'closing'
-    `).bind(closePrice, closePrice, realizedPnl, position.id, position.account_id),
+    `).bind(closePrice, closePrice, realizedPnl, closedAt, position.id, position.account_id),
   ];
   const results = await db.batch(settlementStatements);
 
@@ -2318,7 +2360,7 @@ async function settlePosition(env, positionId, userId, {
     open_price: Number(position.open_price),
     close_price: closePrice,
     realized_pnl: realizedPnl,
-    closed_at: new Date().toISOString(),
+    closed_at: closedAt,
     ...(protectionReason ? { close_reason: protectionReason } : {}),
   };
   const accountAfterClose = await db.prepare(`
@@ -5483,6 +5525,20 @@ export default {
             console.error(`Unable to liquidate breached account ${accountId}:`, error);
           }
         }
+
+        const qualificationResult = await env.daily_funded_trading_db
+          .prepare(`
+            SELECT COUNT(*) AS qualifying_days
+            FROM trading_day_qualifications
+            WHERE account_id = ? AND qualified = 1
+          `)
+          .bind(accountId)
+          .first();
+        const qualifyingDays = Number(qualificationResult?.qualifying_days);
+        if (!Number.isInteger(qualifyingDays) || qualifyingDays < 0) {
+          return json({ success: false, error: "Unable to load qualifying trading days" }, 500);
+        }
+        account.qualifying_trading_days = qualifyingDays;
 
         if (completeMarketData) {
           positionUpdates.push(env.daily_funded_trading_db.prepare(`

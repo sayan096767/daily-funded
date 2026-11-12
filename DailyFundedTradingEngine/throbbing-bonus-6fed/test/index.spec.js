@@ -117,6 +117,7 @@ function mockDb({
 		positionSnapshots: [...existingPositionSnapshots],
 		orders: [...existingOrders],
 		trades: [...existingTrades],
+		tradingDayQualifications: [],
 		candles: [],
 		snapshotBindingCounts: [],
 		tickCursors: [],
@@ -151,6 +152,13 @@ function mockDb({
 				},
 				async first() {
 					const lower = this.sql.toLowerCase();
+					if (lower.includes("from trading_day_qualifications") && lower.includes("count(*) as qualifying_days")) {
+						return {
+							qualifying_days: state.tradingDayQualifications.filter((row) =>
+								row.account_id === this.values[0] && row.qualified === 1
+							).length,
+						};
+					}
 					if (lower.includes("from trades") && lower.includes("count(*) as count")) {
 						const [accountId, boundaryAt] = this.values;
 						return {
@@ -475,8 +483,32 @@ function mockDb({
 					const positionId = values.at(-2);
 					const accountId = values.at(-1);
 					if (state.positions.some((row) => row.id === positionId && row.account_id === accountId && row.status === "closing")) {
-						const [id, tradeAccountId, orderId, symbol, side, volume, openPrice, closePrice, realizedPnl, openedAt] = values;
-						state.trades.push({ id, account_id: tradeAccountId, order_id: orderId, symbol, side, volume, open_price: openPrice, close_price: closePrice, realized_pnl: realizedPnl, opened_at: openedAt, closed_at: new Date().toISOString() });
+						const [id, tradeAccountId, orderId, symbol, side, volume, openPrice, closePrice, realizedPnl, openedAt, closedAt] = values;
+						state.trades.push({ id, account_id: tradeAccountId, order_id: orderId, symbol, side, volume, open_price: openPrice, close_price: closePrice, realized_pnl: realizedPnl, opened_at: openedAt, closed_at: closedAt });
+						changes = 1;
+					}
+				} else if (lower.includes("insert into trading_day_qualifications")) {
+					const [tradingDay, requiredProfit, , tradeId, accountId] = statement.values;
+					const trade = state.trades.find((row) => row.id === tradeId && row.account_id === accountId);
+					if (trade) {
+						const existing = state.tradingDayQualifications.find((row) =>
+							row.account_id === accountId && row.trading_day === tradingDay
+						);
+						if (existing) {
+							existing.net_realized_profit += Number(trade.realized_pnl);
+							existing.qualified = Math.round(existing.net_realized_profit * 1e10) / 1e10 >= existing.required_profit ? 1 : 0;
+							existing.updated_at = trade.closed_at;
+						} else {
+							const netRealizedProfit = Number(trade.realized_pnl);
+							state.tradingDayQualifications.push({
+								account_id: accountId,
+								trading_day: tradingDay,
+								required_profit: requiredProfit,
+								net_realized_profit: netRealizedProfit,
+								qualified: Math.round(netRealizedProfit * 1e10) / 1e10 >= requiredProfit ? 1 : 0,
+								updated_at: trade.closed_at,
+							});
+						}
 						changes = 1;
 					}
 				} else if (lower.includes("update trading_accounts") &&
@@ -500,7 +532,7 @@ function mockDb({
 						changes = 1;
 					}
 				} else if (lower.includes("update positions") && lower.includes("set status = 'closed'")) {
-					const [closePrice, , realizedPnl, positionId, accountId] = statement.values;
+					const [closePrice, , realizedPnl, closedAt, positionId, accountId] = statement.values;
 					const position = state.positions.find((row) => row.id === positionId && row.account_id === accountId && row.status === "closing");
 					if (position) {
 						Object.assign(position, {
@@ -509,6 +541,7 @@ function mockDb({
 							floating_pnl: 0,
 							close_price: closePrice,
 							realized_pnl: realizedPnl,
+							closed_at: closedAt,
 						});
 						changes = 1;
 					}
@@ -740,6 +773,8 @@ function positionHarness({ symbols, allowedSymbols, accountPhase = 1, rulesPhase
 			user_id: "user-123",
 			challenge_model: "1_STEP",
 			phase_number: accountPhase,
+			challenge_size: 10000,
+			starting_balance: 10000,
 			balance: 10000,
 			equity: 10000,
 			status: "active",
@@ -861,6 +896,14 @@ async function closePosition(db, positionId, closePrice) {
 		method: "POST",
 		body: { position_id: positionId, close_price: 999999 },
 	});
+}
+
+async function closeTradeWithPnl(db, state, realizedPnl, volume = 0.1) {
+	const openPrice = 1.25;
+	await openPosition(db, "EURUSD", { volume, price: openPrice });
+	const position = state.positions[state.positions.length - 1];
+	const closePrice = openPrice + realizedPnl / (volume * 100000);
+	return closePosition(db, position.id, closePrice);
 }
 
 async function getAccount(db, accountId) {
@@ -2613,6 +2656,204 @@ describe("Trusted trading API authentication", () => {
 		expect(state.accounts[0].user_id).toBe("user-123");
 		expect(state.positions[0].account_id).toBe("ACC_TRADE");
 		expect(state.positions[0].open_price).toBe(1.26);
+	});
+});
+
+describe("Profitable trading-day qualification", () => {
+	async function qualifyingDayCount(db) {
+		const response = await getAccount(db, "ACC_TRADE");
+		const payload = await response.json();
+		expect(response.status).toBe(200);
+		return payload.account.qualifying_trading_days;
+	}
+
+	it.each([
+		[124.99, 0],
+		[125, 1],
+		[130, 1],
+	])("counts a 25k account's $%s net realized result as %i qualifying days", async (realizedPnl, expectedDays) => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		Object.assign(state.accounts[0], {
+			challenge_size: 25000,
+			starting_balance: 25000,
+			balance: 25000,
+			equity: 25000,
+		});
+
+		const closed = await closeTradeWithPnl(db, state, realizedPnl);
+
+		expect(closed.status).toBe(200);
+		expect(state.tradingDayQualifications[0].required_profit).toBe(125);
+		expect(state.tradingDayQualifications[0].qualified).toBe(expectedDays);
+		expect(await qualifyingDayCount(db)).toBe(expectedDays);
+	});
+
+	it.each([
+		[5000, 25],
+		[10000, 50],
+		[25000, 125],
+		[50000, 250],
+		[100000, 500],
+		[200000, 1000],
+	])("uses the original $%i balance to require $%i", async (initialBalance, requiredProfit) => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		Object.assign(state.accounts[0], {
+			challenge_size: initialBalance,
+			starting_balance: initialBalance,
+			balance: initialBalance,
+			equity: initialBalance,
+		});
+
+		const closed = await closeTradeWithPnl(db, state, requiredProfit);
+
+		expect(closed.status).toBe(200);
+		expect(state.tradingDayQualifications[0].required_profit).toBe(requiredProfit);
+		expect(state.tradingDayQualifications[0].qualified).toBe(1);
+		expect(await qualifyingDayCount(db)).toBe(1);
+	});
+
+	it.each([
+		[150, -25, 125, 1],
+		[150, -26, 124, 0],
+	])("nets closed-trade results %s and %s before qualifying", async (gain, loss, expectedNet, expectedDays) => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		Object.assign(state.accounts[0], {
+			challenge_size: 25000,
+			starting_balance: 25000,
+			balance: 25000,
+			equity: 25000,
+		});
+
+		await closeTradeWithPnl(db, state, gain);
+		await closeTradeWithPnl(db, state, loss);
+
+		expect(state.tradingDayQualifications[0].net_realized_profit).toBeCloseTo(expectedNet, 8);
+		expect(await qualifyingDayCount(db)).toBe(expectedDays);
+	});
+
+	it("does not qualify from floating profit on an open position", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await openPosition(db, "EURUSD");
+		await markPosition(db, state.positions[0].id, 1.2625);
+
+		expect(state.tradingDayQualifications).toHaveLength(0);
+		expect(await qualifyingDayCount(db)).toBe(0);
+	});
+
+	it("does not qualify a losing day", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		await closeTradeWithPnl(db, state, -25);
+
+		expect(state.tradingDayQualifications[0].qualified).toBe(0);
+		expect(await qualifyingDayCount(db)).toBe(0);
+	});
+
+	it("leaves a sub-threshold day unqualified until later closed profit reaches the target", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		Object.assign(state.accounts[0], {
+			challenge_size: 25000,
+			starting_balance: 25000,
+			balance: 25000,
+			equity: 25000,
+		});
+
+		await closeTradeWithPnl(db, state, 124.99);
+		expect(state.tradingDayQualifications[0].qualified).toBe(0);
+		expect(await qualifyingDayCount(db)).toBe(0);
+
+		await closeTradeWithPnl(db, state, 0.1, 0.01);
+		expect(state.tradingDayQualifications[0].net_realized_profit).toBeGreaterThanOrEqual(125);
+		expect(state.tradingDayQualifications[0].qualified).toBe(1);
+		expect(await qualifyingDayCount(db)).toBe(1);
+	});
+
+	it("assigns closes before and exactly at 22:00 UTC to the correct trading days", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-11-12T21:59:59.999Z"));
+		await closeTradeWithPnl(db, state, 125);
+		vi.setSystemTime(new Date("2026-11-12T22:00:00.000Z"));
+		await closeTradeWithPnl(db, state, 125);
+
+		expect(state.tradingDayQualifications.map((row) => row.trading_day)).toEqual([
+			"2026-11-11",
+			"2026-11-12",
+		]);
+		expect(await qualifyingDayCount(db)).toBe(2);
+	});
+
+	it("does not carry one trading day's profit into the next", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		Object.assign(state.accounts[0], {
+			challenge_size: 25000,
+			starting_balance: 25000,
+			balance: 25000,
+			equity: 25000,
+		});
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-11-12T21:59:59.999Z"));
+		await closeTradeWithPnl(db, state, 100);
+		vi.setSystemTime(new Date("2026-11-12T22:00:00.000Z"));
+		await closeTradeWithPnl(db, state, 25);
+
+		expect(state.tradingDayQualifications).toHaveLength(2);
+		expect(state.tradingDayQualifications[0].net_realized_profit).toBeCloseTo(100, 8);
+		expect(state.tradingDayQualifications[1].net_realized_profit).toBeCloseTo(25, 8);
+		expect(state.tradingDayQualifications.every((row) => row.qualified === 0)).toBe(true);
+		expect(await qualifyingDayCount(db)).toBe(0);
+	});
+
+	it("counts a concurrent or retried close only once", async () => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		Object.assign(state.accounts[0], {
+			challenge_size: 25000,
+			starting_balance: 25000,
+			balance: 25000,
+			equity: 25000,
+		});
+		const opened = await openPosition(db, "EURUSD");
+		const positionId = state.positions[0].id;
+		const results = await Promise.all([
+			closePosition(db, positionId, 1.2625),
+			closePosition(db, positionId, 1.2625),
+		]);
+		const retry = await closePosition(db, positionId, 1.2625);
+
+		expect(results.filter((response) => response.status === 200)).toHaveLength(1);
+		expect(results.filter((response) => response.status === 404)).toHaveLength(1);
+		expect(retry.status).toBe(404);
+		expect(state.trades).toHaveLength(1);
+		expect(state.tradingDayQualifications).toHaveLength(1);
+		expect(state.tradingDayQualifications[0].net_realized_profit).toBeCloseTo(125, 8);
+		expect(await qualifyingDayCount(db)).toBe(1);
+		expect(opened.status).toBe(201);
 	});
 });
 
@@ -4425,6 +4666,25 @@ describe("Flexible provisioning worker", () => {
 			]));
 			expect(indexes).toContain("idx_positions_account_status");
 			expect(cursorColumns).toEqual(expect.arrayContaining(["symbol", "timestamp_ms", "bid", "ask"]));
+		} finally {
+			database.close();
+		}
+	});
+
+	it("creates the idempotent profitable trading-day ledger through migration", () => {
+		const database = new DatabaseSync(":memory:");
+		try {
+			database.exec("CREATE TABLE trading_accounts (id TEXT PRIMARY KEY)");
+			database.exec(readFileSync(new URL("../migration_012_profitable_trading_days.sql", import.meta.url), "utf8"));
+
+			const columns = database.prepare("PRAGMA table_info(trading_day_qualifications)").all()
+				.map((column) => column.name);
+			const indexes = database.prepare("PRAGMA index_list(trading_day_qualifications)").all()
+				.map((index) => index.name);
+			expect(columns).toEqual(expect.arrayContaining([
+				"account_id", "trading_day", "required_profit", "net_realized_profit", "qualified", "updated_at",
+			]));
+			expect(indexes).toContain("idx_trading_day_qualifications_account_qualified");
 		} finally {
 			database.close();
 		}
