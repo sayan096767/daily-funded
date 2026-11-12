@@ -3660,6 +3660,9 @@ function updateFirebaseAccountControls(user){
   if(firebaseHeaderAccountLink) firebaseHeaderAccountLink.textContent = user ? 'Sign out' : 'Sign in';
   if(dashboardAccountAction) dashboardAccountAction.textContent = user ? 'Sign out' : '← Back to Crazy Funded';
 }
+function dashboardSalutation(hour){
+  return hour < 12 ? 'Good morning, ' : hour < 18 ? 'Good afternoon, ' : 'Good evening, ';
+}
 function updateDashboardGreeting(user){
   const greeting = document.getElementById('dashboardGreeting');
   if(!greeting) return;
@@ -3670,7 +3673,7 @@ function updateDashboardGreeting(user){
     greeting.textContent = 'Account details';
     return;
   }
-  const salutation = new Date().getHours() < 12 ? 'Good morning, ' : 'Good evening, ';
+  const salutation = dashboardSalutation(new Date().getHours());
   greeting.textContent = salutation;
   const name = document.createElement('span');
   name.className = 'dashboard-greeting-name';

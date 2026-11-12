@@ -86,7 +86,7 @@ test('consistency objective shows percentage used against its limit', () => {
 test('dashboard controls retain working destinations and existing handlers', () => {
   assert.ok(dashboardHtml, 'expected the user dashboard section');
   assert.match(fundingForgeHtml, /const firstName = user && typeof user\.displayName === 'string'\s*\? user\.displayName\.trim\(\)\.split\(\/\\s\+\/\)\[0\]/);
-  assert.match(fundingForgeHtml, /new Date\(\)\.getHours\(\) < 12 \? 'Good morning, ' : 'Good evening, '/);
+  assert.match(fundingForgeHtml, /dashboardSalutation\(new Date\(\)\.getHours\(\)\)/);
   assert.match(fundingForgeHtml, /name\.textContent = firstName;/);
   assert.doesNotMatch(fundingForgeHtml, /greeting\.textContent = 'Hello, '/);
   for (const view of [
@@ -157,6 +157,16 @@ test('dashboard controls retain working destinations and existing handlers', () 
   assert.match(fundingForgeHtml, /const deskSignedMoney = value =>/);
   assert.match(fundingForgeHtml, /number > 0 \? '\+\$' : number < 0 \? '−\$'/);
   assert.doesNotMatch(fundingForgeHtml, /data-dashboard-theme/);
+});
+
+test('dashboard greeting uses morning, afternoon, and evening at local-hour boundaries', () => {
+  const salutationFunction = fundingForgeHtml.match(/function dashboardSalutation\(hour\)\{[\s\S]*?\r?\n\}/);
+  assert.ok(salutationFunction, 'expected the dashboard salutation helper');
+  const getSalutation = new Function(`${salutationFunction[0]}; return dashboardSalutation;`)();
+  assert.equal(getSalutation(11), 'Good morning, ');
+  assert.equal(getSalutation(12), 'Good afternoon, ');
+  assert.equal(getSalutation(17), 'Good afternoon, ');
+  assert.equal(getSalutation(18), 'Good evening, ');
 });
 
 test('dashboard navigation remains horizontally accessible on small screens', () => {
