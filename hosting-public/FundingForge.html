@@ -5542,6 +5542,9 @@ if(payoutSuccessPopup){
   });
 }
 
+function shouldShowPhaseBadge(account){
+  return !['instant','spark_instant'].includes(String(account && account.plan || '').toLowerCase());
+}
 function renderAccount(){
   const sel = document.getElementById('accSelect');
   const tradeButton = document.querySelector('#accountOverview .dashboard-trade-link');
@@ -5578,10 +5581,13 @@ function renderAccount(){
     : status.replaceAll('_',' ').toUpperCase();
   const phaseBadge = document.getElementById('accountPhase');
   if(phaseBadge){
-    const phaseNumber = Number.isInteger(data.phaseNumber) ? data.phaseNumber : 1;
-    phaseBadge.textContent = typeof data.phaseName === 'string' && data.phaseName.trim()
-      ? data.phaseName.toUpperCase()
-      : 'PHASE ' + String(phaseNumber).padStart(2,'0');
+    phaseBadge.hidden = !shouldShowPhaseBadge(data);
+    if(!phaseBadge.hidden){
+      const phaseNumber = Number.isInteger(data.phaseNumber) ? data.phaseNumber : 1;
+      phaseBadge.textContent = typeof data.phaseName === 'string' && data.phaseName.trim()
+        ? data.phaseName.toUpperCase()
+        : 'PHASE ' + String(phaseNumber).padStart(2,'0');
+    }
   }
   const tradingActive = status === 'active' && data.tradingEnabled === true;
   tradeButton.hidden = !tradingActive;

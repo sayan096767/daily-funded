@@ -409,3 +409,13 @@ test('Spark and Classic loss objectives show floor amounts and color-coded remai
   assert.equal(calculateClassicFloors.deskClassicMaxLossFloor(25000,{max_drawdown_type:'STATIC'},10),22500);
   assert.equal(calculateClassicFloors.deskClassicMaxLossFloor(25000,{max_drawdown_type:'TRAILING'},10),null);
 });
+
+test('instant funding accounts do not display a phase badge', () => {
+  const phaseBadgeFunction = fundingForgeHtml.match(/function shouldShowPhaseBadge\(account\)\{[\s\S]*?\r?\n\}/);
+  assert.ok(phaseBadgeFunction, 'expected the account phase badge helper');
+  assert.match(fundingForgeHtml, /phaseBadge\.hidden = !shouldShowPhaseBadge\(data\)/);
+  const shouldShowPhaseBadge = new Function(`${phaseBadgeFunction[0]}; return shouldShowPhaseBadge;`)();
+  assert.equal(shouldShowPhaseBadge({plan:'spark_instant',phaseNumber:1}), false);
+  assert.equal(shouldShowPhaseBadge({plan:'instant',phaseNumber:1}), false);
+  assert.equal(shouldShowPhaseBadge({plan:'spark_1step',phaseNumber:1}), true);
+});
