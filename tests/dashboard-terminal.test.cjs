@@ -348,3 +348,64 @@ test('dashboard theme stylesheet is scoped and contains both requested token pal
   }
   assert.match(dashboardStyles, /#dashboard\[data-theme="light"\]/);
 });
+
+test('Spark and Classic loss objectives show floor amounts and color-coded remaining meters', () => {
+  const progressFunction = fundingForgeHtml.match(/function deskLossLimitProgress\(remainingPercent\)\{[\s\S]*?\r?\n\}/);
+  const bufferFunction = fundingForgeHtml.match(/function deskSparkMaxLossBuffer\(currentEquity,threshold,lossAllowance\)\{[\s\S]*?\r?\n\}/);
+  const classicDailyFloorFunction = fundingForgeHtml.match(/function deskClassicDailyLossFloor\(rules,limit,resetDate\)\{[\s\S]*?\r?\n\}/);
+  const classicMaxFloorFunction = fundingForgeHtml.match(/function deskClassicMaxLossFloor\(startingBalance,rules,limit\)\{[\s\S]*?\r?\n\}/);
+  const renderer = fundingForgeHtml.match(/function renderDeskObjectives\(\)\{[\s\S]*?\r?\n\s*\}\r?\nfunction renderDeskStatistics/)?.[0];
+  assert.ok(progressFunction, 'expected the loss-limit progress calculation');
+  assert.ok(bufferFunction, 'expected the Spark max-loss buffer calculation');
+  assert.ok(classicDailyFloorFunction, 'expected the Classic daily floor calculation');
+  assert.ok(classicMaxFloorFunction, 'expected the Classic static max-loss floor calculation');
+  assert.ok(renderer, 'expected the dashboard objectives renderer');
+  assert.match(renderer, /deskClassicDailyLossFloor\(rules,effectiveDailyLimit,resetDate\)/);
+  assert.match(renderer, /deskClassicMaxLossFloor\(startingBalance,rules,maxLimit\)/);
+  assert.match(renderer, /if\(isSparkOrClassic && threshold !== null && remaining\)/);
+  assert.match(renderer, /else if\(isClassic && maxThreshold !== null/);
+  assert.equal((fundingForgeHtml.match(/extra:\['3% \[EOD\] trailing daily loss','7% \[EOD\] trailing max loss'/g) || []).length, 2);
+  assert.match(renderer, /deskLossLimitProgress\(\(1 - dailyDrawdown \/ effectiveDailyLimit\) \* 100\)/);
+  assert.match(renderer, /deskMoney\(threshold\) \+ ' floor · ' \+ remaining\.progress\.toFixed\(1\) \+ '% remaining'/);
+  assert.match(renderer, /deskSparkMaxLossBuffer\(currentEquity,maxThreshold,lossAllowance\)/);
+  assert.match(renderer, /deskMoney\(maxThreshold\) \+ ' enforced floor · ' \+ progress\.toFixed\(1\) \+ '% remaining'/);
+  const calculateProgress = new Function(`${progressFunction[0]}; return deskLossLimitProgress;`)();
+  const calculateBuffer = new Function(`${progressFunction[0]}\n${bufferFunction[0]}; return deskSparkMaxLossBuffer;`)();
+  const calculateClassicFloors = new Function(
+    'const deskNumber = value => value !== null && value !== undefined && value !== \'\' && Number.isFinite(Number(value)) ? Number(value) : null;\n' +
+    `${classicDailyFloorFunction[0]}\n${classicMaxFloorFunction[0]}\nreturn {deskClassicDailyLossFloor,deskClassicMaxLossFloor};`
+  )();
+
+  const safe = calculateBuffer(26390.23,25120.37,1750);
+  assert.ok(Math.abs(safe.buffer - 1269.86) < 1e-9);
+  assert.ok(Math.abs(safe.progress - 1269.86 / 1750 * 100) < 1e-9);
+  assert.equal(safe.progressClass, 'is-up');
+
+  assert.deepEqual(calculateBuffer(25995.37,25120.37,1750), {buffer:875,progress:50,progressClass:'is-warn'});
+  assert.deepEqual(calculateBuffer(25557.87,25120.37,1750), {buffer:437.5,progress:25,progressClass:'is-warn'});
+  assert.equal(calculateBuffer(25557.86,25120.37,1750).progressClass, 'is-dn');
+
+  assert.deepEqual(calculateBuffer(25120.37,25120.37,1750), {buffer:0,progress:0,progressClass:'is-dn'});
+  const belowFloor = calculateBuffer(25100,25120.37,1750);
+  assert.ok(Math.abs(belowFloor.buffer + 20.37) < 1e-9);
+  assert.equal(belowFloor.progress, 0);
+  assert.equal(belowFloor.progressClass, 'is-dn');
+
+  assert.deepEqual(calculateProgress((1 - 0 / 3) * 100), {progress:100,progressClass:'is-up'});
+  assert.deepEqual(calculateProgress((1 - 1.5 / 3) * 100), {progress:50,progressClass:'is-warn'});
+  assert.deepEqual(calculateProgress((1 - 2.25 / 3) * 100), {progress:25,progressClass:'is-warn'});
+  assert.equal(calculateProgress((1 - 2.26 / 3) * 100).progressClass, 'is-dn');
+
+  assert.equal(calculateClassicFloors.deskClassicDailyLossFloor({
+    daily_drawdown_type: 'START_OF_DAY_EQUITY',
+    starting_day_equity: 25000,
+    starting_day_utc_date: '2026-11-12',
+  },5,'2026-11-12'),23750);
+  assert.equal(calculateClassicFloors.deskClassicDailyLossFloor({
+    daily_drawdown_type: 'START_OF_DAY_BALANCE',
+    starting_day_balance: 10000,
+    starting_day_utc_date: '2026-11-11',
+  },5,'2026-11-12'),null);
+  assert.equal(calculateClassicFloors.deskClassicMaxLossFloor(25000,{max_drawdown_type:'STATIC'},10),22500);
+  assert.equal(calculateClassicFloors.deskClassicMaxLossFloor(25000,{max_drawdown_type:'TRAILING'},10),null);
+});

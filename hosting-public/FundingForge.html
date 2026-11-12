@@ -2579,8 +2579,8 @@ const pricing = {
   '1step': {prices:{5000:32,10000:64,25000:160,50000:320,100000:640,200000:1280}, label:'1-Step', target:'10% profit target', extra:['5% daily drawdown','10% max drawdown','3 min trading days','5 day reward cycle','80% profit split','No consistency rules']},
   '2step': {prices:{5000:27,10000:52,25000:130,50000:260,100000:520,200000:1040}, label:'2-Step', target:'Ph 1: 6% / Ph 2: 6%', extra:['5% daily drawdown','10% max drawdown','5 min trading days','7 day reward cycle','90% profit split','No consistency rules']},
   'instant': {prices:{2500:20,5000:39,10000:78,25000:190,50000:349,100000:689,200000:1299}, label:'Instant', target:'No profit target', extra:['5% daily drawdown','10% max drawdown','0 min trading days','Daily reward cycle','80% profit split','No consistency rules']},
-  'spark_1step': {prices:{25000:39,50000:59,100000:79}, label:'Spark 1-Step', target:'6% profit target', extra:['3% of initial balance daily loss · 22:00 UTC reset','7% end-of-day trailing max loss · 22:00 UTC','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_1STEP'},
-  'spark_instant': {prices:{25000:59,50000:79,100000:99}, label:'Spark Instant', target:null, extra:['3% of initial balance daily loss · 22:00 UTC reset','7% end-of-day trailing max loss · 22:00 UTC','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_INSTANT'}
+  'spark_1step': {prices:{25000:39,50000:59,100000:79}, label:'Spark 1-Step', target:'6% profit target', extra:['3% [EOD] trailing daily loss','7% [EOD] trailing max loss','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_1STEP'},
+  'spark_instant': {prices:{25000:59,50000:79,100000:99}, label:'Spark Instant', target:null, extra:['3% [EOD] trailing daily loss','7% [EOD] trailing max loss','5 min trading days','70% profit split','30% consistency rule','On demand reward cycle'], productId:'MODEL_FX_SPARK_INSTANT'}
 };
 function renderPlans(tab){
   const checkoutNotice = document.getElementById('checkoutSelectionNotice');
@@ -5860,6 +5860,29 @@ function appendDeskTableCell(row,value,className=''){
   if(className) cell.className = className;
   row.appendChild(cell);
 }
+function deskLossLimitProgress(remainingPercent){
+  const progress = Math.max(0,Math.min(100,remainingPercent));
+  const progressClass = progress > 50 ? 'is-up' : progress >= 25 ? 'is-warn' : 'is-dn';
+  return {progress,progressClass};
+}
+function deskClassicDailyLossFloor(rules,limit,resetDate){
+  const dailyType = String(rules && rules.daily_drawdown_type || '').toUpperCase();
+  const reference = dailyType === 'START_OF_DAY_BALANCE'
+    ? deskNumber(rules && rules.starting_day_balance)
+    : dailyType === 'START_OF_DAY_EQUITY'
+      ? deskNumber(rules && rules.starting_day_equity)
+      : null;
+  if(!rules || rules.starting_day_utc_date !== resetDate || reference === null || reference <= 0 || !Number.isFinite(limit) || limit < 0 || limit > 100) return null;
+  return reference * (1 - limit / 100);
+}
+function deskClassicMaxLossFloor(startingBalance,rules,limit){
+  if(String(rules && rules.max_drawdown_type || '').toUpperCase() !== 'STATIC' || !Number.isFinite(startingBalance) || startingBalance <= 0 || !Number.isFinite(limit) || limit < 0 || limit > 100) return null;
+  return startingBalance * (1 - limit / 100);
+}
+function deskSparkMaxLossBuffer(currentEquity,threshold,lossAllowance){
+  const buffer = currentEquity - threshold;
+  return {buffer,...deskLossLimitProgress(buffer / lossAllowance * 100)};
+}
 function setDeskPanelEmpty(id,message,isError=false){
   const element = document.getElementById(id);
   element.textContent = message;
@@ -5972,12 +5995,25 @@ function renderDeskObjectives(){
 
   const drawdownMetrics = deskComputeDrawdownMetrics(account,rules,trades,deskLivePositions);
   const drawdownIsStale = account && account.market_data_status === 'stale';
+  const modelCode = String(account && account.challenge_model || rules && rules.model_code || '').toUpperCase();
+  const isSpark = ['SPARK_1_STEP','SPARK_INSTANT'].includes(modelCode);
+  const isClassic = ['1_STEP','2_STEP','INSTANT'].includes(modelCode);
+  const isSparkOrClassic = isSpark || isClassic;
   const effectiveDailyLimit = deskNumber(drawdownMetrics && drawdownMetrics.daily_percent_limit) ?? dailyLimit;
   const dailyDrawdown = deskNumber(drawdownMetrics && drawdownMetrics.daily_percent_used);
   if(effectiveDailyLimit !== null && dailyDrawdown !== null && dailyDrawdown >= 0){
     const safe = dailyDrawdown < effectiveDailyLimit;
-    const threshold = deskNumber(drawdownMetrics && drawdownMetrics.daily_threshold_equity);
-    addObjective('Daily loss limit',dailyDrawdown.toFixed(1) + '% of ' + effectiveDailyLimit + '%' + (threshold !== null ? ' · floor ' + deskMoney(threshold) : '') + (drawdownIsStale ? ' · last known (market closed/data unavailable)' : ''),drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',effectiveDailyLimit > 0 ? Math.max(0,Math.min(100,(1 - dailyDrawdown / effectiveDailyLimit) * 100)) : null,drawdownIsStale ? '' : safe ? 'is-up' : 'is-dn');
+    const resetDate = new Date(Date.now() - 22 * 60 * 60 * 1000).toISOString().slice(0,10);
+    const threshold = isClassic
+      ? deskClassicDailyLossFloor(rules,effectiveDailyLimit,resetDate)
+      : deskNumber(drawdownMetrics && drawdownMetrics.daily_threshold_equity);
+    const remaining = effectiveDailyLimit > 0 ? deskLossLimitProgress((1 - dailyDrawdown / effectiveDailyLimit) * 100) : null;
+    if(isSparkOrClassic && threshold !== null && remaining){
+      addObjective('Daily loss limit',deskMoney(threshold) + ' floor · ' + remaining.progress.toFixed(1) + '% remaining',drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',remaining.progress,remaining.progressClass);
+    }else{
+      const progressClass = isSparkOrClassic && remaining ? remaining.progressClass : drawdownIsStale ? '' : safe ? 'is-up' : 'is-dn';
+      addObjective('Daily loss limit',dailyDrawdown.toFixed(1) + '% of ' + effectiveDailyLimit + '%' + (threshold !== null ? ' · floor ' + deskMoney(threshold) : '') + (drawdownIsStale ? ' · last known (market closed/data unavailable)' : ''),drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',remaining && remaining.progress,progressClass);
+    }
   }else{
     const reason = drawdownMetrics && drawdownMetrics.daily_reason;
     addObjective('Daily loss limit',dailyLimit === null ? 'Limit unavailable' : (reason || 'Current daily drawdown unavailable') + ' · limit ' + dailyLimit + '%','Unavailable');
@@ -5985,14 +6021,28 @@ function renderDeskObjectives(){
 
   const effectiveMaxLimit = deskNumber(drawdownMetrics && drawdownMetrics.max_percent_limit) ?? maxLimit;
   const maxDrawdown = deskNumber(drawdownMetrics && drawdownMetrics.max_percent_used);
-  if(effectiveMaxLimit !== null && maxDrawdown !== null && maxDrawdown >= 0){
+  const maxThreshold = isClassic
+    ? deskClassicMaxLossFloor(startingBalance,rules,maxLimit)
+    : deskNumber(drawdownMetrics && drawdownMetrics.max_loss_threshold);
+  const currentEquity = account && ['live','stale'].includes(account.market_data_status) ? deskNumber(account.equity) : null;
+  const lossAllowance = startingBalance !== null && maxLimit !== null ? startingBalance * maxLimit / 100 : null;
+  const bufferMetrics = isSpark && currentEquity !== null && maxThreshold !== null && lossAllowance > 0
+    ? deskSparkMaxLossBuffer(currentEquity,maxThreshold,lossAllowance)
+    : null;
+  if(bufferMetrics){
+    const {buffer,progress,progressClass} = bufferMetrics;
+    const safe = buffer > 0;
+    addObjective('Max loss limit',deskMoney(maxThreshold) + ' enforced floor · ' + progress.toFixed(1) + '% remaining',drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',progress,progressClass);
+  }else if(isClassic && maxThreshold !== null && effectiveMaxLimit > 0 && maxDrawdown !== null && maxDrawdown >= 0){
     const safe = maxDrawdown < effectiveMaxLimit;
-    const threshold = deskNumber(drawdownMetrics && drawdownMetrics.max_loss_threshold);
-    addObjective('Max loss limit',maxDrawdown.toFixed(1) + '% of ' + effectiveMaxLimit.toFixed(1) + '%' + (threshold !== null ? ' · floor ' + deskMoney(threshold) : '') + (drawdownIsStale ? ' · last known (market closed/data unavailable)' : ''),drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',effectiveMaxLimit > 0 ? Math.max(0,Math.min(100,(1 - maxDrawdown / effectiveMaxLimit) * 100)) : null,drawdownIsStale ? '' : safe ? 'is-up' : 'is-dn');
+    const remaining = deskLossLimitProgress((1 - maxDrawdown / effectiveMaxLimit) * 100);
+    addObjective('Max loss limit',deskMoney(maxThreshold) + ' floor · ' + remaining.progress.toFixed(1) + '% remaining',drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',remaining.progress,remaining.progressClass);
+  }else if(effectiveMaxLimit !== null && maxDrawdown !== null && maxDrawdown >= 0){
+    const safe = maxDrawdown < effectiveMaxLimit;
+    addObjective('Max loss limit',maxDrawdown.toFixed(1) + '% of ' + effectiveMaxLimit.toFixed(1) + '%' + (maxThreshold !== null ? ' · floor ' + deskMoney(maxThreshold) : '') + (drawdownIsStale ? ' · last known (market closed/data unavailable)' : ''),drawdownIsStale ? 'Last known' : safe ? 'Safe' : 'Limit reached',drawdownIsStale ? 'is-in-progress' : safe ? 'is-safe' : 'is-alert',effectiveMaxLimit > 0 ? Math.max(0,Math.min(100,(1 - maxDrawdown / effectiveMaxLimit) * 100)) : null,drawdownIsStale ? '' : safe ? 'is-up' : 'is-dn');
   }else{
     const reason = drawdownMetrics && drawdownMetrics.max_reason;
-    const threshold = deskNumber(drawdownMetrics && drawdownMetrics.max_loss_threshold);
-    addObjective('Max loss limit',maxLimit === null ? 'Limit unavailable' : (reason || 'Current maximum drawdown unavailable') + (threshold !== null ? ' · enforced floor ' + deskMoney(threshold) : '') + ' · limit ' + maxLimit + '%','Unavailable');
+    addObjective('Max loss limit',maxLimit === null ? 'Limit unavailable' : (reason || 'Current maximum drawdown unavailable') + (maxThreshold !== null ? ' · enforced floor ' + deskMoney(maxThreshold) : '') + ' · limit ' + maxLimit + '%','Unavailable');
   }
 
   container.appendChild(shell);
