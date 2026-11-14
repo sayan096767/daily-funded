@@ -2274,6 +2274,21 @@ def trading_open_position_proxy():
     )
 
 
+@app.post("/api/trading/positions/estimate")
+@firebase_auth_required
+def trading_estimate_position_margin_proxy():
+    payload = filtered_trading_request_payload(
+        ("account_id", "symbol", "side", "volume")
+    )
+    if payload is None:
+        return jsonify(error="Request body must be a JSON object."), 400
+    return cloudflare_trading_proxy_response(
+        "/positions/estimate",
+        method="POST",
+        payload=payload,
+    )
+
+
 @app.post("/api/trading/positions/price")
 @firebase_auth_required
 def trading_mark_position_proxy():
