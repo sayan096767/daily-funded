@@ -1922,6 +1922,13 @@ class CloudflareTradingProxyRouteTests(unittest.TestCase):
                  "order_type": "MARKET", "take_profit": 1.3, "stop_loss": 1.2},
             ),
             (
+                "POST", "/api/trading/positions/estimate",
+                {"account_id": "ACC_TEST", "symbol": "EURUSD", "side": "BUY", "volume": 0.1,
+                 "user_id": "browser"},
+                "POST", "https://worker.example/positions/estimate",
+                {"account_id": self.worker_account_id, "symbol": "EURUSD", "side": "BUY", "volume": 0.1},
+            ),
+            (
                 "POST", "/api/trading/positions/price",
                 {"position_id": "POS_TEST", "current_price": 1.26, "user_id": "browser"},
                 "POST", "https://worker.example/positions/price",

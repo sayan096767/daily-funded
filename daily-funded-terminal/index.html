@@ -43,7 +43,7 @@ main{display:grid;grid-template-columns:auto auto minmax(0,1fr) 290px;min-height
 .in{width:100%;padding:9px 10px;background:var(--bg);border:1px solid var(--bd);border-radius:8px;outline:0}.in:focus{border-color:var(--ac)}
 .vol{display:grid;grid-template-columns:40px 1fr 40px;gap:6px}.vol button{border:1px solid var(--bd);border-radius:8px;background:var(--bg);font-size:16px}.vol input{text-align:center}
 .sw{display:flex;justify-content:space-between;align-items:center;margin-top:16px}.tg{width:38px;height:22px;border-radius:12px;background:var(--bd);position:relative}.tg:after{content:"";position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:var(--tx);transition:.15s}.tg.on{background:var(--ac)}.tg.on:after{left:19px;background:#0d1416}
-.sm{margin-top:16px;border-top:1px solid var(--bd);padding-top:10px}.sm div{display:flex;justify-content:space-between;padding:3px 0;color:var(--mu)}.sm b{color:var(--tx);font-variant-numeric:tabular-nums}
+.sm{margin-top:16px;border-top:1px solid var(--bd);padding-top:10px}.sm div{display:flex;justify-content:space-between;padding:3px 0;color:var(--mu)}.sm b{color:var(--tx);font-variant-numeric:tabular-nums}.sm .mg{display:flex;align-items:baseline;gap:6px}.sm .mg small{color:var(--mu)}
 #go{width:100%;margin-top:12px;padding:13px;border-radius:9px;font-weight:700;background:#1a9c55;color:#fff}#go.s{background:var(--sell);color:#fff}
 #nav{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);display:flex;gap:6px;padding:5px;background:var(--pn);border:1px solid var(--bd);border-radius:10px;opacity:0;pointer-events:none;transition:opacity .15s;z-index:6;box-shadow:0 6px 18px rgba(0,0,0,.3)}
 #nav.o{opacity:1;pointer-events:auto}
@@ -205,7 +205,7 @@ main{min-height:0;height:100%}
   <label>Stop Loss</label><div class="lvl"><div class="lr2"><input id="sl" inputmode="decimal" placeholder="–"><button class="xc" id="slx" aria-label="Clear stop loss">✕</button><span class="unit">Price</span><button class="lb" id="slm" aria-label="Lower stop loss">−</button><button class="lb" id="slp" aria-label="Raise stop loss">+</button></div><small class="inf" id="sli"></small></div>
   <div class="sw"><div>One-click trading<br><small style="color:var(--mu)">Skip the confirmation step</small></div><button class="tg" id="oc" aria-label="One-click trading"></button></div>
   <button id="go">Review BUY</button>
-  <div class="sm"><div>Bid<b id="sb"></b></div><div>Ask<b id="sa"></b></div><div>Used margin<b id="smg"></b></div><div>Stop-loss risk<b id="srk">–</b></div></div>
+  <div class="sm"><div>Bid<b id="sb"></b></div><div>Ask<b id="sa"></b></div><div>Order margin (est.)<span class="mg"><b id="smg"></b><small>Used <b id="smu"></b></small></span></div><div>Stop-loss risk<b id="srk">–</b></div></div>
  </aside>
 </main></div>
 <div id="md"><div id="mb"></div></div><div class="pop" id="pp"></div><div id="ts"></div>

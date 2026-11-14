@@ -4195,6 +4195,40 @@ describe("Flexible provisioning worker", () => {
 		});
 	});
 
+	it.each([
+		["BUY", 1.26, 126],
+		["SELL", 1.24, 124],
+	])("estimates %s order margin from the server quote without opening a position", async (side, entryPrice, expectedMargin) => {
+		const { db, state } = positionHarness({
+			symbols: [positionSymbol("EURUSD")],
+			allowedSymbols: ["EURUSD"],
+		});
+		stubTradingQuotes(1.25, { EURUSD: { bid: 1.24, ask: 1.26 } });
+		const response = await callTrading(db, "/positions/estimate", {
+			method: "POST",
+			body: {
+				account_id: "ACC_TRADE",
+				symbol: "EURUSD",
+				side,
+				volume: 0.1,
+			},
+		});
+		const payload = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(payload).toMatchObject({
+			success: true,
+			symbol: "EURUSD",
+			side,
+			volume: 0.1,
+			entry_price: entryPrice,
+			leverage: 100,
+			required_margin: expectedMargin,
+		});
+		expect(state.orders).toHaveLength(0);
+		expect(state.positions).toHaveLength(0);
+	});
+
 	it("persists and returns a server-authoritative SL modification", async () => {
 		const { db, state } = positionHarness({
 			symbols: [positionSymbol("EURUSD")],

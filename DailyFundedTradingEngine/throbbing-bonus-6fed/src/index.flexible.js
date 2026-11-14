@@ -5586,6 +5586,106 @@ export default {
       }
 
       // =====================================================
+      // ESTIMATE ORDER MARGIN
+      // =====================================================
+
+      if (
+        request.method === "POST" &&
+        url.pathname === "/positions/estimate"
+      ) {
+        const tradingAuth = await authenticateTradingRequest(request, env);
+        if (tradingAuth.response) return tradingAuth.response;
+
+        const body = await readJson(request);
+        const accountId = normalizeText(body.account_id);
+        const symbol = normalizeText(body.symbol).toUpperCase();
+        const side = normalizeText(body.side).toUpperCase();
+        if (!accountId || !symbol || !side || body.volume === undefined) {
+          return tradingError("rule_violation", "Account, symbol, side and volume are required", 400);
+        }
+        if (!["BUY", "SELL"].includes(side)) {
+          return tradingError("rule_violation", "Side must be BUY or SELL", 400);
+        }
+
+        let volume;
+        try {
+          volume = validatePositiveNumber(body.volume, "volume");
+        } catch (error) {
+          return tradingError("invalid_volume", error.message, 400);
+        }
+
+        const context = await getAccountRuleContext(env, accountId, tradingAuth.userId);
+        if (context.error) {
+          return json({ success: false, error: context.error }, context.status);
+        }
+        if (context.account.status !== "active") {
+          return tradingError("trading_disabled", "Trading account is not active", 409);
+        }
+        if (Number(context.rules.phase_number) !== Number(context.account.phase_number)) {
+          return tradingError("rule_violation", "Trading rules do not match the account's current phase", 400);
+        }
+
+        const symbolRecord = await env.daily_funded_trading_db
+          .prepare(`
+            SELECT *
+            FROM trading_symbols
+            WHERE symbol = ?
+              AND trading_enabled = 1
+            LIMIT 1
+          `)
+          .bind(symbol)
+          .first();
+        if (!symbolRecord) {
+          return tradingError("rule_violation", `Symbol ${symbol} is not available for trading`, 400);
+        }
+        const symbolConfigurationError = getSymbolConfigurationError(symbolRecord);
+        if (symbolConfigurationError) {
+          return json({ success: false, error: symbolConfigurationError }, 400);
+        }
+        const allowedSymbols = parseJsonArray(
+          context.rules.allowed_symbols_json,
+          []
+        ).map((item) => String(item).toUpperCase());
+        if (!allowedSymbols.includes(symbol)) {
+          return tradingError("rule_violation", `Symbol ${symbol} is not allowed for this account`, 400);
+        }
+        try {
+          validateVolume(volume, symbolRecord, context.rules.max_lot_size);
+        } catch (error) {
+          return tradingError("invalid_volume", error.message, 400);
+        }
+
+        let execution;
+        try {
+          execution = await requireExecutionQuote(env, symbol, side);
+        } catch (error) {
+          return tradingError(error.code || "market_unavailable", error.message, error.status || 503);
+        }
+
+        let requiredMargin;
+        try {
+          requiredMargin = marginForPosition(
+            { volume },
+            execution.price,
+            snapshotSymbolCalculationMetadata(symbolRecord),
+            Number(context.snapshot.leverage)
+          );
+        } catch {
+          return tradingError("margin_unavailable", "Required margin cannot be calculated for this symbol", 503);
+        }
+
+        return json({
+          success: true,
+          symbol,
+          side,
+          volume,
+          entry_price: execution.price,
+          leverage: Number(context.snapshot.leverage),
+          required_margin: requiredMargin,
+        });
+      }
+
+      // =====================================================
       // OPEN POSITION
       // =====================================================
 

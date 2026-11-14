@@ -261,6 +261,7 @@ const pls=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v))?(Number
 function toast(t){const e=$('#ts');e.textContent=t;e.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>e.style.display='none',2600)}
 const lots=()=>Number($('#vl').value),num=id=>Number($(id).value);
 let submitting=0;
+let orderMarginEstimate=null,marginEstimateError='',marginEstimateKey='',marginEstimateAt=0,marginEstimateRequest=0,marginEstimatePending=false;
 function place(){if(!ACC[AI]?.tradingEnabled)return toast('Trading is disabled for this account');if(!accountState||Date.now()-accountStateUpdatedAt>15000)return toast('Current account state is unavailable. No order was placed.');if(!validQuote(S.sym))return toast('A fresh, open-market quote is required. No order was placed.');
  const y=S.sym,l=lots(),tp=absLvl('tp'),sl=absLvl('sl'),t=S.ot,b=S.side==='buy',px=b?ask(y):bid(y);
  if(t!=='market')return toast('Limit and stop orders are unavailable until server-side execution is implemented.');
@@ -299,10 +300,30 @@ function renderLvl(){const ref=refPx(),d=dc(),tk=Math.pow(10,-d),b=S.side==='buy
   if(!Number.isFinite(ref)){inf.textContent='Live price estimate unavailable';return}
   const pl2=(TPS[k]-ref)*(b?1:-1),pct=pl2/ref*100,sg=v=>(v>=0?'+':'')+v.toLocaleString('en-US',{maximumFractionDigits:2});
   inf.innerHTML=`<span class="${pl2>=0?'up':'dn'}">${sg(pct)} % from live price · USD risk is server-calculated</span>`})}
+function paintMarginEstimate(){const output=$('#smg');output.textContent=marginEstimatePending?'…':orderMarginEstimate===null?(marginEstimateError?'Unavailable':'–'):'$'+orderMarginEstimate.toFixed(2);output.title=marginEstimateError||'Estimated additional margin for this order in USD; refreshed from the server quote.'}
+function refreshMarginEstimate(){
+ const account=ACC[AI],volume=lots(),key=account?`${account.id}|${S.sym}|${S.side}|${volume}|${S.ot}`:'',changed=key!==marginEstimateKey;
+ if(changed){marginEstimateKey=key;orderMarginEstimate=null;marginEstimateError='';marginEstimatePending=false;marginEstimateRequest++}
+ if(!account||!accountState||Date.now()-accountStateUpdatedAt>15000||!Number.isFinite(volume)||volume<=0){
+  if(marginEstimatePending){marginEstimateRequest++;marginEstimatePending=false}
+  orderMarginEstimate=null;marginEstimateError=account?'Account state unavailable':'';marginEstimateAt=0;paintMarginEstimate();return
+ }
+ if(S.ot!=='market'){orderMarginEstimate=null;marginEstimateError='Margin estimate is available for market orders only';marginEstimateAt=0;paintMarginEstimate();return}
+ if(!validQuote(S.sym)){
+  if(marginEstimatePending){marginEstimateRequest++;marginEstimatePending=false}
+  orderMarginEstimate=null;marginEstimateError='A fresh, open-market quote is required';marginEstimateAt=0;paintMarginEstimate();return
+ }
+ if(marginEstimatePending||(!changed&&Date.now()-marginEstimateAt<5000)){paintMarginEstimate();return}
+ const request=++marginEstimateRequest,requestKey=key;marginEstimateAt=Date.now();marginEstimatePending=true;orderMarginEstimate=null;marginEstimateError='';paintMarginEstimate();
+ void api('POST','/trading/positions/estimate',{account_id:account.id,symbol:S.sym,side:S.side.toUpperCase(),volume})
+  .then(result=>{if(request!==marginEstimateRequest||requestKey!==marginEstimateKey)return;const amount=Number(result.required_margin);if(!Number.isFinite(amount)||amount<=0)throw new Error('Trading service returned an invalid margin estimate.');orderMarginEstimate=amount})
+  .catch(error=>{if(request!==marginEstimateRequest||requestKey!==marginEstimateKey)return;marginEstimateError=error.message||'Margin estimate unavailable'})
+  .finally(()=>{if(request===marginEstimateRequest){marginEstimatePending=false;paintMarginEstimate()}})
+}
 function brchUi(){const account=ACC[AI],accountOff=!!account&&!account.tradingEnabled,disabled=!account?.tradingEnabled||!accountState||Date.now()-accountStateUpdatedAt>15000||!validQuote(S.sym)||submitting;document.body.classList.toggle('brch',accountOff);$('#brb').style.display=accountOff?'block':'none';$('#go').disabled=disabled;$('#qs').disabled=$('#qb').disabled=disabled;if(accountOff){PV.on=0}}
 function ui(){brchUi();renderLvl();const y=S.sym,b=S.side==='buy',px=b?ask(y):bid(y);$$('[data-s]').forEach(e=>e.classList.toggle('on',e.dataset.s===S.side));$('#oc').classList.toggle('on',!!S.one);$('#prw').style.display=S.ot==='market'?'none':'block';
  $('#go').className=b?'':'s';$('#go').textContent=validQuote(y)?`Review ${S.side.toUpperCase()} ${y}  ${fm(px)}`:'Market data unavailable';
- $('#sb').textContent=fm(bid(y));$('#sa').textContent=fm(ask(y));$('#smg').textContent=accountState?.used_margin==null?'–':'$'+Number(accountState.used_margin).toFixed(2);$('#srk').textContent='–'}
+ $('#sb').textContent=fm(bid(y));$('#sa').textContent=fm(ask(y));$('#smu').textContent=accountState?.used_margin==null?'–':'$'+Number(accountState.used_margin).toFixed(2);refreshMarginEstimate();$('#srk').textContent='–'}
 /* tables */
 function tbl(){let h='';
  if(tab==='p')h=POS.length?`<table><tr><th>Symbol</th><th>Type</th><th>Lots</th><th>Open</th><th>Current</th><th>TP</th><th>SL</th><th>P/L (USD)</th><th></th></tr>${POS.map(p=>{const v=pl(p),d=dc(p.sym);return`<tr><td>${escapeHtml(p.sym)}</td><td class="${p.side==='buy'?'up':'dn'}">${p.side.toUpperCase()}</td><td>${p.lots}</td><td>${fm(p.open,d)}</td><td>${fm(p.side==='buy'?bid(p.sym):ask(p.sym),d)}</td><td>${p.tp?fm(p.tp,d):'–'}</td><td>${p.sl?fm(p.sl,d):'–'}</td><td class="${v==null?'':v>=0?'up':'dn'}">${pls(v)}</td><td><button class="x" data-c="${escapeHtml(p.id)}">Close</button></td></tr>`}).join('')}</table>`:'<div class="emp">No open positions. Positions appear here after an order is filled.</div>';
